@@ -1,103 +1,268 @@
 # AG Grid Architecture
 
-## Shared layer
+This document describes how AG Grid is integrated into the application and where shared versus feature-specific behavior belongs.
 
-`shared/grid/AppGrid.tsx` is intentionally thin. It merges the default column definition and supplies the application AG Grid theme while forwarding native props and refs. `gridModules.ts` centralizes module registration so version upgrades and Enterprise module decisions have one integration point.
+For a concise record of completed work and remaining foundation scope, see `docs/ag-grid-foundation-status.md`.
 
-Reusable, library-level utilities live under `shared/grid`, including formatters and the two datasource factories. They accept a `GridRowsLoader` that loads a flat row block and returns rows plus the known total.
+## Core rule
+
+Use native AG Grid behavior and APIs first.
+
+Share configuration, datasource adapters and small utilities when they are genuinely common, but do not build an application-specific wrapper API that hides `AgGridReact` or AG Grid lifecycle events.
+
+## Application bootstrap
+
+AG Grid application setup lives in `AppProviders` and the shared grid bootstrap files.
+
+The application owns centrally:
+
+- AG Grid Enterprise license initialization;
+- module registration through `AgGridProvider`;
+- the application AG Grid theme;
+- global `defaultColDef` values through AG Grid's native `provideGlobalGridOptions` API.
+
+Feature tables render `AgGridReact` directly. The former `AppGrid` wrapper has been removed because it only injected shared defaults and did not add useful behavior.
+
+### Global GridOptions boundary
+
+Today the intentionally small global surface is:
+
+- `theme`;
+- `defaultColDef`.
+
+If another native GridOption later becomes truly application-wide, it may also belong in `provideGlobalGridOptions`. Examples could include shared locale text or a company-wide menu/tooltip policy.
+
+Do not move row-model or feature behavior there merely because two grids currently share it. Keep these visible on the owning grid unless there is a real application-wide rule:
+
+- `rowModelType`;
+- datasource / server-side datasource;
+- row selection;
+- `getRowId`;
+- pagination/cache exceptions;
+- AG Grid lifecycle callbacks.
+
+## Shared grid layer
+
+Reusable library-level code lives under `frontend/src/shared/grid`.
+
+Current responsibilities include:
+
+- server-backed GridOption defaults;
+- Infinite and SSRM datasource adapters;
+- error overlay;
+- filter/query helpers;
+- selection primitives and adapters;
+- generic backend-facing bulk-selection builder;
+- formatters;
+- AG Grid module/license bootstrap.
+
+These utilities use AG Grid's native concepts and property names. They are not a compatibility clone of AG Grid.
 
 ## Row-model scope
 
-Infinite Row Model is the default application path. Its datasource adapts `getRows` callbacks into the shared flat loader shape.
+Infinite Row Model and Server-Side Row Model (SSRM) intentionally remain separate feature implementations.
 
-The SSRM datasource is a small Enterprise trial equivalent for flat paging, sorting and filtering. It exists so a feature can choose SSRM without putting SSRM callbacks in React components. It does not interpret group keys, value columns, pivots or aggregation requests.
+They both load server data in blocks, but their lifecycle and capabilities differ enough that merging them into one large configurable table would hide important AG Grid behavior.
 
-If a real feature later needs richer SSRM behavior, extend that feature's backend contract and datasource intentionally. Do not make the current flat loader pretend that Infinite and all SSRM modes are interchangeable.
+### Infinite Row Model
+
+The Transactions Infinite implementation owns:
+
+- Infinite datasource wiring;
+- stable backend row identity;
+- row/cache lifecycle synchronization;
+- custom header selection semantics where Infinite cannot represent unloaded dataset selection natively;
+- Infinite retry through `refreshInfiniteCache()`.
+
+Infinite selection supports three UI strategies:
+
+- `page` — the custom header adds/removes IDs from the current visible pagination page;
+- `filtered` — Select All represents every backend row matching the applied filter;
+- `all` — Select All represents the entire dataset.
+
+Logical application selection remains only:
+
+```ts
+{
+  mode: 'include' | 'exclude',
+  ids: string[],
+}
+```
+
+The UI strategy is not duplicated into that logical object.
+
+Important lifecycle behavior:
+
+- pagination preserves selection;
+- sorting preserves selection because row identity is stable;
+- cache eviction/reload preserves logical selection and restores loaded checkboxes;
+- `filtered + include` preserves explicit IDs on filter change;
+- `filtered + exclude` resets to `include + []` on filter change;
+- all-record selection is independent of visible filter changes.
+
+See `frontend/src/infinite-selection-contract.md` for the full scenario contract.
+
+### SSRM
+
+The Transactions SSRM implementation owns:
+
+- SSRM datasource wiring;
+- stable backend row identity;
+- native SSRM All Records selection;
+- native server-side selection-state APIs;
+- SSRM retry through `retryServerSideLoads()`.
+
+Use native SSRM selection wherever AG Grid supports the requirement.
+
+AG Grid SSRM does not support native Select-All modes for `currentPage` or `filtered`, so the feature has explicit commands for those two capabilities:
+
+- Select current page — selects the resolved RowNodes on the current pagination page;
+- Select all filtered — keeps a small application-owned include/exclude state tied to the captured applied filter model.
+
+The native header checkbox continues to mean All Records.
+
+See `frontend/src/ssrm-selection-contract.md` for the full scenario contract.
+
+## Shared server-backed configuration
+
+`serverBackedGridDefaults` contains conservative application defaults that are expected to repeat across server-backed tables.
+
+Current values:
+
+| Native AG Grid option | Current default | Purpose |
+|---|---:|---|
+| `pagination` | `true` | Enable AG Grid pagination. |
+| `paginationPageSize` | `25` | Rows shown per default page. |
+| `paginationPageSizeSelector` | `[10, 25, 50]` | User page-size choices. |
+| `cacheBlockSize` | `50` | Rows requested per backend block. |
+| `maxBlocksInCache` | `5` | Bound retained server blocks in browser memory. |
+| `blockLoadDebounceMillis` | `120` | Avoid unnecessary rapid block requests. |
+| `maxConcurrentDatasourceRequests` | `1` | Conservative backend request concurrency. |
+
+These are defaults, not immutable rules. A feature may override one property when its UX or backend characteristics justify it.
+
+Pagination page size and datasource block size are separate concepts. A 50-row block can, for example, satisfy two 25-row pages while the block remains cached.
 
 ## Feature configuration
 
-`features/transactions/transactionsGrid.config.ts` records the client/product decision. `TransactionsPage` renders either `TransactionsInfiniteGrid` or `TransactionsSsrmGrid`; there is no row-model tab/toggle and the two implementations are not merged into one table.
+`frontend/src/features/transactions/transactionsGrid.config.ts` owns Transactions-specific choices.
 
-Both components use the thin shared `AppGrid`, their own datasource factory, and the same feature API mapper. Infinite composes separate current-page and filtered/all selection hooks. SSRM remains an independent flat Enterprise table that can evolve separately if a real SSRM requirement appears.
-
-Set the rendered table here:
+It selects which separate implementation is rendered:
 
 ```ts
-activeGrid: 'infinite'; // Change to 'ssrm' for that client build.
+activeGrid: 'infinite';
 ```
 
-### Infinite table configuration
+Use `'ssrm'` for the SSRM implementation when that deployment/product choice is desired.
 
-| Configuration                                          | Current/supported values            | What it controls                                                      |
-| ------------------------------------------------------ | ----------------------------------- | --------------------------------------------------------------------- |
-| `infinite.selectionScope`                              | `page` (current), `filtered`, `all` | Meaning of the Infinite custom header checkbox.                       |
-| `infinite.gridOptions.pagination`                      | `true`                              | Enables pagination over Infinite server blocks.                       |
-| `infinite.gridOptions.paginationPageSize`              | `25`                                | Rows shown on the initial page.                                       |
-| `infinite.gridOptions.paginationPageSizeSelector`      | `[10, 25, 50]`                      | Page-size choices shown in AG pagination.                             |
-| `infinite.gridOptions.cacheBlockSize`                  | `50`                                | Rows requested per backend block; currently covers two default pages. |
-| `infinite.gridOptions.maxBlocksInCache`                | `5`                                 | Bounds cached Infinite blocks in browser memory.                      |
-| `infinite.gridOptions.blockLoadDebounceMillis`         | `120`                               | Delays rapid block requests while the viewport changes.               |
-| `infinite.gridOptions.maxConcurrentDatasourceRequests` | `2`                                 | Bounds simultaneous Infinite requests.                                |
+The configuration also owns the Infinite header-selection strategy and any future Transactions-specific GridOption overrides.
 
-### SSRM table configuration
+Shared defaults should not be copied into the feature merely for convenience. Override only the property that intentionally differs.
 
-| Configuration                                      | Current value  | What it controls                                     |
-| -------------------------------------------------- | -------------- | ---------------------------------------------------- |
-| `ssrm.gridOptions.pagination`                      | `true`         | Enables pagination for the separate flat SSRM table. |
-| `ssrm.gridOptions.paginationPageSize`              | `25`           | Rows shown on the initial SSRM page.                 |
-| `ssrm.gridOptions.paginationPageSizeSelector`      | `[10, 25, 50]` | SSRM page-size choices.                              |
-| `ssrm.gridOptions.cacheBlockSize`                  | `50`           | Rows requested for one SSRM cache block.             |
-| `ssrm.gridOptions.maxBlocksInCache`                | `5`            | Bounds cached SSRM blocks.                           |
-| `ssrm.gridOptions.blockLoadDebounceMillis`         | `120`          | Delays rapid SSRM block requests.                    |
-| `ssrm.gridOptions.maxConcurrentDatasourceRequests` | `1`            | Bounds simultaneous SSRM requests.                   |
+## Data flow
 
-The `gridOptions` keys remain native `AgGridReactProps` names so developers can use AG Grid documentation directly. They are separate objects because the two tables may require different values later.
+Normal server-backed row loading is:
+
+```text
+AG Grid request
+→ row-model datasource adapter
+→ Transactions request mapper
+→ Django endpoint
+→ rows + totalCount
+→ AG Grid row model/cache
+```
+
+The Transactions mapper is the domain boundary between AG Grid's filter/sort model and backend query contracts.
+
+## Backend filter and bulk-action consistency
+
+Do not create a second filter translator for bulk actions.
+
+Normal row loading and filtered bulk selection both reuse `mapTransactionFilterModel(...)`.
+
+This matters because a future bulk action must target the same backend membership the grid displayed.
+
+Backend-facing selection uses:
+
+- `include` for exact IDs;
+- `exclude` plus mapped filters for Select All Filtered;
+- `exclude` plus `filters: []` for All Records.
+
+The generic builder is `buildGridBulkSelection(...)`; Transactions-specific context is handled by `buildTransactionBulkSelection(...)`.
+
+## Development payload preview
+
+Until real bulk-action endpoints exist, local development keeps payload-preview controls for Infinite and SSRM.
+
+They are rendered only when:
+
+```ts
+import.meta.env.DEV
+```
+
+Their purpose is to inspect the exact backend-facing selection payload during development. They do not execute Delete/Approve/Export or any other backend bulk action.
+
+Production builds must not expose these debug controls.
+
+Once real bulk actions exist, their actual network request becomes the preferred validation point and the development preview can be removed.
 
 ## AG Grid terms used in this project
 
-You do not need to know all of AG Grid to maintain these tables. These are the few terms used by
-the implementation:
+| Term | Plain meaning in this project |
+|---|---|
+| row model | The AG Grid strategy used to obtain/manage rows. Infinite and SSRM are separate implementations. |
+| datasource | Object AG Grid calls when it needs server rows. |
+| block | One downloaded server batch, such as rows 0–49. It is not a pagination page. |
+| cache | Server blocks AG Grid retains in browser memory. |
+| `GridApi` | AG Grid's imperative API after the grid initializes. |
+| RowNode | AG Grid's browser-side representation of one loaded row. |
+| `selectionColumnDef` | Configuration for the dedicated selection checkbox column. |
+| Grid State / Column State | Native AG Grid representation/APIs for user grid state such as columns, sorting and filters. |
 
-| Term                 | Plain meaning in this project                                                       |
-| -------------------- | ----------------------------------------------------------------------------------- |
-| row model            | The strategy AG uses to obtain rows. We have separate Infinite and SSRM components. |
-| datasource           | An object AG calls when it needs more rows.                                         |
-| block                | One downloaded batch of rows, such as rows 0-49. It is not a pagination page.       |
-| cache                | The downloaded blocks AG keeps in the browser to avoid requesting them again.       |
-| `GridApi`            | AG's object for inspecting or changing the running table after it starts.           |
-| row node             | AG's browser-side object for one loaded row. Unloaded server rows have no row node. |
-| `selectionColumnDef` | Configuration for the checkbox column only.                                         |
+## Error and retry behavior
 
-## Server selection
+Datasource failures are presented inside the grid through the shared error overlay.
 
-Infinite uses two deliberately separate selection hooks:
+Retry remains row-model-native:
 
-- `useCurrentPageSelection` stores explicit loaded IDs using include mode and contains no exclude or backend-total logic;
-- `useDatasetSelection` handles both filtered and all scope because both use the same include/exclude rules;
-- `filtered` supplies the total matching the current backend filters;
-- `all` supplies an unfiltered total from a separate lightweight request;
-- manually unchecking a loaded row in filtered/all mode adds its ID as an exclusion.
+- Infinite: `api.refreshInfiniteCache()`;
+- SSRM: `api.retryServerSideLoads()`.
 
-Infinite feature configuration chooses one scope; the application does not show a scope/demo chooser. Sort or filter changes clear selection so an old include/exclude intent cannot silently target a different result set. The optional `onSelectionChange` callback exposes a serializable intent for a future bulk action without implementing that action prematurely.
+Selection-supporting errors that do not mean row loading failed should remain separate from the grid-level datasource error.
 
-The runtime flow is:
+## Stable row identity
 
-1. AG asks the Infinite datasource for a block of rows.
-2. The feature mapper converts AG's sort/filter request into the Django API payload.
-3. Django returns rows and the matching total; AG stores the rows in its cache.
-4. `TransactionsInfiniteTable` owns native AG events and translates them into row IDs/booleans.
-5. The configured selection hook decides which IDs are selected.
-6. The table applies that result to checkboxes on rows AG has loaded.
+Server-backed grids use the backend record ID:
+
+```ts
+getRowId={({ data }) => data.id}
+```
+
+Do not use row index as identity. Sorting/filtering/pagination/cache reloads can change row positions while the logical record remains the same.
 
 ## Upgrade procedure
 
-Keep `ag-grid-community`, `ag-grid-react` and `ag-grid-enterprise` on the exact same version. Upgrade them together, then verify:
+Keep `ag-grid-community`, `ag-grid-react` and `ag-grid-enterprise` on exactly the same version and upgrade them together.
 
-1. module and license initialization;
-2. `AppGrid` prop/ref typing;
-3. theme parameters;
-4. Infinite and SSRM datasource tests;
-5. transaction sorting/filtering against Django;
-6. the production build.
+After an AG Grid upgrade, verify:
 
-Feature code should continue to use native AG Grid types and APIs where appropriate; the shared layer is not a compatibility clone.
+1. module and Enterprise license initialization;
+2. global GridOptions/theme integration;
+3. Infinite datasource behavior;
+4. SSRM datasource behavior;
+5. Infinite selection lifecycle tests;
+6. SSRM selection lifecycle tests;
+7. server-side selection-state adapter/API registration;
+8. Transactions sorting/filtering against the backend contract;
+9. development payload preview still remains development-only;
+10. TypeScript and production build.
+
+If Grid/Column State persistence has been introduced, include state restore/migration behavior in the upgrade verification.
+
+## Remaining architecture work
+
+The main planned foundation item still outstanding is native AG Grid Grid/Column State for user-configurable table state such as column order, width, visibility, sorting and filters.
+
+Implement this with AG Grid's native state APIs rather than inventing parallel React state.
+
+Do not speculatively implement SSRM grouping, pivot, aggregation, tree data, generalized business-grid wrappers, or database-backed preference storage until a real product requirement exists.

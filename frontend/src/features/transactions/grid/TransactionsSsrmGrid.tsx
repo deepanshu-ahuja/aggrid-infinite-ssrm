@@ -116,7 +116,7 @@ export function TransactionsSsrmGrid({
   const [filteredSelectionFilterModel, setFilteredSelectionFilterModel] =
     useState<FilterModel>({});
 
-  /** Temporary browser-validation payload; no real bulk endpoint is called. */
+  /** Development-only browser-validation payload; no real bulk endpoint is called. */
   const [preview, setPreview] = useState<TransactionBulkSelection>();
   const [previewError, setPreviewError] = useState<string>();
 
@@ -394,7 +394,7 @@ export function TransactionsSsrmGrid({
   }, [clearPreview]);
 
   /**
-   * Temporary development validation. Builds the exact selection/query payload a future bulk action
+   * Development-only validation. Builds the exact selection/query payload a future bulk action
    * would use, but deliberately performs NO backend action.
    */
   const handlePreviewSelection = useCallback(() => {
@@ -479,13 +479,15 @@ export function TransactionsSsrmGrid({
           Clear selection
         </Button>
 
-        <Button
-          variant="outlined"
-          size="small"
-          onClick={handlePreviewSelection}
-        >
-          Preview selection payload
-        </Button>
+        {import.meta.env.DEV ? (
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={handlePreviewSelection}
+          >
+            Preview selection payload
+          </Button>
+        ) : null}
       </Stack>
 
       <Typography variant="caption" color="text.secondary">
@@ -497,9 +499,11 @@ export function TransactionsSsrmGrid({
         <Alert severity="warning">{selectionError}</Alert>
       ) : null}
 
-      {previewError ? <Alert severity="error">{previewError}</Alert> : null}
+      {import.meta.env.DEV && previewError ? (
+        <Alert severity="error">{previewError}</Alert>
+      ) : null}
 
-      {preview ? (
+      {import.meta.env.DEV && preview ? (
         <Box
           component="pre"
           data-testid="ssrm-selection-payload-preview"
