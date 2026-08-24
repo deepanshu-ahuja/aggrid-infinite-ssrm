@@ -8,7 +8,7 @@ import type {
   RowSelectedEvent,
   SelectionColumnDef,
 } from 'ag-grid-community';
-import { AppGrid } from '@/shared/grid/AppGrid';
+import { AgGridReact } from 'ag-grid-react';
 import { createInfiniteDatasource } from '@/shared/grid/data/infinite/createInfiniteDatasource';
 import { GridErrorOverlay } from '@/shared/grid/overlays/GridErrorOverlay';
 import type { InfiniteSelectionController } from '@/shared/grid/selection/infinite/infiniteSelection.types';
@@ -464,7 +464,7 @@ export function TransactionsInfiniteTable({
       {selectionError && <Alert severity="error">{selectionError}</Alert>}
 
       <Box sx={{ height: 620, width: '100%' }}>
-        <AppGrid<Transaction>
+        <AgGridReact<Transaction>
           rowModelType="infinite"
           datasource={datasource}
           columnDefs={transactionColumns}

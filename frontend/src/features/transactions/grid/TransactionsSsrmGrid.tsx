@@ -9,7 +9,7 @@ import type {
   RowSelectedEvent,
   SelectionChangedEvent,
 } from 'ag-grid-community';
-import { AppGrid } from '@/shared/grid/AppGrid';
+import { AgGridReact } from 'ag-grid-react';
 import { createServerSideDatasource } from '@/shared/grid/data/server-side/createServerSideDatasource';
 import { GridErrorOverlay } from '@/shared/grid/overlays/GridErrorOverlay';
 import { buildGridBulkSelection } from '@/shared/grid/selection/gridBulkSelection';
@@ -519,7 +519,7 @@ export function TransactionsSsrmGrid({
       ) : null}
 
       <Box sx={{ height: 620, width: '100%' }}>
-        <AppGrid<Transaction>
+        <AgGridReact<Transaction>
           rowModelType="serverSide"
           serverSideDatasource={datasource}
           columnDefs={transactionColumns}

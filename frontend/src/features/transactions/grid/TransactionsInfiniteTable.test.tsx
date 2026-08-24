@@ -13,10 +13,10 @@ import type { Transaction } from '../api/transactions.contracts';
 import { TransactionsInfiniteTable } from './TransactionsInfiniteTable';
 
 /**
- * Capture the props our component passes to `AppGrid`.
+ * Capture the props our component passes directly to AG Grid's React component.
  *
- * We intentionally mock only the thin grid rendering boundary instead of mounting the complete AG
- * Grid runtime. These tests are about OUR lifecycle wiring:
+ * We intentionally mock only the React/AG Grid rendering boundary instead of mounting the complete
+ * AG Grid runtime. These tests are about OUR lifecycle wiring:
  *
  * - which native AG Grid callbacks we register;
  * - how we react when those callbacks fire;
@@ -29,10 +29,10 @@ const gridCapture = vi.hoisted(() => ({
   props: undefined as unknown,
 }));
 
-vi.mock('@/shared/grid/AppGrid', () => ({
-  AppGrid: (props: unknown) => {
+vi.mock('ag-grid-react', () => ({
+  AgGridReact: (props: unknown) => {
     gridCapture.props = props;
-    return <div data-testid="mock-app-grid" />;
+    return <div data-testid="mock-ag-grid" />;
   },
 }));
 
@@ -114,7 +114,6 @@ function createRowNode(
     setSelected: vi.fn(),
   } as unknown as RowNode<Transaction>;
 }
-
 
 /**
  * Creates the minimal RowSelectedEvent shape needed by our component.

@@ -13,15 +13,15 @@ import type { Transaction } from '../api/transactions.contracts';
 import { TransactionsSsrmGrid } from './TransactionsSsrmGrid';
 
 /**
- * Mock only the thin React/AG Grid rendering boundary. These tests exercise our SSRM wiring rather
- * than trying to reproduce AG Grid's internal selection engine.
+ * Mock only AG Grid's React rendering boundary. These tests exercise our SSRM wiring rather than
+ * trying to reproduce AG Grid's internal selection engine.
  */
 const gridCapture = vi.hoisted(() => ({
   props: undefined as unknown,
 }));
 
-vi.mock('@/shared/grid/AppGrid', () => ({
-  AppGrid: (props: unknown) => {
+vi.mock('ag-grid-react', () => ({
+  AgGridReact: (props: unknown) => {
     gridCapture.props = props;
     return <div data-testid="mock-ssrm-grid" />;
   },
