@@ -17,6 +17,19 @@ configureAgGridEnterpriseLicense();
  * grid props still take precedence, while the `deep` merge keeps a feature-level `defaultColDef`
  * override from accidentally discarding unrelated application defaults.
  *
+ * TODAY we intentionally keep the global surface very small:
+ * - `theme`: the shared application AG Grid theme;
+ * - `defaultColDef`: boring column defaults that every grid should inherit.
+ *
+ * If more behaviour later becomes genuinely application-wide, other native GridOptions can also be
+ * configured here. Examples could include shared `localeText`, tooltip timing such as
+ * `tooltipShowDelay`, or a consistent context-menu policy such as `suppressContextMenu`.
+ *
+ * Do not move an option here merely because two grids currently share it. Row-model and feature
+ * behaviour such as `rowModelType`, datasource/serverSideDatasource, pagination/cache tuning,
+ * selection configuration, `getRowId`, and lifecycle/event callbacks should stay visible on the
+ * owning feature grid unless we establish a real application-wide rule.
+ *
  * Keeping this next to module/license setup gives the application one visible AG Grid bootstrap
  * boundary without hiding the native `AgGridReact` component from feature code.
  */
