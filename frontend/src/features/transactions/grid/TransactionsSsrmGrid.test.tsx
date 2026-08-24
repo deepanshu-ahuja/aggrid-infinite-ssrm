@@ -237,6 +237,29 @@ describe('TransactionsSsrmGrid selection', () => {
     });
   });
 
+  it('switches native All Records to explicit current-page selection', () => {
+    const rowA = createRowNode('txn-a', 0);
+    const rowB = createRowNode('txn-b', 1);
+    const rowC = createRowNode('txn-c', 2);
+    const fixture = createGridApiFixture([rowA.node, rowB.node, rowC.node]);
+
+    fixture.setNativeSelectionState({
+      selectAll: true,
+      toggledNodes: ['txn-excluded-before-switch'],
+    });
+
+    render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
+    ready(fixture.api);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select current page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Preview selection payload' }));
+
+    expect(preview()).toEqual({
+      mode: 'include',
+      ids: ['txn-a', 'txn-b'],
+    });
+  });
+
   it('does not silently select only part of a page while SSRM rows are unresolved', () => {
     const rowA = createRowNode('txn-a', 0);
     const fixture = createGridApiFixture([rowA.node, undefined]);
@@ -312,6 +335,47 @@ describe('TransactionsSsrmGrid selection', () => {
     });
   });
 
+  it('re-running Select All Filtered clears earlier exclusions', () => {
+    const rowA = createRowNode('txn-a', 0);
+    const rowB = createRowNode('txn-b', 1);
+    const fixture = createGridApiFixture([rowA.node, rowB.node]);
+
+    fixture.setFilterModel({
+      status: {
+        filterType: 'text',
+        type: 'equals',
+        filter: 'Completed',
+      },
+    });
+
+    render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
+    ready(fixture.api);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select all filtered' }));
+
+    rowA.setUserSelected(false);
+    act(() => {
+      getGridProps().onRowSelected?.(
+        rowSelectedEvent(rowA.node, 'checkboxSelected'),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select all filtered' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Preview selection payload' }));
+
+    expect(preview()).toEqual({
+      mode: 'exclude',
+      ids: [],
+      filters: [
+        {
+          field: 'status',
+          operator: 'equals',
+          value: 'Completed',
+        },
+      ],
+    });
+  });
+
   it('restores newly loaded rows while Select All Filtered is active', () => {
     const rowA = createRowNode('txn-a', 0);
     const rowB = createRowNode('txn-b', 1);
@@ -358,6 +422,27 @@ describe('TransactionsSsrmGrid selection', () => {
       ids: ['txn-a'],
       filters: [],
     });
+  });
+
+  it('clears both custom and native selection through Clear Selection', () => {
+    const rowA = createRowNode('txn-a', 0);
+    const fixture = createGridApiFixture([rowA.node]);
+
+    render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
+    ready(fixture.api);
+    fireEvent.click(screen.getByRole('button', { name: 'Select all filtered' }));
+
+    rowA.setUserSelected(false);
+    act(() => {
+      getGridProps().onRowSelected?.(
+        rowSelectedEvent(rowA.node, 'checkboxSelected'),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Preview selection payload' }));
+
+    expect(preview()).toEqual({ mode: 'include', ids: [] });
   });
 
   it('lets the native header switch custom filtered selection to All Records', () => {
