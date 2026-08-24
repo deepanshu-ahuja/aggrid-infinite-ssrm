@@ -1,41 +1,13 @@
-import {
-  forwardRef,
-  useMemo,
-  type ForwardedRef,
-  type ReactElement,
-  type RefAttributes,
-} from 'react';
-import type { ColDef } from 'ag-grid-community';
-import { AgGridReact, type AgGridReactProps } from 'ag-grid-react';
-import { appAgGridTheme } from '@/theme/ag-grid/agGridTheme';
-import { baseDefaultColDef } from './config/defaultColDef';
+import { AgGridReact } from 'ag-grid-react';
 
-export type AppGridProps<TData> = AgGridReactProps<TData>;
-
-function AppGridInner<TData>(
-  { defaultColDef, theme, ...nativeGridProps }: AppGridProps<TData>,
-  ref: ForwardedRef<AgGridReact<TData>>,
-) {
-  const mergedDefaultColDef = useMemo<ColDef<TData>>(
-    () => ({
-      ...baseDefaultColDef,
-      ...defaultColDef,
-    }),
-    [defaultColDef],
-  );
-
-  // This layer supplies application defaults but deliberately leaves AG Grid's native prop,
-  // event and ref surface intact. Recreating those APIs here would make upgrades harder.
-  return (
-    <AgGridReact<TData>
-      ref={ref}
-      {...nativeGridProps}
-      theme={theme ?? appAgGridTheme}
-      defaultColDef={mergedDefaultColDef}
-    />
-  );
-}
-
-export const AppGrid = forwardRef(AppGridInner) as <TData>(
-  props: AppGridProps<TData> & RefAttributes<AgGridReact<TData>>,
-) => ReactElement;
+/**
+ * Temporary compatibility export while feature grids move to importing `AgGridReact` directly.
+ *
+ * This is intentionally NOT a wrapper component: it adds no props, state, refs, lifecycle or
+ * behaviour. Application-wide theme/default-column configuration now uses AG Grid's native
+ * `provideGlobalGridOptions` bootstrap in `AppProviders`.
+ *
+ * Delete this compatibility export once the remaining feature/test imports use `ag-grid-react`
+ * directly.
+ */
+export const AppGrid = AgGridReact;
