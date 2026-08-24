@@ -56,66 +56,29 @@ const EMPTY_SELECTION: ServerSelectionIntent<string> = {
 };
 
 /**
- * Chooses the appropriate Infinite selection composition and temporarily exposes a payload-preview
- * action used to validate our selection contract in the browser.
+ * Chooses the appropriate Infinite selection composition and keeps a development-only payload
+ * preview available for debugging the backend-facing selection contract.
  *
- * WHY THE PREVIEW EXISTS
- * ----------------------
- * We have unit-tested the individual pieces:
- *
- * - include/exclude selection rules;
- * - AG Grid row lifecycle wiring;
- * - backend filter mapping;
- * - generic bulk-selection builder;
- * - Transactions bulk-selection builder.
- *
- * This temporary control validates that those pieces are connected correctly in a real AG Grid
- * interaction before any destructive/real backend bulk endpoint is introduced.
- *
- * Clicking "Preview bulk payload":
- *
- * 1. does NOT call the backend;
- * 2. does NOT change selection;
- * 3. builds exactly the selection/query payload a future action would use;
- * 4. displays it as JSON for manual verification.
- *
- * Once page/filtered/all scenarios have been verified in the browser, this development preview can
- * be removed and the same builder can be called from real actions such as Export/Delete/Approve.
+ * The preview is intentionally guarded by `import.meta.env.DEV`: production builds must not expose
+ * internal validation controls, while developers can still inspect the exact payload until real
+ * bulk actions such as Export/Delete/Approve provide their own network request to inspect.
  */
 export function TransactionsInfiniteGrid({
   selectionScope,
   gridOptions,
   onSelectionChange,
 }: TransactionsInfiniteGridProps) {
-  /**
-   * Latest logical selection emitted by whichever Infinite strategy is active.
-   *
-   * This remains only mode + IDs. UI scope is kept separately in `selectionScope`.
-   */
+  /** Latest logical selection emitted by whichever Infinite strategy is active. */
   const [selectionIntent, setSelectionIntent] =
     useState<ServerSelectionIntent<string>>(EMPTY_SELECTION);
 
-  /**
-   * Latest APPLIED AG Grid column-filter model.
-   *
-   * `TransactionsInfiniteTable` publishes this from GridApi on grid ready and after applied filter
-   * changes. It remains AG Grid state until an action is requested.
-   */
+  /** Latest APPLIED AG Grid column-filter model, needed for filtered bulk-selection context. */
   const [filterModel, setFilterModel] = useState<FilterModel>({});
 
-  /** Last payload explicitly requested through the temporary validation button. */
+  /** Development-only validation snapshot. */
   const [preview, setPreview] = useState<TransactionBulkSelection>();
-
-  /** Readable error if an impossible/inconsistent selection state reaches the preview builder. */
   const [previewError, setPreviewError] = useState<string>();
 
-  /**
-   * Captures logical selection and forwards it to any feature consumer.
-   *
-   * A previously displayed preview is cleared because it describes the selection as it existed at
-   * the moment the button was clicked; leaving it visible after selection changes would look like
-   * live state when it is actually a snapshot.
-   */
   const handleSelectionChange = useCallback(
     (nextSelection: ServerSelectionIntent<string>) => {
       setSelectionIntent(nextSelection);
@@ -126,24 +89,13 @@ export function TransactionsInfiniteGrid({
     [onSelectionChange],
   );
 
-  /**
-   * Captures AG Grid's current APPLIED filter model.
-   *
-   * Again, clear an old preview so the displayed JSON can never be mistaken for the current query
-   * after the user changes filters.
-   */
   const handleFilterModelChange = useCallback((nextFilterModel: FilterModel) => {
     setFilterModel(nextFilterModel);
     setPreview(undefined);
     setPreviewError(undefined);
   }, []);
 
-  /**
-   * Builds the backend-ready selection payload only when the user explicitly clicks the validation
-   * button.
-   *
-   * This mirrors how a real bulk action will work later.
-   */
+  /** Builds the same backend-facing selection/query payload a future explicit bulk action will use. */
   const handlePreviewPayload = useCallback(() => {
     try {
       const nextPreview =
@@ -159,11 +111,6 @@ export function TransactionsInfiniteGrid({
       setPreview(nextPreview);
       setPreviewError(undefined);
     } catch (error) {
-      /**
-       * `page + exclude` should be impossible. Displaying the error in this temporary validation
-       * panel makes an inconsistent state obvious during manual testing instead of silently treating
-       * it as an all-record action.
-       */
       setPreview(undefined);
       setPreviewError(
         error instanceof Error
@@ -191,47 +138,49 @@ export function TransactionsInfiniteGrid({
 
   return (
     <Stack spacing={1.5}>
-      {/*
-       * TEMPORARY DEVELOPMENT VALIDATION CONTROL
-       * ----------------------------------------
-       * This is intentionally visible while Infinite selection is being verified end-to-end.
-       * Remove this panel after all documented page/filtered/all scenarios have been checked.
-       */}
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        spacing={1}
-        alignItems={{ xs: 'stretch', sm: 'center' }}
-      >
-        <Button variant="outlined" size="small" onClick={handlePreviewPayload}>
-          Preview bulk payload
-        </Button>
+      {import.meta.env.DEV ? (
+        <>
+          {/*
+           * DEVELOPMENT-ONLY VALIDATION CONTROL
+           * -----------------------------------
+           * Vite replaces `import.meta.env.DEV` at build time, so this block is excluded from the
+           * production user experience while remaining available during local development.
+           */}
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            alignItems={{ xs: 'stretch', sm: 'center' }}
+          >
+            <Button variant="outlined" size="small" onClick={handlePreviewPayload}>
+              Preview bulk payload
+            </Button>
 
-        <Typography variant="caption" color="text.secondary">
-          Validation only — this does not call a backend bulk-action endpoint.
-        </Typography>
-      </Stack>
+            <Typography variant="caption" color="text.secondary">
+              Development validation only — no bulk backend endpoint is called.
+            </Typography>
+          </Stack>
 
-      {previewError ? (
-        <Alert severity="error">{previewError}</Alert>
-      ) : null}
+          {previewError ? <Alert severity="error">{previewError}</Alert> : null}
 
-      {preview ? (
-        <Box
-          component="pre"
-          data-testid="selection-payload-preview"
-          sx={{
-            m: 0,
-            p: 1.5,
-            overflowX: 'auto',
-            border: 1,
-            borderColor: 'divider',
-            borderRadius: 1,
-            bgcolor: 'background.default',
-            fontSize: '0.75rem',
-          }}
-        >
-          {JSON.stringify(preview, null, 2)}
-        </Box>
+          {preview ? (
+            <Box
+              component="pre"
+              data-testid="selection-payload-preview"
+              sx={{
+                m: 0,
+                p: 1.5,
+                overflowX: 'auto',
+                border: 1,
+                borderColor: 'divider',
+                borderRadius: 1,
+                bgcolor: 'background.default',
+                fontSize: '0.75rem',
+              }}
+            >
+              {JSON.stringify(preview, null, 2)}
+            </Box>
+          ) : null}
+        </>
       ) : null}
 
       {grid}
