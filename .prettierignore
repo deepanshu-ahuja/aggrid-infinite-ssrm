@@ -1,0 +1,5 @@
+node_modules/
+frontend/dist/
+coverage/
+staticfiles/
+package-lock.json
