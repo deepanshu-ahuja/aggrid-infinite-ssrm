@@ -3,7 +3,10 @@ import {
   buildGridBulkSelection,
   type GridBulkSelection,
 } from '@/shared/grid/selection/gridBulkSelection';
-import type { ServerSelectionIntent } from '@/shared/grid/selection/serverSelection';
+import type {
+  InfiniteSelectionMode,
+  ServerSelectionIntent,
+} from '@/shared/grid/selection/serverSelection';
 import type { TransactionFilter } from '../api/transactions.contracts';
 import { mapTransactionFilterModel } from './transactionRequest.mapper';
 
@@ -24,45 +27,42 @@ export type TransactionBulkSelection = GridBulkSelection<
 >;
 
 /**
- * Dataset/query context required only when logical selection is `exclude`.
- *
- * This builder is intentionally row-model-neutral. Both Infinite Row Model and SSRM can produce the
- * same backend meanings even though their UI/AG Grid mechanics differ.
+ * Context required to interpret dataset-level `exclude` selection.
  *
  * `page`
  * ------
- * Current-page/manual selection is explicit IDs. `page + exclude` is invalid.
+ * Current-page selection is always explicit/include selection. There is no valid page-level
+ * dataset Select All representation.
  *
  * `filtered`
  * ----------
- * `exclude` means every Transaction matching the defining AG Grid filter, except `ids`.
+ * If `exclude` is active, the AG Grid applied filter model defines the selected backend dataset.
  *
  * `all`
  * -----
- * `exclude` means every Transaction in the complete unfiltered dataset, except `ids`.
+ * If `exclude` is active, the selected dataset is the complete unfiltered Transactions dataset.
  *
- * Keeping this context outside `ServerSelectionIntent` preserves the rule that logical selection
- * itself contains only:
+ * Keeping this context separate from `ServerSelectionIntent` preserves the design rule that
+ * logical selection itself contains only:
  *
  *     mode + ids
  */
 export type TransactionBulkSelectionContext =
   | {
-      selectionScope: 'page';
+      selectionScope: Extract<InfiniteSelectionMode, 'page'>;
     }
   | {
-      selectionScope: 'filtered';
-
+      selectionScope: Extract<InfiniteSelectionMode, 'filtered'>;
       /**
-       * Applied AG Grid filter model that DEFINES the selected dataset.
+       * Applied AG Grid filter model at the time the action payload is built.
        *
-       * It is translated by `mapTransactionFilterModel()` so normal row loading and filtered bulk
-       * actions use exactly the same backend filter semantics.
+       * The model is converted through `mapTransactionFilterModel()` so bulk actions use exactly the
+       * same backend filter semantics as normal grid row loading.
        */
       filterModel: FilterModel;
     }
   | {
-      selectionScope: 'all';
+      selectionScope: Extract<InfiniteSelectionMode, 'all'>;
     };
 
 /**
@@ -75,37 +75,76 @@ export type TransactionBulkSelectionContext =
  * - it does not read GridApi itself;
  * - it does not trigger Select All.
  *
- * The caller supplies the logical selection plus the dataset/query context that was active when
- * dataset-level Select All was chosen.
+ * A UI/action handler will call it only when the user eventually invokes a real action such as
+ * Export, Delete, Approve, etc.
  *
  * RULE 1 — INCLUDE
  * ----------------
- * Manual/explicit selection is exact-ID selection regardless of row model or visible filter:
+ * Manual selection is exact-ID selection in every UI mode.
  *
- *     include [A, B]
+ * Examples:
  *
- * means exactly A and B.
+ *     page + include [A, B]
+ *     filtered + include [A, B]
+ *     all + include [A, B]
+ *
+ * all mean exactly:
+ *
+ *     { mode: 'include', ids: ['A', 'B'] }
+ *
+ * The visible filter must not redefine those explicit IDs.
  *
  * RULE 2 — FILTERED EXCLUDE
  * -------------------------
- * `exclude` with filtered context means Select All Filtered. The applied AG Grid filter is mapped
- * through the SAME Transactions filter mapper used by normal Infinite/SSRM row loading.
+ * `exclude` under the filtered strategy means Select All Filtered is active.
+ *
+ * We must map the applied AG Grid filter model through the SAME Transactions filter mapper used by
+ * normal datasource loading:
+ *
+ *     AG Grid filter model
+ *          ↓
+ *     mapTransactionFilterModel(...)
+ *          ↓
+ *     backend TransactionFilter[]
+ *
+ * Then the shared builder produces:
+ *
+ *     {
+ *       mode: 'exclude',
+ *       ids: [...exceptions],
+ *       filters: [...mapped backend filters]
+ *     }
  *
  * RULE 3 — ALL EXCLUDE
  * --------------------
- * `exclude` with all-record context means the complete Transactions dataset is selected, so the
- * backend query is intentionally unfiltered (`filters: []`).
+ * `exclude` under the all-record strategy means the complete dataset is selected, so the backend
+ * query is intentionally unfiltered:
+ *
+ *     filters: []
  *
  * RULE 4 — PAGE EXCLUDE IS INVALID
  * --------------------------------
- * Current-page selection is explicit IDs only. Treating `page + exclude` as a dataset action could
- * accidentally widen a bulk operation, so it fails loudly.
+ * The page header never switches to dataset-level exclude semantics. It only adds/removes visible
+ * row IDs from include selection.
+ *
+ * Therefore:
+ *
+ *     selectionScope = 'page'
+ *     selection.mode = 'exclude'
+ *
+ * indicates an impossible/inconsistent application state and fails loudly rather than silently
+ * widening the action to a dataset-level operation.
  */
 export function buildTransactionBulkSelection(
   selection: ServerSelectionIntent<string>,
   context: TransactionBulkSelectionContext,
 ): TransactionBulkSelection {
-  /** Exact IDs completely define include selection; visible filters are irrelevant. */
+  /**
+   * Exact IDs fully define include selection.
+   *
+   * `buildGridBulkSelection` requires a filters argument by design, but filters are discarded for
+   * include mode. Passing [] here makes that irrelevance explicit.
+   */
   if (selection.mode === 'include') {
     return buildGridBulkSelection(selection, []);
   }
@@ -121,6 +160,12 @@ export function buildTransactionBulkSelection(
     return buildGridBulkSelection(selection, []);
   }
 
+  /**
+   * Current-page selection can never legitimately produce exclude state.
+   *
+   * Throwing protects future action handlers from accidentally interpreting corrupted/impossible
+   * state as "all records".
+   */
   throw new Error(
     'Invalid Transactions selection: page selection cannot use exclude mode.',
   );
