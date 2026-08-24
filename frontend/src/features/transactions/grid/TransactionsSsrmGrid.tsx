@@ -5,7 +5,7 @@ import type {
   GetRowIdParams,
   GridApi,
   GridReadyEvent,
-  RowNode,
+  IRowNode,
   RowSelectedEvent,
   SelectionChangedEvent,
 } from 'ag-grid-community';
@@ -261,14 +261,14 @@ export function TransactionsSsrmGrid({
    * instead of silently selecting only the subset that happened to finish loading first.
    */
   const getCurrentPageNodes = useCallback(
-    (api: GridApi<Transaction>): RowNode<Transaction>[] | undefined => {
+    (api: GridApi<Transaction>): IRowNode<Transaction>[] | undefined => {
       const pageSize = api.paginationGetPageSize();
       const currentPage = api.paginationGetCurrentPage();
       const rowCount = api.paginationGetRowCount();
       const startIndex = currentPage * pageSize;
       const endIndex = Math.min(startIndex + pageSize, rowCount);
 
-      const nodes: RowNode<Transaction>[] = [];
+      const nodes: IRowNode<Transaction>[] = [];
 
       for (let rowIndex = startIndex; rowIndex < endIndex; rowIndex += 1) {
         const node = api.getDisplayedRowAtIndex(rowIndex);
