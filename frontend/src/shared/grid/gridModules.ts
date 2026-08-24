@@ -1,10 +1,33 @@
-import { AllCommunityModule, enableDevValidations, type Module } from 'ag-grid-community';
-import { ServerSideRowModelModule } from 'ag-grid-enterprise';
+import {
+  AllCommunityModule,
+  enableDevValidations,
+  type Module,
+} from 'ag-grid-community';
+import {
+  ServerSideRowModelApiModule,
+  ServerSideRowModelModule,
+} from 'ag-grid-enterprise';
 
 if (import.meta.env.DEV) {
   enableDevValidations();
 }
 
-// Module registration is centralized so an AG Grid upgrade or future Enterprise decision has
-// one application-level integration point instead of being repeated across feature screens.
-export const gridModules: Module[] = [AllCommunityModule, ServerSideRowModelModule];
+/**
+ * AG Grid module registration is centralized here so feature grids can use native APIs without
+ * registering Enterprise modules ad hoc in individual components.
+ *
+ * `ServerSideRowModelModule`
+ *     enables the Server-Side Row Model itself.
+ *
+ * `ServerSideRowModelApiModule`
+ *     enables SSRM-specific GridApi methods such as `getServerSideSelectionState()` and
+ *     `setServerSideSelectionState()`.
+ *
+ * Rendering SSRM rows can work with only the row-model module, while SSRM API calls fail at runtime
+ * if the API module is omitted. Keep both registered together.
+ */
+export const gridModules: Module[] = [
+  AllCommunityModule,
+  ServerSideRowModelModule,
+  ServerSideRowModelApiModule,
+];
