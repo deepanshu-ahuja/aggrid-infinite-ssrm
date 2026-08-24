@@ -186,19 +186,26 @@ Tests should focus on our contracts and lifecycle wiring, not reimplement AG Gri
 12. Treat Infinite and SSRM state capabilities independently when AG Grid support differs.
 13. Explain AG Grid lifecycle and design rationale in comments/JSDoc, especially around API-driven selection and async row loading.
 
-## Remaining foundation work
+## Foundation review status
 
-### Final foundation review
+The architecture/code review is complete for the current planned foundation.
 
-After this Grid State work is merged:
+Completed review items:
 
-- run the complete frontend test suite;
-- run TypeScript/build validation;
-- manually verify state survives reload for the active Infinite configuration;
-- switch the configured table to SSRM and verify its separate saved state;
-- review shared grid code for unnecessary abstractions;
-- keep architecture/convention docs synchronized;
-- then consider the current grid foundation complete.
+- checked Infinite and SSRM separately rather than forcing equivalent implementations;
+- checked shared grid utilities for unnecessary abstraction;
+- kept Grid State preference concerns separate from server-backed pagination/cache defaults;
+- removed stale `AppGrid` guidance and outdated selection-review wording from project docs;
+- synchronized architecture/convention docs with the current native AG Grid design.
+
+Executable verification still needs to be run in an environment with the repository and dependencies available:
+
+- complete frontend test suite;
+- TypeScript/build validation;
+- manual reload check for saved Infinite state;
+- manual switch to SSRM and check its separate saved state.
+
+Once those checks pass, the current AG Grid foundation can be considered complete. No additional speculative grid feature is required.
 
 ## Intentionally outside current foundation scope
 
