@@ -1,7 +1,7 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import type { RefObject } from 'react';
 import type { GridApi, IRowNode } from 'ag-grid-community';
-import { getCurrentPageNodes } from '@/shared/grid/pagination/getCurrentPageNodes';
+import { useCurrentPageEditTarget } from '@/shared/grid/editing/useCurrentPageEditTarget';
 import type { Transaction } from '../api/transactions.contracts';
 import type {
   TransactionChanges,
@@ -18,69 +18,25 @@ interface TransactionEditEngine {
 }
 
 /**
- * Reusable behavior behind the two current-page editing flows.
+ * Transactions-specific composition of two current prototype behaviors:
+ * - repeat the latest direct edit;
+ * - apply an explicit field set.
  *
- * The concrete Infinite/SSRM root owns the authoritative GridApi and passes that SAME ref here.
- * This hook never captures a second GridApi and never mirrors native selection/pagination state.
- *
- * FLOW 1
- * ------
- * Propagates the user's latest directly edited field/value to the chosen current-page target.
- *
- * FLOW 2
- * ------
- * Applies one or more explicitly chosen fields to the chosen current-page target.
- *
- * SHARED TARGET RULE
- * ------------------
- * `page`     -> every resolved row on the current pagination page.
- * `selected` -> only native selected RowNodes among those same current-page rows.
- *
- * The final UI can change independently because this hook contains behavior, not presentation.
+ * Current-page/selected-row target resolution itself is shared grid behavior and comes from
+ * `useCurrentPageEditTarget`, so another table does not need to reimplement pagination/loading/
+ * selected-node semantics merely to offer similar actions.
  */
 export function useTransactionEditFlows(
   editing: TransactionEditEngine,
   gridApi: RefObject<GridApi<Transaction> | null>,
 ) {
-  const [error, setError] = useState<string>();
-
-  const resolveTarget = useCallback(
-    (target: TransactionEditTarget) => {
-      const api = gridApi.current;
-
-      if (!api) {
-        setError('The grid is not ready yet.');
-        return undefined;
-      }
-
-      const pageNodes = getCurrentPageNodes(api);
-
-      if (!pageNodes) {
-        setError('The current page is still loading. Try again when its rows are visible.');
-        return undefined;
-      }
-
-      const nodes =
-        target === 'page'
-          ? pageNodes
-          : pageNodes.filter((node) => node.isSelected() === true);
-
-      if (target === 'selected' && nodes.length === 0) {
-        setError('No rows are selected on the current page.');
-        return undefined;
-      }
-
-      setError(undefined);
-      return nodes;
-    },
-    [gridApi],
-  );
+  const target = useCurrentPageEditTarget(gridApi);
 
   const applyLastEdit = useCallback(
-    (target: TransactionEditTarget) => {
+    (editTarget: TransactionEditTarget) => {
       if (!editing.lastEdit) return false;
 
-      const nodes = resolveTarget(target);
+      const nodes = target.resolveTarget(editTarget);
       if (!nodes) return false;
 
       editing.applyChangesToNodes(nodes, {
@@ -89,22 +45,22 @@ export function useTransactionEditFlows(
 
       return true;
     },
-    [editing, resolveTarget],
+    [editing, target.resolveTarget],
   );
 
   const applyBulkChanges = useCallback(
-    (target: TransactionEditTarget, changes: TransactionChanges) => {
-      const nodes = resolveTarget(target);
+    (editTarget: TransactionEditTarget, changes: TransactionChanges) => {
+      const nodes = target.resolveTarget(editTarget);
       if (!nodes) return false;
 
       editing.applyChangesToNodes(nodes, changes);
       return true;
     },
-    [editing, resolveTarget],
+    [editing, target.resolveTarget],
   );
 
   return {
-    error,
+    error: target.error,
     applyLastEdit,
     applyBulkChanges,
   };
