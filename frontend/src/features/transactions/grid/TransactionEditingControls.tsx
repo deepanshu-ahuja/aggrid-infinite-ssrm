@@ -19,7 +19,10 @@ import type {
 } from './transactionEditing';
 
 interface TransactionEditingControlsProps {
+  /** All real drafts, whether currently selected or not. */
   editedRowCount: number;
+  /** Only drafts whose row is currently included by the logical checkbox selection. */
+  selectedEditedRowCount: number;
   lastEdit?: TransactionLastEdit;
   isSaving: boolean;
   saveError?: string;
@@ -28,8 +31,8 @@ interface TransactionEditingControlsProps {
     target: TransactionEditTarget,
     changes: TransactionChanges,
   ) => void;
-  onSaveAll: () => void;
-  onDiscardAll: () => void;
+  onSaveSelected: () => void;
+  onDiscardSelected: () => void;
 }
 
 const STATUSES: readonly TransactionStatus[] = ['Completed', 'Pending', 'Failed'];
@@ -37,18 +40,19 @@ const STATUSES: readonly TransactionStatus[] = ['Completed', 'Pending', 'Failed'
 /**
  * Transactions editing presentation for multi-row actions.
  *
- * Single-row Save/Discard lives in the grid Actions column. This panel owns only page/selection edit
- * propagation plus aggregate Save All / Discard All controls.
+ * Single-row Save/Discard lives in the grid Actions column. Aggregate persistence is explicitly
+ * selection-scoped: only rows that are both dirty and checked are saved/discarded here.
  */
 export function TransactionEditingControls({
   editedRowCount,
+  selectedEditedRowCount,
   lastEdit,
   isSaving,
   saveError,
   onApplyLastEdit,
   onApplyBulkEdit,
-  onSaveAll,
-  onDiscardAll,
+  onSaveSelected,
+  onDiscardSelected,
 }: TransactionEditingControlsProps) {
   const [target, setTarget] = useState<TransactionEditTarget>('page');
   const [useAccount, setUseAccount] = useState(false);
@@ -79,7 +83,7 @@ export function TransactionEditingControls({
   ]);
 
   const hasBulkChanges = Object.keys(bulkChanges).length > 0;
-  const hasTrackedEdits = editedRowCount > 0;
+  const hasSelectedEdits = selectedEditedRowCount > 0;
 
   return (
     <Stack spacing={1.5}>
@@ -101,7 +105,8 @@ export function TransactionEditingControls({
           <MenuItem value="selected">Selected rows on current page</MenuItem>
         </Select>
         <Typography variant="caption" color="text.secondary">
-          {editedRowCount} row{editedRowCount === 1 ? '' : 's'} currently edited
+          {editedRowCount} row{editedRowCount === 1 ? '' : 's'} edited total;{' '}
+          {selectedEditedRowCount} selected
         </Typography>
       </Stack>
 
@@ -231,22 +236,28 @@ export function TransactionEditingControls({
         </Stack>
       </Box>
 
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={1}
+        alignItems={{ sm: 'center' }}
+      >
         <Button
           size="small"
           variant="contained"
-          disabled={!hasTrackedEdits || isSaving}
-          onClick={onSaveAll}
+          disabled={!hasSelectedEdits || isSaving}
+          onClick={onSaveSelected}
         >
-          {isSaving ? 'Saving…' : `Save all (${editedRowCount})`}
+          {isSaving
+            ? 'Saving…'
+            : `Save selected edits (${selectedEditedRowCount})`}
         </Button>
         <Button
           size="small"
           variant="outlined"
-          disabled={!hasTrackedEdits || isSaving}
-          onClick={onDiscardAll}
+          disabled={!hasSelectedEdits || isSaving}
+          onClick={onDiscardSelected}
         >
-          Discard all
+          Discard selected edits
         </Button>
       </Stack>
 
