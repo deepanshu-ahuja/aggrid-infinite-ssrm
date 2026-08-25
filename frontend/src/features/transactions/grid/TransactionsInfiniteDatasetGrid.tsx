@@ -21,34 +21,21 @@ interface TransactionsInfiniteDatasetGridProps {
   /** Native AG Grid options resolved by Transactions feature configuration. */
   gridOptions: TransactionsInfiniteGridOptions;
 
-  /**
-   * Publishes logical selection only:
-   *
-   *     { mode: 'include' | 'exclude', ids: [...] }
-   *
-   * It does not execute a backend bulk action.
-   */
+  /** Publishes logical `include/exclude` selection; it does not execute a backend action. */
   onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
 
-  /**
-   * Publishes AG Grid's current applied filter model upward.
-   *
-   * The filtered strategy needs this only when a later user action converts `exclude` selection
-   * into a backend query. Selection changes themselves still do not call a bulk endpoint.
-   */
+  /** Publishes AG Grid's currently applied filter model for later action-time payload building. */
   onFilterModelChange?: (filterModel: FilterModel) => void;
 }
 
 /**
- * Composes the Transactions Infinite table with dataset-level selection.
+ * Composes the Transactions Infinite table with the behavior Infinite does NOT provide natively:
+ * dataset-wide Select All over unloaded rows.
  *
- * WHY PROPS ARE DECLARED HERE
- * ---------------------------
- * `TransactionsInfiniteGrid` is the parent/router that imports this child.
- *
- * This child deliberately does not import the parent's prop type back from
- * `TransactionsInfiniteGrid.tsx`. That avoids parent <-> child type coupling and keeps dependencies
- * pointed in one direction.
+ * The total-count states below are application/supporting data, not copies of AG Grid state:
+ * - filteredTotal is the accepted backend-query size used by the custom header;
+ * - allTotal comes from an intentionally unfiltered backend count request;
+ * - totalError presents failure of that supporting request.
  */
 export function TransactionsInfiniteDatasetGrid({
   selectionScope,
@@ -56,33 +43,14 @@ export function TransactionsInfiniteDatasetGrid({
   onSelectionChange,
   onFilterModelChange,
 }: TransactionsInfiniteDatasetGridProps) {
-  /**
-   * Total rows matching AG Grid's CURRENT accepted filter model.
-   *
-   * Used only by filtered Select All to calculate header state without loading every matching row.
-   */
   const [filteredTotal, setFilteredTotal] = useState(0);
-
-  /**
-   * Total records in the complete dataset, ignoring visible grid filters.
-   *
-   * Used only by Select All Records.
-   */
   const [allTotal, setAllTotal] = useState(0);
-
-  /**
-   * Failure of the supporting all-record total-count request.
-   *
-   * This is independent from datasource row-loading errors.
-   */
   const [totalError, setTotalError] = useState<string>();
 
   useEffect(() => {
     if (selectionScope !== 'all') return;
 
-    /**
-     * We need only the unfiltered total count, not row data, so one row is sufficient.
-     */
+    /** We need only the unfiltered total count, not row data, so one row is sufficient. */
     const controller = new AbortController();
 
     void listTransactions(
@@ -110,12 +78,9 @@ export function TransactionsInfiniteDatasetGrid({
   }, [selectionScope]);
 
   /**
-   * Lifecycle rules are implemented in the shared hook:
-   *
-   * - filtered + include -> preserve explicit IDs on filter change;
-   * - filtered + exclude -> clear because Select All Filtered belonged to the old query;
-   * - all + include      -> preserve;
-   * - all + exclude      -> preserve.
+   * This shared Infinite hook still owns the compact logical dataset-selection model. It exists
+   * because Infinite cannot natively represent unloaded Select All. Ordinary page selection no
+   * longer uses this hook and is AG Grid-owned.
    */
   const selection = useDatasetSelection({
     scope: selectionScope,
@@ -126,6 +91,7 @@ export function TransactionsInfiniteDatasetGrid({
   return (
     <TransactionsInfiniteTable
       gridOptions={gridOptions}
+      selectionMode="dataset"
       selection={selection}
       selectionError={totalError}
       onFilteredTotalChange={

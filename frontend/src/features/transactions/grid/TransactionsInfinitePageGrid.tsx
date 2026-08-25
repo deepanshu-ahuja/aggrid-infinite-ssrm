@@ -1,5 +1,4 @@
 import type { FilterModel } from 'ag-grid-community';
-import { useCurrentPageSelection } from '@/shared/grid/selection/infinite/useCurrentPageSelection';
 import type { ServerSelectionIntent } from '@/shared/grid/selection/serverSelection';
 import type { TransactionsInfiniteGridOptions } from '../transactionsGrid.config';
 import { TransactionsInfiniteTable } from './TransactionsInfiniteTable';
@@ -9,47 +8,34 @@ interface TransactionsInfinitePageGridProps {
   gridOptions: TransactionsInfiniteGridOptions;
 
   /**
-   * Publishes logical explicit/include selection for a future action.
+   * Publishes native explicit/include selection for a future action.
    *
-   * The current-page header is only a UI shortcut. Selected IDs can accumulate across pages.
+   * The current-page header is only a native RowNode shortcut. AG Grid itself owns the selected IDs,
+   * including selections accumulated on previously visited pages.
    */
   onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
 
-  /**
-   * Publishes AG Grid's currently applied filter model to the parent validation/action layer.
-   *
-   * Page selection itself does not need filters for membership, but keeping the table lifecycle
-   * wiring identical across Infinite strategies avoids special-case grid implementations.
-   */
+  /** Publishes AG Grid's currently applied filter model to the action/validation layer. */
   onFilterModelChange?: (filterModel: FilterModel) => void;
 }
 
 /**
- * Composes the Transactions Infinite table with current-page-header selection.
+ * Infinite current-page composition.
  *
- * This child declares the small contract it consumes directly instead of importing the parent's
- * prop type back from `TransactionsInfiniteGrid.tsx`. That keeps dependencies one-directional.
+ * There is intentionally no React selection hook here anymore. Stable `getRowId` lets AG Grid own
+ * ordinary Infinite row selection, while the shared selection-column header operates on the native
+ * current-page RowNodes via GridApi.
  */
 export function TransactionsInfinitePageGrid({
   gridOptions,
   onSelectionChange,
   onFilterModelChange,
 }: TransactionsInfinitePageGridProps) {
-  /**
-   * Page header selection always remains include/exact-ID selection.
-   *
-   * Pagination changes only which IDs the header operates on; it does not clear IDs selected on
-   * previous pages.
-   */
-  const { selection, setCurrentPageIds } = useCurrentPageSelection({
-    onSelectionChange,
-  });
-
   return (
     <TransactionsInfiniteTable
       gridOptions={gridOptions}
-      selection={selection}
-      onCurrentPageIdsChange={setCurrentPageIds}
+      selectionMode="page"
+      onNativeSelectionChange={onSelectionChange}
       onFilterModelChange={onFilterModelChange}
     />
   );
