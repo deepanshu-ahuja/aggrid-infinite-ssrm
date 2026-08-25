@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
+  CellValueChangedEvent,
   GridApi,
   GridReadyEvent,
   RowNode,
@@ -13,7 +14,7 @@ import { TransactionsSsrmGrid } from './TransactionsSsrmGrid';
 
 /**
  * Mock only AG Grid's React rendering boundary. Tests below assert native/custom selection behavior
- * directly instead of using the temporary developer payload preview as a test probe.
+ * directly instead of using temporary developer UI as a test probe.
  */
 const gridCapture = vi.hoisted(() => ({
   props: undefined as unknown,
@@ -38,20 +39,24 @@ interface CapturedGridProps {
   onRowSelected?: (event: RowSelectedEvent<Transaction>) => void;
   onSelectionChanged?: (event: SelectionChangedEvent<Transaction>) => void;
   onFilterChanged?: () => void;
+  onCellValueChanged?: (event: CellValueChangedEvent<Transaction>) => void;
 }
 
 function getGridProps(): CapturedGridProps {
   return gridCapture.props as CapturedGridProps;
 }
 
-function createTransaction(id: string): Transaction {
+function createTransaction(
+  id: string,
+  status: Transaction['status'] = 'Completed',
+): Transaction {
   return {
     id,
     reference: `REF-${id}`,
     account: 'Account',
     amount: 100,
     currency: 'USD',
-    status: 'Completed',
+    status,
     transactionDate: '2026-08-24',
   };
 }
@@ -61,15 +66,24 @@ interface TestRowNode {
   setUserSelected: (selected: boolean) => void;
 }
 
-function createRowNode(id: string, rowIndex: number): TestRowNode {
+function createRowNode(
+  id: string,
+  rowIndex: number,
+  status: Transaction['status'] = 'Completed',
+): TestRowNode {
   let selected = false;
+  const data = createTransaction(id, status);
 
   const node = {
-    data: createTransaction(id),
+    data,
     rowIndex,
     isSelected: vi.fn(() => selected),
     setSelected: vi.fn((nextSelected: boolean) => {
       selected = nextSelected;
+    }),
+    setDataValue: vi.fn((field: keyof Transaction, value: unknown) => {
+      (data as unknown as Record<string, unknown>)[field] = value;
+      return true;
     }),
   } as unknown as RowNode<Transaction>;
 
@@ -203,7 +217,7 @@ beforeEach(() => {
   gridCapture.props = undefined;
 });
 
-describe('TransactionsSsrmGrid selection', () => {
+describe('TransactionsSsrmGrid selection and editing', () => {
   it('keeps the native SSRM header explicitly configured as All Records', () => {
     render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
 
@@ -347,6 +361,37 @@ describe('TransactionsSsrmGrid selection', () => {
     });
 
     expect(rowB.node.setSelected).toHaveBeenCalledWith(true, false, 'api');
+  });
+
+  it('restores an unsaved edit when SSRM reloads the row with the old backend value', () => {
+    const initialRow = createRowNode('txn-a', 0, 'Completed');
+    const fixture = createGridApiFixture([initialRow.node]);
+
+    render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
+    ready(fixture.api);
+
+    act(() => {
+      getGridProps().onCellValueChanged?.({
+        data: initialRow.node.data,
+        colDef: { field: 'status' },
+        oldValue: 'Pending',
+        newValue: 'Completed',
+      } as unknown as CellValueChangedEvent<Transaction>);
+    });
+
+    const reloadedRow = createRowNode('txn-a', 0, 'Pending');
+    fixture.setRows([reloadedRow.node]);
+
+    act(() => {
+      getGridProps().onModelUpdated?.();
+    });
+
+    expect(reloadedRow.node.setDataValue).toHaveBeenCalledWith(
+      'status',
+      'Completed',
+      'data',
+    );
+    expect(reloadedRow.node.data?.status).toBe('Completed');
   });
 
   it('filter change clears custom filtered Select All but preserves native All Records', () => {
