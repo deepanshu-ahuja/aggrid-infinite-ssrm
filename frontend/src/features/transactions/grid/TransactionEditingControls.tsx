@@ -69,12 +69,23 @@ export function TransactionEditingControls({
 
   const bulkChanges = useMemo<TransactionChanges>(() => {
     const changes: TransactionChanges = {};
+
     if (useAccount) changes.account = account;
     if (useAmount && amount !== '') changes.amount = Number(amount);
     if (useCurrency) changes.currency = currency;
     if (useStatus) changes.status = status;
+
     return changes;
-  }, [account, amount, currency, status, useAccount, useAmount, useCurrency, useStatus]);
+  }, [
+    account,
+    amount,
+    currency,
+    status,
+    useAccount,
+    useAmount,
+    useCurrency,
+    useStatus,
+  ]);
 
   const hasBulkChanges = Object.keys(bulkChanges).length > 0;
   const hasTrackedEdits = updates.length > 0;
@@ -89,7 +100,9 @@ export function TransactionEditingControls({
         <Typography variant="subtitle2">Edit target</Typography>
         <Select<TransactionEditTarget>
           value={target}
-          onChange={(event) => setTarget(event.target.value as TransactionEditTarget)}
+          onChange={(event) =>
+            setTarget(event.target.value as TransactionEditTarget)
+          }
           size="small"
           sx={{ minWidth: 220 }}
         >
@@ -103,7 +116,9 @@ export function TransactionEditingControls({
 
       <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
         <Stack spacing={1}>
-          <Typography variant="subtitle2">Flow 1 — apply the last cell edit</Typography>
+          <Typography variant="subtitle2">
+            Flow 1 — apply the last cell edit
+          </Typography>
           <Typography variant="body2" color="text.secondary">
             {lastEdit
               ? `Last edit: ${lastEdit.field} = ${String(lastEdit.value)}`
@@ -124,43 +139,90 @@ export function TransactionEditingControls({
 
       <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
         <Stack spacing={1}>
-          <Typography variant="subtitle2">Flow 2 — bulk edit current page</Typography>
+          <Typography variant="subtitle2">
+            Flow 2 — bulk edit current page
+          </Typography>
           <Typography variant="body2" color="text.secondary">
             Only checked fields are changed; unchecked fields remain untouched.
           </Typography>
 
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} useFlexGap flexWrap="wrap">
+          <Stack
+            direction={{ xs: 'column', lg: 'row' }}
+            spacing={1}
+            useFlexGap
+            flexWrap="wrap"
+          >
             <FormControlLabel
-              control={<Checkbox checked={useAccount} onChange={(event) => setUseAccount(event.target.checked)} />}
+              control={
+                <Checkbox
+                  checked={useAccount}
+                  onChange={(event) => setUseAccount(event.target.checked)}
+                />
+              }
               label="Account"
             />
-            <TextField size="small" value={account} onChange={(event) => setAccount(event.target.value)} disabled={!useAccount || isSaving} />
+            <TextField
+              size="small"
+              value={account}
+              onChange={(event) => setAccount(event.target.value)}
+              disabled={!useAccount || isSaving}
+            />
 
             <FormControlLabel
-              control={<Checkbox checked={useAmount} onChange={(event) => setUseAmount(event.target.checked)} />}
+              control={
+                <Checkbox
+                  checked={useAmount}
+                  onChange={(event) => setUseAmount(event.target.checked)}
+                />
+              }
               label="Amount"
             />
-            <TextField size="small" type="number" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={!useAmount || isSaving} />
+            <TextField
+              size="small"
+              type="number"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              disabled={!useAmount || isSaving}
+            />
 
             <FormControlLabel
-              control={<Checkbox checked={useCurrency} onChange={(event) => setUseCurrency(event.target.checked)} />}
+              control={
+                <Checkbox
+                  checked={useCurrency}
+                  onChange={(event) => setUseCurrency(event.target.checked)}
+                />
+              }
               label="Currency"
             />
-            <TextField size="small" value={currency} onChange={(event) => setCurrency(event.target.value)} disabled={!useCurrency || isSaving} />
+            <TextField
+              size="small"
+              value={currency}
+              onChange={(event) => setCurrency(event.target.value)}
+              disabled={!useCurrency || isSaving}
+            />
 
             <FormControlLabel
-              control={<Checkbox checked={useStatus} onChange={(event) => setUseStatus(event.target.checked)} />}
+              control={
+                <Checkbox
+                  checked={useStatus}
+                  onChange={(event) => setUseStatus(event.target.checked)}
+                />
+              }
               label="Status"
             />
             <Select<TransactionStatus>
               size="small"
               value={status}
-              onChange={(event) => setStatus(event.target.value as TransactionStatus)}
+              onChange={(event) =>
+                setStatus(event.target.value as TransactionStatus)
+              }
               disabled={!useStatus || isSaving}
               sx={{ minWidth: 140 }}
             >
               {STATUSES.map((option) => (
-                <MenuItem key={option} value={option}>{option}</MenuItem>
+                <MenuItem key={option} value={option}>
+                  {option}
+                </MenuItem>
               ))}
             </Select>
           </Stack>
@@ -180,12 +242,26 @@ export function TransactionEditingControls({
 
       <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
         <Stack spacing={1}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            alignItems={{ sm: 'center' }}
+          >
             <Typography variant="subtitle2">Unsaved changes</Typography>
-            <Button size="small" variant="contained" disabled={!hasTrackedEdits || isSaving} onClick={onSaveAll}>
+            <Button
+              size="small"
+              variant="contained"
+              disabled={!hasTrackedEdits || isSaving}
+              onClick={onSaveAll}
+            >
               {isSaving ? 'Saving…' : 'Save all'}
             </Button>
-            <Button size="small" variant="outlined" disabled={!hasTrackedEdits || isSaving} onClick={onDiscardAll}>
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={!hasTrackedEdits || isSaving}
+              onClick={onDiscardAll}
+            >
               Discard all
             </Button>
           </Stack>
@@ -193,7 +269,9 @@ export function TransactionEditingControls({
           {saveError ? <Alert severity="error">{saveError}</Alert> : null}
 
           {updates.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">No unsaved changes.</Typography>
+            <Typography variant="body2" color="text.secondary">
+              No unsaved changes.
+            </Typography>
           ) : (
             updates.map((update) => (
               <Stack
@@ -202,12 +280,30 @@ export function TransactionEditingControls({
                 spacing={1}
                 alignItems={{ sm: 'center' }}
               >
-                <Typography variant="body2" sx={{ minWidth: 140 }}>{update.id}</Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+                <Typography variant="body2" sx={{ minWidth: 140 }}>
+                  {update.id}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ flex: 1 }}
+                >
                   {Object.keys(update.changes).join(', ')}
                 </Typography>
-                <Button size="small" disabled={isSaving} onClick={() => onSaveRow(update.id)}>Save row</Button>
-                <Button size="small" disabled={isSaving} onClick={() => onDiscardRow(update.id)}>Discard row</Button>
+                <Button
+                  size="small"
+                  disabled={isSaving}
+                  onClick={() => onSaveRow(update.id)}
+                >
+                  Save row
+                </Button>
+                <Button
+                  size="small"
+                  disabled={isSaving}
+                  onClick={() => onDiscardRow(update.id)}
+                >
+                  Discard row
+                </Button>
               </Stack>
             ))
           )}
