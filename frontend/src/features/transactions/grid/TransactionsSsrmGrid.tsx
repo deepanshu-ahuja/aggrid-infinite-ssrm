@@ -23,44 +23,26 @@ import { TransactionEditingControls } from './TransactionEditingControls';
 import { transactionEditingConfig } from './transactionEditing';
 import { transactionColumns } from './transactionColumns';
 import { mapTransactionGridRequest } from './transactionRequest.mapper';
+import { useTransactionEditPersistence } from './useTransactionEditPersistence';
 
-/** SSRM persists its native Grid State independently from the Infinite instance. */
 const SSRM_STATE_KEY = 'transactions:ssrm';
-
-/** One stable feature identity function is shared by AG Grid and reusable capabilities. */
 const getTransactionId = (row: Transaction) => row.id;
 const getRowId = ({ data }: GetRowIdParams<Transaction>) => getTransactionId(data);
 
-/**
- * AG Grid asks for rows later, whenever SSRM needs another server block/page. The shared loading hook
- * therefore needs a function it can call at that time; we cannot call `listTransactions(...)` during
- * React render because the requested row range does not exist yet.
- *
- * This stable local function performs only the required boundary conversion:
- * AG Grid flat request -> Transactions backend request -> Transactions API.
- */
+/** AG Grid requests SSRM blocks later; this stable boundary maps each request to the Transactions API. */
 const loadTransactionRows: GridRowsLoader<Transaction> = (request, context) =>
-  listTransactions(
-    mapTransactionGridRequest(request),
-    context.signal,
-  );
+  listTransactions(mapTransactionGridRequest(request), context.signal);
 
 export interface TransactionsSsrmGridProps {
-  /** Optional native GridOptions override for tests/embedding. */
   gridOptions?: TransactionsSsrmGridOptions;
 }
 
-/**
- * Transactions SSRM root. Native AG Grid configuration stays visible here while focused shared hooks
- * own loading, selection, editing and Grid State behavior that genuinely has its own lifecycle.
- */
+/** Transactions SSRM root. Native SSRM behavior stays visible at the concrete grid owner. */
 export function TransactionsSsrmGrid({
   gridOptions: gridOptionsOverride,
 }: TransactionsSsrmGridProps) {
   const gridOptions =
     gridOptionsOverride ?? transactionsGridConfig.ssrm.gridOptions;
-
-  /** Keep the one AG Grid API instance here because this root renders and owns this grid. */
   const gridApi = useRef<GridApi<Transaction> | null>(null);
 
   const {
@@ -89,28 +71,55 @@ export function TransactionsSsrmGrid({
   });
 
   const {
+    payload,
     editedRowCount,
     lastEdit,
     applyChangesToNodes,
     restoreTrackedEdits,
     handleCellValueChanged,
+    acknowledgeChanges,
+    discardRow,
+    discardAll,
   } = useTrackedGridEditing(transactionEditingConfig);
 
   const {
     error: editActionError,
     applyLastEdit,
     applyBulkChanges,
-  } = useCurrentPageEditActions(
-    { lastEdit, applyChangesToNodes },
-    gridApi,
-  );
+  } = useCurrentPageEditActions({ lastEdit, applyChangesToNodes }, gridApi);
 
-  const { initialState, onStateUpdated } =
-    useGridStatePersistence<Transaction>({
-      key: SSRM_STATE_KEY,
+  /**
+   * SSRM owns its post-save refresh. Editable Transaction fields participate in server filtering/sort,
+   * so the backend remains authoritative for row membership and position. Stable row IDs let AG Grid
+   * retain row state while refreshServerSide() reloads the top-level store.
+   */
+  const handlePersistedRows = useCallback(() => {
+    gridApi.current?.refreshServerSide();
+  }, []);
+
+  const { saveRow, saveAll, isSaving, saveError } =
+    useTransactionEditPersistence({
+      updates: payload.updates,
+      acknowledgeChanges,
+      onPersistedRows: handlePersistedRows,
     });
 
-  /** AG Grid gives us its API once the grid has initialised; all later native operations use this ref. */
+  const handleDiscardRow = useCallback(
+    (rowId: string) => {
+      const api = gridApi.current;
+      if (api) discardRow(api, rowId);
+    },
+    [discardRow],
+  );
+
+  const handleDiscardAll = useCallback(() => {
+    const api = gridApi.current;
+    if (api) discardAll(api);
+  }, [discardAll]);
+
+  const { initialState, onStateUpdated } =
+    useGridStatePersistence<Transaction>({ key: SSRM_STATE_KEY });
+
   const handleGridReady = useCallback(
     (event: GridReadyEvent<Transaction>) => {
       gridApi.current = event.api;
@@ -119,45 +128,15 @@ export function TransactionsSsrmGrid({
   );
 
   /**
-   * Reconcile application-owned state whenever SSRM replaces/loads rows in its displayed model.
-   *
-   * Example: the user edits a row on page 1, moves to page 2, then later returns to page 1. SSRM may
-   * fetch that row again from the backend, which still contains the old value until the edit is saved.
-   * `modelUpdated` runs when that server-side row model changes, so we can put the local unsaved value
-   * back onto the newly available RowNode.
-   *
-   * The same event is also required by custom "Select All Filtered": newly loaded rows must receive the
-   * checkbox state represented by the application-owned filtered selection.
-   *
-   * SSRM intentionally uses `onModelUpdated` here instead of `onViewportChanged`. Viewport changes can
-   * happen from normal scrolling when only which DOM rows are visible changes; that is broader than the
-   * server-row/model lifecycle we need. `onFirstDataRendered` is also unnecessary for edit restoration:
-   * when the first rows render, the user has not yet been able to create an edit in this grid instance.
-   *
-   * Do not remove this handler without checking BOTH edit restoration and custom filtered-selection
-   * reconciliation; they intentionally share the same SSRM model lifecycle event.
+   * When SSRM loads/replaces rows, reconcile custom filtered selection and any drafts that are still
+   * unsaved. Saved fields are acknowledged before refresh, so they are no longer reapplied afterward.
    */
   const handleModelUpdated = useCallback(() => {
     syncSelectionAfterRowsChange();
-
     const api = gridApi.current;
-    if (api) {
-      restoreTrackedEdits(api);
-    }
+    if (api) restoreTrackedEdits(api);
   }, [restoreTrackedEdits, syncSelectionAfterRowsChange]);
 
-  /**
-   * Runs after the user changes a grid filter.
-   *
-   * AG Grid/SSRM owns applying the filter and requesting the new server data. This handler does NOT
-   * perform filtering. It only cleans up application state that belonged to the previous query:
-   *
-   * - remove a load error from the previous server query;
-   * - clear custom "Select All Filtered" because its meaning depended on the old filter.
-   *
-   * Native All Records and ordinary explicit selected IDs are not cleared because their meaning does
-   * not depend on the current visible filter.
-   */
   const handleFilterChanged = useCallback(() => {
     clearLoadError();
     resetFilterDependentSelection();
@@ -168,8 +147,15 @@ export function TransactionsSsrmGrid({
       <TransactionEditingControls
         editedRowCount={editedRowCount}
         lastEdit={lastEdit}
+        updates={payload.updates}
+        isSaving={isSaving}
+        saveError={saveError}
         onApplyLastEdit={applyLastEdit}
         onApplyBulkEdit={applyBulkChanges}
+        onSaveRow={saveRow}
+        onDiscardRow={handleDiscardRow}
+        onSaveAll={saveAll}
+        onDiscardAll={handleDiscardAll}
       />
 
       {editActionError ? (
@@ -199,22 +185,16 @@ export function TransactionsSsrmGrid({
         because SSRM does not support those native Select-All modes.
       </Typography>
 
-      {selectionError ? (
-        <Alert severity="warning">{selectionError}</Alert>
-      ) : null}
+      {selectionError ? <Alert severity="warning">{selectionError}</Alert> : null}
 
       <Box sx={{ height: 620, width: '100%' }}>
         {/*
-         * Important native SSRM event wiring:
+         * Important native SSRM wiring:
          * - onGridReady stores the one authoritative GridApi.
-         * - onModelUpdated restores unsaved edits AND syncs custom Select All Filtered when server rows
-         *   are loaded/replaced. SSRM does not use viewportChanged for this purpose.
-         * - onFilterChanged does not apply filtering; it only clears application state tied to the old
-         *   query/filter.
-         * - onRowSelected/onSelectionChanged keep custom filtered selection and native selection from
-         *   becoming two competing sources of truth.
-         * - onCellValueChanged records edits outside temporary RowNodes.
-         * - onStateUpdated persists the chosen native Grid State.
+         * - onModelUpdated restores only still-unsaved drafts and custom filtered selection.
+         * - successful Save uses refreshServerSide() above because sorting/filtering is server-owned.
+         * - onFilterChanged clears only application state tied to the previous query.
+         * - onCellValueChanged records drafts outside temporary RowNodes.
          */}
         <AgGridReact<Transaction>
           {...gridOptions}
@@ -231,12 +211,7 @@ export function TransactionsSsrmGrid({
           }}
           activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={
-            loadError
-              ? {
-                  message: loadError,
-                  onRetry: retryLoad,
-                }
-              : undefined
+            loadError ? { message: loadError, onRetry: retryLoad } : undefined
           }
           onGridReady={handleGridReady}
           onModelUpdated={handleModelUpdated}
