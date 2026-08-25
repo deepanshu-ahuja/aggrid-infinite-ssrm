@@ -8,6 +8,7 @@ import type {
   ViewportChangedEvent,
 } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
+import type { GridRowsLoader } from '@/shared/grid/data/gridData.types';
 import { useInfiniteRowLoading } from '@/shared/grid/data/infinite/useInfiniteRowLoading';
 import { useCurrentPageEditActions } from '@/shared/grid/editing/useCurrentPageEditActions';
 import { useTrackedGridEditing } from '@/shared/grid/editing/useTrackedGridEditing';
@@ -18,15 +19,16 @@ import type {
   ServerSelectionIntent,
 } from '@/shared/grid/selection/serverSelection';
 import { useGridStatePersistence } from '@/shared/grid/state/useGridStatePersistence';
+import { listTransactions } from '../api/transactions.api';
 import type { Transaction } from '../api/transactions.contracts';
 import {
   transactionsGridConfig,
   type TransactionsInfiniteGridOptions,
 } from '../transactionsGrid.config';
-import { loadTransactionGridRows } from './loadTransactionGridRows';
 import { TransactionEditingControls } from './TransactionEditingControls';
 import { transactionEditingConfig } from './transactionEditing';
 import { transactionColumns } from './transactionColumns';
+import { mapTransactionGridRequest } from './transactionRequest.mapper';
 
 /** Infinite and SSRM persist independent native AG Grid state for the same Transaction feature. */
 const INFINITE_STATE_KEY = 'transactions:infinite';
@@ -34,6 +36,19 @@ const INFINITE_STATE_KEY = 'transactions:infinite';
 /** One stable feature identity function is shared by AG Grid and reusable selection/edit capabilities. */
 const getTransactionId = (row: Transaction) => row.id;
 const getRowId = ({ data }: GetRowIdParams<Transaction>) => getTransactionId(data);
+
+/**
+ * Concrete feature composition: translate the generic flat-grid request and call the Transactions API.
+ *
+ * This intentionally stays in the root instead of a dedicated `loadTransactionGridRows.ts` file.
+ * The function adds no validation, policy, lifecycle or domain behavior of its own, so extracting it
+ * would create a pass-through abstraction merely because Infinite and SSRM repeat a few lines.
+ */
+const loadTransactionRows: GridRowsLoader<Transaction> = (request, context) =>
+  listTransactions(
+    mapTransactionGridRequest(request),
+    context.signal,
+  );
 
 export interface TransactionsInfiniteGridProps {
   /** Optional selection strategy override used by embedding/tests. */
@@ -76,7 +91,7 @@ export function TransactionsInfiniteGrid({
     clearError: clearLoadError,
   } = useInfiniteRowLoading({
     gridApi,
-    loadRows: loadTransactionGridRows,
+    loadRows: loadTransactionRows,
   });
 
   /**
