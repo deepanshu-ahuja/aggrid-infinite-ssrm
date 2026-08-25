@@ -10,6 +10,28 @@ type Field = 'status' | 'amount';
 type Value = string | number;
 
 describe('tracked grid edit persistence state', () => {
+  it('removes a row from pending changes when its last field returns to the original value', () => {
+    let state = createEmptyTrackedGridEditingState<Field, Value>();
+
+    state = recordTrackedGridCellChange(
+      state,
+      'txn-a',
+      'status',
+      'Pending',
+      'Completed',
+    );
+    state = recordTrackedGridCellChange(
+      state,
+      'txn-a',
+      'status',
+      'Completed',
+      'Pending',
+    );
+
+    expect(state.changesById).toEqual({});
+    expect(state.originalsById).toEqual({});
+  });
+
   it('acknowledges a submitted value without clearing a newer in-flight edit', () => {
     let state = createEmptyTrackedGridEditingState<Field, Value>();
     state = recordTrackedGridCellChange(
