@@ -18,45 +18,32 @@ interface UseInfiniteRowLoadingOptions<TData> {
 /**
  * Reusable Infinite Row Model loading lifecycle.
  *
- * WHY THIS IS A HOOK
- * ------------------
- * Every server-backed Infinite table otherwise repeats the same four pieces of orchestration:
- * datasource identity, visible load-error state, clearing that error after recovery, and native
- * `refreshInfiniteCache()` retry behavior. Those pieces form one lifecycle and should move together.
- *
- * WHAT THIS DOES NOT OWN
- * ----------------------
- * The hook does not know endpoints, request mappers, columns, overlays or feature UI. The concrete
- * grid still decides how to render `error` and wires `datasource` directly to `<AgGridReact>`.
+ * Besides datasource identity/error/retry mechanics, this hook exposes the complete unfiltered count
+ * returned by the NORMAL page request. That avoids a second count-only request for All Records
+ * selection. The current filtered/query count still belongs to AG Grid's accepted row model and is
+ * read there by the selection controller, avoiding stale overlapping-request races.
  */
 export function useInfiniteRowLoading<TData>({
   gridApi,
   loadRows,
   errorMessage = 'Rows could not be loaded. Please retry.',
 }: UseInfiniteRowLoadingOptions<TData>) {
-  /**
-   * Renderable failure state for the current datasource. It clears only after a real request
-   * succeeds or the user explicitly retries, so stale errors do not survive successful recovery.
-   */
   const [error, setError] = useState<string>();
+  const [totalCount, setTotalCount] = useState(0);
 
-  /**
-   * Wrap the feature loader only to own this loading lifecycle. Request translation/API work remains
-   * in the feature loader supplied above.
-   */
   const loadRowsWithRecovery = useCallback<GridRowsLoader<TData>>(
     async (request, context) => {
       const result = await loadRows(request, context);
+
+      // `totalCount` is independent of the current filter, so any successful normal page response
+      // can safely publish it even when multiple row requests overlap.
+      setTotalCount(result.totalCount);
       setError(undefined);
       return result;
     },
     [loadRows],
   );
 
-  /**
-   * Stable datasource identity prevents ordinary React renders from resetting Infinite cache state.
-   * A new datasource is created only when the actual feature loader/error message changes.
-   */
   const datasource = useMemo(
     () =>
       createInfiniteDatasource<TData>({
@@ -66,16 +53,11 @@ export function useInfiniteRowLoading<TData>({
     [errorMessage, loadRowsWithRecovery],
   );
 
-  /** Clear the rendered error and ask AG Grid to retry its Infinite cache natively. */
   const retry = useCallback(() => {
     setError(undefined);
     gridApi.current?.refreshInfiniteCache();
   }, [gridApi]);
 
-  /**
-   * Cross-capability events such as a filter change may start a fresh query before a request runs;
-   * expose a narrow clear operation rather than leaking the state setter to the feature root.
-   */
   const clearError = useCallback(() => {
     setError(undefined);
   }, []);
@@ -83,6 +65,7 @@ export function useInfiniteRowLoading<TData>({
   return {
     datasource,
     error,
+    totalCount,
     retry,
     clearError,
   };
