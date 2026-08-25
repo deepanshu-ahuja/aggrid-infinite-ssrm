@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 import type {
   GetRowIdParams,
@@ -24,6 +24,7 @@ import {
   type TransactionsInfiniteGridOptions,
 } from '../transactionsGrid.config';
 import { TransactionEditingControls } from './TransactionEditingControls';
+import type { TransactionRowEditActionsContext } from './TransactionRowEditActions';
 import { transactionEditingConfig } from './transactionEditing';
 import { transactionColumns } from './transactionColumns';
 import { mapTransactionGridRequest } from './transactionRequest.mapper';
@@ -78,6 +79,7 @@ export function TransactionsInfiniteGrid({
   });
 
   const {
+    state,
     payload,
     editedRowCount,
     lastEdit,
@@ -124,6 +126,25 @@ export function TransactionsInfiniteGrid({
     if (api) discardAll(api);
   }, [discardAll]);
 
+  /**
+   * The Actions column reads the SAME draft state that builds Save All. It does not own a separate
+   * dirty-row list, so reverting the last changed field removes both row actions and bulk pending state.
+   */
+  const rowEditActionsContext = useMemo<TransactionRowEditActionsContext>(
+    () => ({
+      isRowDirty: (rowId) => Boolean(state.changesById[rowId]),
+      isSaving,
+      onSaveRow: saveRow,
+      onDiscardRow: handleDiscardRow,
+    }),
+    [handleDiscardRow, isSaving, saveRow, state.changesById],
+  );
+
+  /** Refresh only Actions cells when draft/pending state changes; data columns keep their native lifecycle. */
+  useEffect(() => {
+    gridApi.current?.refreshCells({ columns: ['editActions'], force: true });
+  }, [rowEditActionsContext]);
+
   const { initialState, onStateUpdated } =
     useGridStatePersistence<Transaction>({ key: INFINITE_STATE_KEY });
 
@@ -155,13 +176,10 @@ export function TransactionsInfiniteGrid({
       <TransactionEditingControls
         editedRowCount={editedRowCount}
         lastEdit={lastEdit}
-        updates={payload.updates}
         isSaving={isSaving}
         saveError={saveError}
         onApplyLastEdit={applyLastEdit}
         onApplyBulkEdit={applyBulkChanges}
-        onSaveRow={saveRow}
-        onDiscardRow={handleDiscardRow}
         onSaveAll={saveAll}
         onDiscardAll={handleDiscardAll}
       />
@@ -173,19 +191,12 @@ export function TransactionsInfiniteGrid({
       ) : null}
 
       <Box sx={{ height: 620, width: '100%' }}>
-        {/*
-         * Important native wiring:
-         * - onGridReady stores the one authoritative GridApi.
-         * - onModelUpdated + onPaginationChanged restore unsaved drafts after Infinite row recreation.
-         * - successful Save uses refreshInfiniteCache() above so server sorting/filtering stays authoritative.
-         * - onFilterChanged clears only app state tied to the previous server query.
-         * - onCellValueChanged records drafts outside temporary RowNodes.
-         */}
         <AgGridReact<Transaction>
           {...gridOptions}
           rowModelType="infinite"
           datasource={datasource}
           columnDefs={transactionColumns}
+          context={rowEditActionsContext}
           getRowId={getRowId}
           initialState={initialState}
           rowSelection={{
