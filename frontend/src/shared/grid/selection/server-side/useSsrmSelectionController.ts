@@ -100,7 +100,10 @@ export function useSsrmSelectionController<TData>({
     [getRowId, gridApi],
   );
 
-  /** Reconcile newly loaded RowNodes only while custom Select All Filtered is active. */
+  /**
+   * Runs after SSRM changes the displayed row model. If Select All Filtered is active, newly loaded
+   * rows must immediately receive the checkbox state represented by that logical selection.
+   */
   const onModelUpdated = useCallback(() => {
     if (filteredSelection) {
       syncLoadedFilteredSelection(filteredSelection);
@@ -217,10 +220,14 @@ export function useSsrmSelectionController<TData>({
   }, [createFilteredSelectAllState, gridApi, syncLoadedFilteredSelection]);
 
   /**
-   * A filter change defines a new filtered universe. Invalidate only custom Select All Filtered;
-   * native All Records remains meaningful because it represents the complete dataset.
+   * Clear only selection whose meaning depended on the previous filter.
+   *
+   * Example: "Select All Filtered" while Status=Completed means all Completed rows. If the user then
+   * changes the filter to Status=Failed, keeping that state would silently change its meaning to all
+   * Failed rows. Native All Records and ordinary explicit selections do not depend on the filter, so
+   * they are left alone.
    */
-  const onFilterChanged = useCallback(() => {
+  const resetFilterDependentSelection = useCallback(() => {
     if (!filteredSelection) return;
 
     setFilteredSelection(undefined);
@@ -246,7 +253,7 @@ export function useSsrmSelectionController<TData>({
     onModelUpdated,
     onRowSelected,
     onSelectionChanged,
-    onFilterChanged,
+    resetFilterDependentSelection,
     selectCurrentPage,
     selectAllFiltered,
     clearSelection,
