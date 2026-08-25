@@ -1,9 +1,10 @@
-import { act, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   CellValueChangedEvent,
   GridApi,
   GridReadyEvent,
+  SelectionChangedEvent,
 } from 'ag-grid-community';
 import { queryClient } from '@/shared/query/queryClient';
 import type { Transaction } from '../api/transactions.contracts';
@@ -30,6 +31,7 @@ interface CapturedGridProps {
   context?: TransactionRowEditActionsContext;
   onGridReady?: (event: GridReadyEvent<Transaction>) => void;
   onCellValueChanged?: (event: CellValueChangedEvent<Transaction>) => void;
+  onSelectionChanged?: (event: SelectionChangedEvent<Transaction>) => void;
 }
 
 function props() {
@@ -48,6 +50,19 @@ function row(id: string): Transaction {
   };
 }
 
+function createApi(selectedIds: string[] = []): GridApi<Transaction> {
+  return {
+    getServerSideSelectionState: vi.fn(() => ({
+      selectAll: false,
+      toggledNodes: selectedIds,
+    })),
+    refreshServerSide: vi.fn(),
+    refreshCells: vi.fn(),
+    forEachNode: vi.fn(),
+    retryServerSideLoads: vi.fn(),
+  } as unknown as GridApi<Transaction>;
+}
+
 afterEach(() => {
   vi.clearAllMocks();
   queryClient.clear();
@@ -56,16 +71,7 @@ afterEach(() => {
 
 describe('TransactionsSsrmGrid edit persistence', () => {
   it('refreshes SSRM from the server after a successful row save', async () => {
-    const api = {
-      getServerSideSelectionState: vi.fn(() => ({
-        selectAll: false,
-        toggledNodes: [],
-      })),
-      refreshServerSide: vi.fn(),
-      refreshCells: vi.fn(),
-      forEachNode: vi.fn(),
-      retryServerSideLoads: vi.fn(),
-    } as unknown as GridApi<Transaction>;
+    const api = createApi();
     transactionApi.updateTransaction.mockResolvedValue({ row: row('txn-a') });
 
     render(<TransactionsSsrmGrid />);
@@ -88,6 +94,52 @@ describe('TransactionsSsrmGrid edit persistence', () => {
       });
       expect(api.refreshServerSide).toHaveBeenCalledTimes(1);
       expect(props().context?.isRowDirty('txn-a')).toBe(false);
+    });
+  });
+
+  it('bulk-saves only rows that are both dirty and selected', async () => {
+    const api = createApi(['txn-b']);
+    transactionApi.bulkUpdateTransactions.mockResolvedValue({
+      rows: [row('txn-b')],
+      updatedCount: 1,
+    });
+
+    render(<TransactionsSsrmGrid />);
+
+    act(() => {
+      props().onGridReady?.({ api } as unknown as GridReadyEvent<Transaction>);
+      props().onCellValueChanged?.({
+        data: row('txn-a'),
+        colDef: { field: 'status' },
+        oldValue: 'Completed',
+        newValue: 'Failed',
+      } as unknown as CellValueChangedEvent<Transaction>);
+      props().onCellValueChanged?.({
+        data: row('txn-b'),
+        colDef: { field: 'status' },
+        oldValue: 'Completed',
+        newValue: 'Failed',
+      } as unknown as CellValueChangedEvent<Transaction>);
+      props().onSelectionChanged?.({
+        serverSideState: {
+          selectAll: false,
+          toggledNodes: ['txn-b'],
+        },
+      } as unknown as SelectionChangedEvent<Transaction>);
+    });
+
+    expect(screen.getByText(/2 rows edited total; 1 selected/i)).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save selected edits (1)' }),
+    );
+
+    await waitFor(() => {
+      expect(transactionApi.bulkUpdateTransactions).toHaveBeenCalledWith({
+        updates: [{ id: 'txn-b', changes: { status: 'Failed' } }],
+      });
+      expect(props().context?.isRowDirty('txn-a')).toBe(true);
+      expect(props().context?.isRowDirty('txn-b')).toBe(false);
     });
   });
 });
