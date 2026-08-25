@@ -5,13 +5,13 @@ import type {
   GetRowIdParams,
   GridApi,
   GridReadyEvent,
-  IRowNode,
   RowSelectedEvent,
   SelectionChangedEvent,
 } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
 import { createServerSideDatasource } from '@/shared/grid/data/server-side/createServerSideDatasource';
 import { GridErrorOverlay } from '@/shared/grid/overlays/GridErrorOverlay';
+import { getCurrentPageNodes } from '@/shared/grid/pagination/getCurrentPageNodes';
 import { buildGridBulkSelection } from '@/shared/grid/selection/gridBulkSelection';
 import {
   isServerRowSelected,
@@ -82,7 +82,13 @@ export interface TransactionsSsrmGridProps {
  * Therefore those two optional client behaviours are explicit controls:
  *
  * - Select current page -> native selection over the loaded RowNodes on the current pagination page;
- * - Select all filtered -> small application-owned include/exclude state + captured filter model.
+ * - Select all filtered -> small application-owned include/exclude state + captured filter context.
+ *
+ * NATIVE-FIRST STATE RULE
+ * -----------------------
+ * React state below is limited to application/UI values AG Grid cannot own. In particular, the
+ * applied filter model itself remains AG Grid-owned. When Select All Filtered is invoked we capture
+ * its defining model into a ref because that snapshot is action context, not render state.
  *
  * We intentionally do NOT copy the complete Infinite selection implementation into SSRM.
  */
@@ -108,13 +114,13 @@ export function TransactionsSsrmGrid({
     useState<ServerSelection<string>>();
 
   /**
-   * Snapshot of the APPLIED AG Grid filter model that defined Select All Filtered.
+   * NOT React state: snapshot of the APPLIED AG Grid filter model that defined Select All Filtered.
    *
-   * This is intentionally captured at selection time. A later filter change clears filtered Select
-   * All rather than silently reinterpreting its exceptions against a new query.
+   * A ref is sufficient because no UI renders directly from this model. A later filter change clears
+   * the custom filtered selection, so the snapshot is used only when an explicit action/preview needs
+   * to interpret the active `exclude` selection against its original backend query.
    */
-  const [filteredSelectionFilterModel, setFilteredSelectionFilterModel] =
-    useState<FilterModel>({});
+  const filteredSelectionFilterModel = useRef<FilterModel>({});
 
   /** Development-only browser-validation payload; no real bulk endpoint is called. */
   const [preview, setPreview] = useState<TransactionBulkSelection>();
@@ -241,7 +247,7 @@ export function TransactionsSsrmGrid({
 
         if (nativeState.selectAll) {
           setFilteredSelection(undefined);
-          setFilteredSelectionFilterModel({});
+          filteredSelectionFilterModel.current = {};
           setSelectionError(undefined);
         }
       } catch {
@@ -255,39 +261,14 @@ export function TransactionsSsrmGrid({
   );
 
   /**
-   * Collect exactly the RowNodes belonging to the current pagination page.
-   *
-   * SSRM is asynchronous. If one expected page row is still an unresolved stub, return undefined
-   * instead of silently selecting only the subset that happened to finish loading first.
-   */
-  const getCurrentPageNodes = useCallback(
-    (api: GridApi<Transaction>): IRowNode<Transaction>[] | undefined => {
-      const pageSize = api.paginationGetPageSize();
-      const currentPage = api.paginationGetCurrentPage();
-      const rowCount = api.paginationGetRowCount();
-      const startIndex = currentPage * pageSize;
-      const endIndex = Math.min(startIndex + pageSize, rowCount);
-
-      const nodes: IRowNode<Transaction>[] = [];
-
-      for (let rowIndex = startIndex; rowIndex < endIndex; rowIndex += 1) {
-        const node = api.getDisplayedRowAtIndex(rowIndex);
-
-        if (!node?.data) return undefined;
-        nodes.push(node);
-      }
-
-      return nodes;
-    },
-    [],
-  );
-
-  /**
    * Explicit Current Page command.
    *
-   * Ordinary manual selection is preserved and the page IDs are added to it. If a dataset-wide mode
-   * is active (native All Records or custom All Filtered), Current Page first returns to ordinary
-   * explicit selection so incompatible meanings are not mixed.
+   * AG Grid SSRM does not support `selectAll: 'currentPage'`, so this command resolves the concrete
+   * current-page RowNodes through the shared pagination primitive and then uses AG Grid's native
+   * `setNodesSelected()` API. Ordinary manual selection remains native.
+   *
+   * If a dataset-wide mode is active (native All Records or custom All Filtered), Current Page first
+   * returns to ordinary explicit selection so incompatible meanings are not mixed.
    */
   const handleSelectCurrentPage = useCallback(() => {
     const api = gridApi.current;
@@ -309,7 +290,7 @@ export function TransactionsSsrmGrid({
 
       const wasFilteredSelectAll = Boolean(filteredSelection);
       setFilteredSelection(undefined);
-      setFilteredSelectionFilterModel({});
+      filteredSelectionFilterModel.current = {};
 
       if (nativeState.selectAll || wasFilteredSelectAll) {
         api.setServerSideSelectionState(
@@ -333,7 +314,7 @@ export function TransactionsSsrmGrid({
           : 'Current-page selection could not be applied.',
       );
     }
-  }, [clearPreview, filteredSelection, getCurrentPageNodes]);
+  }, [clearPreview, filteredSelection]);
 
   /**
    * Explicit Select All Filtered command.
@@ -349,15 +330,17 @@ export function TransactionsSsrmGrid({
 
     /** Clear old custom state first so native API-driven deselection cannot become exceptions. */
     setFilteredSelection(undefined);
-    setFilteredSelectionFilterModel({});
+    filteredSelectionFilterModel.current = {};
 
     api.setServerSideSelectionState(
       createEmptyServerSideSelectionState(),
     );
 
-    const definingFilterModel = api.getFilterModel();
-
-    setFilteredSelectionFilterModel(definingFilterModel);
+    /**
+     * AG Grid remains the filter source of truth. Capture its applied model only at the moment the
+     * user defines Select All Filtered; do not maintain a second live React filter state.
+     */
+    filteredSelectionFilterModel.current = api.getFilterModel();
     setFilteredSelection(nextSelection);
     syncLoadedFilteredSelection(nextSelection, api);
 
@@ -375,7 +358,7 @@ export function TransactionsSsrmGrid({
     if (!filteredSelection) return;
 
     setFilteredSelection(undefined);
-    setFilteredSelectionFilterModel({});
+    filteredSelectionFilterModel.current = {};
     gridApi.current?.setServerSideSelectionState(
       createEmptyServerSideSelectionState(),
     );
@@ -385,7 +368,7 @@ export function TransactionsSsrmGrid({
   /** Explicit user clear resets both native and custom filtered selection. */
   const handleClearSelection = useCallback(() => {
     setFilteredSelection(undefined);
-    setFilteredSelectionFilterModel({});
+    filteredSelectionFilterModel.current = {};
     gridApi.current?.setServerSideSelectionState(
       createEmptyServerSideSelectionState(),
     );
@@ -409,10 +392,14 @@ export function TransactionsSsrmGrid({
           toServerSelectionIntent(filteredSelection),
           {
             selectionScope: 'filtered',
-            filterModel: filteredSelectionFilterModel,
+            filterModel: filteredSelectionFilterModel.current,
           },
         );
       } else {
+        /**
+         * No custom filtered mode is active: read native SSRM selection at action time. This avoids
+         * mirroring manual/All Records selection in React and works for unloaded selected rows.
+         */
         const intent = serverSideSelectionToIntent(
           readFlatServerSideSelectionState(
             api.getServerSideSelectionState(),
@@ -440,7 +427,7 @@ export function TransactionsSsrmGrid({
           : 'The SSRM selection payload could not be built.',
       );
     }
-  }, [filteredSelection, filteredSelectionFilterModel]);
+  }, [filteredSelection]);
 
   /** SSRM-native failed-load retry; do not rebuild the datasource/cache manually. */
   const handleRetryLoad = useCallback(() => {
