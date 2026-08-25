@@ -64,8 +64,11 @@ export function recordTrackedGridCellChange<TField extends string, TValue>(
 ): TrackedGridEditingState<TField, TValue> {
   if (Object.is(oldValue, newValue)) return state;
 
-  const currentChanges = state.changesById[rowId] ?? {};
-  const currentOriginals = state.originalsById[rowId] ?? {};
+  /** Keep the mapped generic type when a row has no prior edits; raw `{}` loses indexed access. */
+  const currentChanges: TrackedGridChanges<TField, TValue> =
+    state.changesById[rowId] ?? {};
+  const currentOriginals: TrackedGridChanges<TField, TValue> =
+    state.originalsById[rowId] ?? {};
 
   if (
     hasTrackedGridField(currentChanges, field) &&
@@ -74,8 +77,12 @@ export function recordTrackedGridCellChange<TField extends string, TValue>(
     return state;
   }
 
-  const nextChanges = { ...currentChanges };
-  const nextOriginals = { ...currentOriginals };
+  const nextChanges: TrackedGridChanges<TField, TValue> = {
+    ...currentChanges,
+  };
+  const nextOriginals: TrackedGridChanges<TField, TValue> = {
+    ...currentOriginals,
+  };
 
   const originalValue = hasTrackedGridField(currentOriginals, field)
     ? currentOriginals[field]
