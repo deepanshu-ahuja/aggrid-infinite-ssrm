@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   CellValueChangedEvent,
@@ -7,6 +7,7 @@ import type {
 } from 'ag-grid-community';
 import { queryClient } from '@/shared/query/queryClient';
 import type { Transaction } from '../api/transactions.contracts';
+import type { TransactionRowEditActionsContext } from './TransactionRowEditActions';
 import { TransactionsSsrmGrid } from './TransactionsSsrmGrid';
 
 const gridCapture = vi.hoisted(() => ({ props: undefined as unknown }));
@@ -26,6 +27,7 @@ vi.mock('ag-grid-react', () => ({
 vi.mock('../api/transactions.api', () => transactionApi);
 
 interface CapturedGridProps {
+  context?: TransactionRowEditActionsContext;
   onGridReady?: (event: GridReadyEvent<Transaction>) => void;
   onCellValueChanged?: (event: CellValueChangedEvent<Transaction>) => void;
 }
@@ -55,7 +57,12 @@ afterEach(() => {
 describe('TransactionsSsrmGrid edit persistence', () => {
   it('refreshes SSRM from the server after a successful row save', async () => {
     const api = {
+      getServerSideSelectionState: vi.fn(() => ({
+        selectAll: false,
+        toggledNodes: [],
+      })),
       refreshServerSide: vi.fn(),
+      refreshCells: vi.fn(),
       forEachNode: vi.fn(),
       retryServerSideLoads: vi.fn(),
     } as unknown as GridApi<Transaction>;
@@ -73,14 +80,14 @@ describe('TransactionsSsrmGrid edit persistence', () => {
       } as unknown as CellValueChangedEvent<Transaction>);
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save row' }));
+    act(() => props().context?.onSaveRow('txn-a'));
 
     await waitFor(() => {
       expect(transactionApi.updateTransaction).toHaveBeenCalledWith('txn-a', {
         status: 'Completed',
       });
       expect(api.refreshServerSide).toHaveBeenCalledTimes(1);
-      expect(screen.getByText('0 rows currently edited')).toBeInTheDocument();
+      expect(props().context?.isRowDirty('txn-a')).toBe(false);
     });
   });
 });
