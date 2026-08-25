@@ -119,16 +119,23 @@ export function TransactionsSsrmGrid({
   );
 
   /**
-   * Runs when SSRM changes the rows in its current model, for example after another server page/block
-   * has loaded. Two pieces of our application state may need to be put back onto those new RowNodes:
+   * Reconcile application-owned state whenever SSRM replaces/loads rows in its displayed model.
    *
-   * 1. custom "Select All Filtered" checkbox state;
-   * 2. unsaved local cell edits for rows that were previously edited.
+   * Example: the user edits a row on page 1, moves to page 2, then later returns to page 1. SSRM may
+   * fetch that row again from the backend, which still contains the old value until the edit is saved.
+   * `modelUpdated` runs when that server-side row model changes, so we can put the local unsaved value
+   * back onto the newly available RowNode.
    *
-   * We use `modelUpdated` for this instead of `viewportChanged`. Viewport changes also happen during
-   * ordinary scrolling when only the DOM window changes, which is broader than the data/model change
-   * we actually care about. `firstDataRendered` is also unnecessary because it only fires once, before
-   * a user can have created any local edits in this grid instance.
+   * The same event is also required by custom "Select All Filtered": newly loaded rows must receive the
+   * checkbox state represented by the application-owned filtered selection.
+   *
+   * SSRM intentionally uses `onModelUpdated` here instead of `onViewportChanged`. Viewport changes can
+   * happen from normal scrolling when only which DOM rows are visible changes; that is broader than the
+   * server-row/model lifecycle we need. `onFirstDataRendered` is also unnecessary for edit restoration:
+   * when the first rows render, the user has not yet been able to create an edit in this grid instance.
+   *
+   * Do not remove this handler without checking BOTH edit restoration and custom filtered-selection
+   * reconciliation; they intentionally share the same SSRM model lifecycle event.
    */
   const handleModelUpdated = useCallback(() => {
     syncSelectionAfterRowsChange();
@@ -142,9 +149,14 @@ export function TransactionsSsrmGrid({
   /**
    * Runs after the user changes a grid filter.
    *
-   * The new filter starts a different server query, so an error from the previous query should no
-   * longer be displayed. Also clear "Select All Filtered" if it was active, because that selection
-   * belonged to the previous filter. Native All Records and ordinary explicit selections remain valid.
+   * AG Grid/SSRM owns applying the filter and requesting the new server data. This handler does NOT
+   * perform filtering. It only cleans up application state that belonged to the previous query:
+   *
+   * - remove a load error from the previous server query;
+   * - clear custom "Select All Filtered" because its meaning depended on the old filter.
+   *
+   * Native All Records and ordinary explicit selected IDs are not cleared because their meaning does
+   * not depend on the current visible filter.
    */
   const handleFilterChanged = useCallback(() => {
     clearLoadError();
@@ -192,6 +204,18 @@ export function TransactionsSsrmGrid({
       ) : null}
 
       <Box sx={{ height: 620, width: '100%' }}>
+        {/*
+         * Important native SSRM event wiring:
+         * - onGridReady stores the one authoritative GridApi.
+         * - onModelUpdated restores unsaved edits AND syncs custom Select All Filtered when server rows
+         *   are loaded/replaced. SSRM does not use viewportChanged for this purpose.
+         * - onFilterChanged does not apply filtering; it only clears application state tied to the old
+         *   query/filter.
+         * - onRowSelected/onSelectionChanged keep custom filtered selection and native selection from
+         *   becoming two competing sources of truth.
+         * - onCellValueChanged records edits outside temporary RowNodes.
+         * - onStateUpdated persists the chosen native Grid State.
+         */}
         <AgGridReact<Transaction>
           {...gridOptions}
           rowModelType="serverSide"
