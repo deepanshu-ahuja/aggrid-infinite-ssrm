@@ -21,57 +21,42 @@ import { TransactionsInfinitePageGrid } from './TransactionsInfinitePageGrid';
 export interface TransactionsInfiniteGridProps {
   /**
    * Chooses what the custom Infinite header checkbox means:
-   *
-   * - `page`: add/remove IDs on the current pagination page;
-   * - `filtered`: Select All represents every backend row matching the active filter;
-   * - `all`: Select All represents every backend row in the complete dataset.
+   * - `page`: native row selection; header acts on current-page RowNodes;
+   * - `filtered`: custom dataset Select All represents active backend filter;
+   * - `all`: custom dataset Select All represents the complete backend dataset.
    */
   selectionScope: InfiniteSelectionMode;
 
   /** Native AG Grid options for this Transactions Infinite grid. */
   gridOptions: TransactionsInfiniteGridOptions;
 
-  /**
-   * Accumulated local edits are supplied only so this row-model owner can combine them with its
-   * logical selection for the DEVELOPMENT bulk-edit preview.
-   *
-   * The editing engine itself remains outside the Infinite grid; this component does not mutate or
-   * own those edits.
-   */
+  /** Accumulated local edits used only by the development selected-edit payload preview. */
   editingState?: TransactionEditingState;
 
   /** Emits the current logical selection when another feature consumer needs it. */
   onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
 }
 
-/** include + [] = no explicitly selected IDs. */
 const EMPTY_SELECTION: ServerSelectionIntent<string> = {
   mode: 'include',
   ids: [],
 };
 
 /**
- * Chooses the appropriate Infinite selection composition and owns development previews that require
- * knowledge of Infinite's logical include/exclude selection.
+ * Routes to the appropriate Infinite selection composition and owns development action previews.
  *
  * NATIVE-FIRST STATE RULE
  * -----------------------
- * This component must not create React state merely because AG Grid exposes a value. In particular,
- * the applied filter model remains AG Grid-owned. We keep only a ref to the latest model published
- * by the table because the development action builder needs to read it later; changing that ref does
- * not cause a render and therefore does not create a second UI state machine for filters.
+ * This router does NOT own grid selection or filtering:
  *
- * React state below is limited to application meaning AG Grid cannot represent (logical dataset-wide
- * Infinite selection) and development preview UI that AG Grid does not own.
+ * - page/manual selected IDs are AG Grid-owned;
+ * - dataset-wide Infinite Select All is owned by the dedicated dataset strategy because AG Grid
+ *   cannot represent unloaded all/filtered selection;
+ * - the filter model is AG Grid-owned.
  *
- * TWO DIFFERENT PREVIEWS
- * ----------------------
- * `Preview selection payload`
- *     validates a future generic selection-based backend action such as Export/Delete/Approve.
- *
- * `Preview selected edit payload`
- *     validates a future Bulk Update API. It intersects accumulated concrete edits with the current
- *     logical selection, so selection by itself never manufactures row updates.
+ * `selectionIntentRef` and `filterModelRef` are action-time snapshots only. They are refs, not React
+ * state, because rendering this router does not depend on their values. The only React state here is
+ * development preview/error UI that AG Grid has no concept of.
  */
 export function TransactionsInfiniteGrid({
   selectionScope,
@@ -79,38 +64,28 @@ export function TransactionsInfiniteGrid({
   editingState,
   onSelectionChange,
 }: TransactionsInfiniteGridProps) {
-  /**
-   * Application-owned logical Infinite selection.
-   *
-   * Infinite Row Model has native per-row selection but no native Select All across unloaded rows.
-   * This logical snapshot is therefore needed while the custom Infinite selection strategies are
-   * active. A later native-selection cleanup can reduce include-mode duplication further without
-   * changing the backend `mode + ids` contract.
-   */
-  const [selectionIntent, setSelectionIntent] =
-    useState<ServerSelectionIntent<string>>(EMPTY_SELECTION);
-
-  /**
-   * NOT React state: AG Grid owns filtering.
-   *
-   * The child table publishes `api.getFilterModel()` after AG Grid applies a filter. We retain only
-   * the latest value for the explicit preview/action builder. A ref is enough because no UI renders
-   * directly from this model.
-   */
+  const selectionIntentRef =
+    useRef<ServerSelectionIntent<string>>(EMPTY_SELECTION);
   const filterModelRef = useRef<FilterModel>({});
 
-  /** Generic selection-action preview. This is our development UI, not AG Grid state. */
+  /** Generic selection-action preview. This is development UI, not grid state. */
   const [selectionPreview, setSelectionPreview] =
     useState<TransactionBulkSelection>();
   const [selectionPreviewError, setSelectionPreviewError] = useState<string>();
 
-  /** Future Bulk Update preview: edited rows ∩ current logical selection. */
+  /** Future Bulk Update preview: accumulated edited rows ∩ current logical selection. */
   const [selectedEditPreview, setSelectedEditPreview] =
     useState<TransactionUpdatePayload>();
 
   const handleSelectionChange = useCallback(
     (nextSelection: ServerSelectionIntent<string>) => {
-      setSelectionIntent(nextSelection);
+      /**
+       * Do not mirror selection into React render state. The concrete Infinite strategy remains its
+       * source of truth; this ref is only the latest JSON-safe snapshot for explicit actions.
+       */
+      selectionIntentRef.current = nextSelection;
+
+      /** Any displayed preview is now stale, so only the preview UI needs a React update. */
       setSelectionPreview(undefined);
       setSelectionPreviewError(undefined);
       setSelectedEditPreview(undefined);
@@ -120,21 +95,19 @@ export function TransactionsInfiniteGrid({
   );
 
   const handleFilterModelChange = useCallback((nextFilterModel: FilterModel) => {
-    /**
-     * Do not mirror AG Grid filter state with `useState`. The model is needed only when a user later
-     * asks us to construct a filtered backend action payload.
-     */
+    /** AG Grid owns filtering; retain only the latest action-time snapshot. */
     filterModelRef.current = nextFilterModel;
     setSelectionPreview(undefined);
     setSelectionPreviewError(undefined);
   }, []);
 
   /**
-   * Existing generic selection preview. This answers "what logical rows are selected?" and is NOT
-   * the same contract as backend editing.
+   * Development generic selection preview: answers "what logical rows would a selection-based
+   * backend action target?". This is different from editing.
    */
   const handlePreviewSelectionPayload = useCallback(() => {
     try {
+      const selectionIntent = selectionIntentRef.current;
       const nextPreview =
         selectionScope === 'filtered'
           ? buildTransactionBulkSelection(selectionIntent, {
@@ -155,24 +128,28 @@ export function TransactionsInfiniteGrid({
           : 'The selection payload could not be built.',
       );
     }
-  }, [selectionIntent, selectionScope]);
+  }, [selectionScope]);
 
   /**
-   * Future BACKEND BULK-EDIT preview.
+   * Development BACKEND BULK-EDIT preview.
    *
-   * Examples:
-   * - selected row, never edited -> omitted;
-   * - edited row, not selected -> omitted;
-   * - row edited on Page 5 and still logically selected -> included even after leaving Page 5;
-   * - exclude selection -> every edited ID is tested against the exception list.
+   * selected but never edited -> omitted
+   * edited but not selected   -> omitted
+   * edited + selected         -> included
+   *
+   * An edited+selected row remains eligible after navigating away because both contracts use stable
+   * backend IDs rather than current RowNodes.
    */
   const handlePreviewSelectedEdits = useCallback(() => {
     if (!editingState) return;
 
     setSelectedEditPreview(
-      buildSelectedTransactionUpdatePayload(editingState, selectionIntent),
+      buildSelectedTransactionUpdatePayload(
+        editingState,
+        selectionIntentRef.current,
+      ),
     );
-  }, [editingState, selectionIntent]);
+  }, [editingState]);
 
   const grid =
     selectionScope === 'page' ? (
