@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { RefObject } from 'react';
 import type {
   GridApi,
@@ -8,7 +8,6 @@ import type {
 } from 'ag-grid-community';
 import { InfiniteCurrentPageSelectionHeader } from './InfiniteCurrentPageSelectionHeader';
 import { useDatasetSelection } from './useDatasetSelection';
-import { useInfiniteDatasetSelectionSupport } from './useInfiniteDatasetSelectionSupport';
 import { SelectionHeaderCheckbox } from '../SelectionHeaderCheckbox';
 import type {
   InfiniteSelectionMode,
@@ -25,8 +24,8 @@ interface UseInfiniteSelectionControllerOptions<TData> {
   /** Stable backend row identity used to reconcile logical selection onto loaded RowNodes. */
   getRowId: (row: TData) => string;
 
-  /** Feature-owned way to fetch the full unfiltered row count for All Records selection. */
-  loadAllTotal?: (signal: AbortSignal) => Promise<number>;
+  /** Complete unfiltered dataset count returned by the normal page-loading response. */
+  totalCount: number;
 
   /** Publishes the current logical selection to feature consumers. */
   onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
@@ -35,40 +34,28 @@ interface UseInfiniteSelectionControllerOptions<TData> {
 /**
  * Complete Infinite Row Model selection capability.
  *
- * WHY THIS COMPOSITION EXISTS
- * ---------------------------
- * Infinite selection is one lifecycle, not a set of unrelated callbacks. Supporting totals,
- * application-owned filtered/all intent, loaded-node reconciliation, custom header state, page-mode
- * native selection, and filter invalidation all have to agree on the same `scope`. Keeping those
- * mechanics together prevents every Infinite table from reassembling the same fragile combination.
- *
- * WHAT REMAINS NATIVE / ROOT-OWNED
- * --------------------------------
- * The root still owns `GridApi` and `<AgGridReact>`. Page/manual row selection remains AG Grid state.
- * The controller exposes native event handlers/column definition for the root to wire explicitly.
+ * The controller owns selection semantics only. It does NOT fetch supporting metadata. The complete
+ * dataset count comes from the normal loading response, while the filtered count is read from AG
+ * Grid's accepted Infinite model. This keeps backend I/O in row loading and selection focused on
+ * selection behavior.
  */
 export function useInfiniteSelectionController<TData>({
   gridApi,
   scope,
   getRowId,
-  loadAllTotal,
+  totalCount,
   onSelectionChange,
 }: UseInfiniteSelectionControllerOptions<TData>) {
-  /** Dataset-wide selection needs query totals that native Infinite selection does not provide. */
-  const {
-    totalRowCount,
-    error: supportError,
-    setFilteredTotal,
-    resetFilteredTotal,
-  } = useInfiniteDatasetSelectionSupport({
-    scope,
-    loadAllTotal,
-  });
-
   /**
-   * Application-owned include/exclude intent is active only for filtered/all scopes. In page mode,
-   * native AG Grid row selection remains authoritative and this state is not published externally.
+   * Filtered count is accepted-model state, not raw request-response state. Reading it after AG Grid
+   * updates its model prevents an older overlapping datasource response from overwriting the current
+   * query's selection-header count.
    */
+  const [filteredTotal, setFilteredTotal] = useState(0);
+
+  const datasetTotal =
+    scope === 'all' ? totalCount : scope === 'filtered' ? filteredTotal : 0;
+
   const {
     intent: datasetIntent,
     isRowSelected,
@@ -79,7 +66,7 @@ export function useInfiniteSelectionController<TData>({
     onFilterChanged: onDatasetFilterChanged,
   } = useDatasetSelection({
     scope: scope === 'all' ? 'all' : 'filtered',
-    totalRowCount,
+    totalRowCount: datasetTotal,
     onSelectionChange: scope === 'page' ? undefined : onSelectionChange,
   });
 
@@ -93,19 +80,12 @@ export function useInfiniteSelectionController<TData>({
     };
   }, [gridApi]);
 
-  /**
-   * Production-capable logical selection reader for future Delete/Export/Bulk Update actions.
-   * It intentionally hides whether the current mode is native page selection or custom dataset state.
-   */
   const readSelectionIntent = useCallback(
     () => (scope === 'page' ? readPageSelectionIntent() : datasetIntent),
     [datasetIntent, readPageSelectionIntent, scope],
   );
 
-  /**
-   * Logical dataset selection may include unloaded rows; every newly materialised RowNode must reflect
-   * the include/exclude intent. Page mode skips reconciliation because native selection owns the rows.
-   */
+  /** Reconcile application-owned dataset selection onto materialised Infinite RowNodes. */
   const syncLoadedRows = useCallback(() => {
     if (scope === 'page') return;
 
@@ -114,15 +94,15 @@ export function useInfiniteSelectionController<TData>({
 
       const shouldBeSelected = isRowSelected(getRowId(node.data));
       if (node.isSelected() !== shouldBeSelected) {
-        /** API source prevents this visual reconciliation from being treated as a user toggle. */
         node.setSelected(shouldBeSelected, false, 'api');
       }
     });
   }, [getRowId, gridApi, isRowSelected, scope]);
 
   /**
-   * Called after AG Grid changes its accepted Infinite model. The filtered total is deliberately read
-   * from that accepted model instead of individual datasource responses, avoiding stale-request races.
+   * AG Grid already received backend `filteredCount` when the datasource succeeded. Once the current
+   * model is accepted and its last row is known, its displayed row count is therefore the trusted
+   * filtered total for selection-header calculations.
    */
   const onRowsChanged = useCallback(() => {
     const api = gridApi.current;
@@ -133,20 +113,15 @@ export function useInfiniteSelectionController<TData>({
     }
 
     syncLoadedRows();
-  }, [gridApi, scope, setFilteredTotal, syncLoadedRows]);
+  }, [gridApi, scope, syncLoadedRows]);
 
   useEffect(() => {
     if (scope === 'page') return;
 
-    /** Intent can change without RowNode replacement, so refresh loaded rows and custom header. */
     syncLoadedRows();
     gridApi.current?.refreshHeader();
   }, [datasetIntent, gridApi, scope, syncLoadedRows]);
 
-  /**
-   * Native row-selection column remains visible to the feature root, but its row-model-specific header
-   * mechanics are kept with the rest of Infinite selection behavior.
-   */
   const selectionColumnDef = useMemo<SelectionColumnDef>(() => {
     const base: SelectionColumnDef = {
       width: 52,
@@ -174,20 +149,15 @@ export function useInfiniteSelectionController<TData>({
     };
   }, [headerLabel, headerState, scope, setHeaderSelected]);
 
-  /** User row toggles update custom logical state only while dataset selection owns the semantics. */
   const onRowSelected = useCallback(
     (event: RowSelectedEvent<TData>) => {
       if (scope === 'page' || event.source === 'api' || !event.data) return;
 
-      setRowSelected(
-        getRowId(event.data),
-        event.node.isSelected() === true,
-      );
+      setRowSelected(getRowId(event.data), event.node.isSelected() === true);
     },
     [getRowId, scope, setRowSelected],
   );
 
-  /** Page mode alone publishes native Grid State selection through this AG Grid event. */
   const onSelectionChanged = useCallback(
     (event: SelectionChangedEvent<TData>) => {
       if (scope !== 'page') return;
@@ -202,21 +172,20 @@ export function useInfiniteSelectionController<TData>({
   );
 
   /**
-   * Filter changes invalidate query-derived support state and may invalidate filtered/exclude intent.
-   * The controller keeps those two reset rules together because both describe the old query universe.
+   * A new filter invalidates the old accepted filtered count immediately. Filtered/exclude selection
+   * is also cleared by `useDatasetSelection`; All Records selection remains independent of filters.
    */
   const onFilterChanged = useCallback(() => {
     if (scope === 'filtered') {
-      resetFilteredTotal();
+      setFilteredTotal(0);
     }
 
     if (scope !== 'page') {
       onDatasetFilterChanged?.();
     }
-  }, [onDatasetFilterChanged, resetFilteredTotal, scope]);
+  }, [onDatasetFilterChanged, scope]);
 
   return {
-    supportError,
     selectionColumnDef,
     readSelectionIntent,
     onRowsChanged,
