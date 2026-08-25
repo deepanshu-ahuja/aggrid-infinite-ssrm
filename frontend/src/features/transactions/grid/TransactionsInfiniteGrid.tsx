@@ -134,14 +134,26 @@ export function TransactionsInfiniteGrid({
   );
 
   /**
-   * Runs when AG Grid changes/loads rows for the Infinite model or pagination.
+   * Reconcile our application-owned state after AG Grid may have loaded/replaced Infinite rows.
    *
-   * If a transaction was edited locally, then its old backend value may appear again after its page or
-   * cache block is loaded later. Reapply the unsaved value so navigating away and back does not make
-   * the user's edit disappear. The same row change is also where custom dataset selection is synced.
+   * IMPORTANT: this same handler is intentionally wired to BOTH `onModelUpdated` and
+   * `onPaginationChanged` below. Those events overlap, but they are not interchangeable:
    *
-   * We do not use `viewportChanged`: ordinary scrolling can change which DOM rows are visible without
-   * representing the server-row lifecycle we care about. `firstDataRendered` is also unnecessary for
+   * - `modelUpdated` tells us the displayed row model changed. This covers row/model changes caused by
+   *   loading, filtering, sorting and other model work.
+   * - `paginationChanged` specifically tells us paging state changed. AG Grid fires it when the user
+   *   changes page/page size and also when new data changes pagination state.
+   *
+   * A transaction edited on page 1 may be loaded again with its old backend value after navigating to
+   * page 2 and then back to page 1. We therefore restore tracked local edits whenever either relevant
+   * row/paging lifecycle fires. Custom Infinite dataset selection is reconciled at the same time.
+   *
+   * Both events can fire for the same update. That is safe: selection/edit restoration only changes a
+   * RowNode when its current value differs from the application-owned value. Do not remove either event
+   * as "duplicate" without re-checking the Infinite row/pagination lifecycle.
+   *
+   * We deliberately do NOT use `viewportChanged`: ordinary scrolling can change which DOM rows are
+   * visible without meaning that server rows were replaced. `firstDataRendered` is also unnecessary for
    * edit restoration because no user edit can exist before the first data render in this grid instance.
    */
   const handleRowsChanged = useCallback(() => {
@@ -181,6 +193,16 @@ export function TransactionsInfiniteGrid({
       ) : null}
 
       <Box sx={{ height: 620, width: '100%' }}>
+        {/*
+         * Important native event wiring:
+         * - onGridReady stores the one GridApi used by all capabilities.
+         * - onModelUpdated + onPaginationChanged intentionally share handleRowsChanged; see the detailed
+         *   lifecycle comment above. Do not remove one merely because the callback is the same.
+         * - onFilterChanged does NOT perform filtering. AG Grid owns filtering; our handler only clears
+         *   application state that belonged to the previous server query/filter.
+         * - onCellValueChanged records unsaved edits outside temporary RowNodes so they can be restored.
+         * - onStateUpdated persists the native Grid State sections this application chose to remember.
+         */}
         <AgGridReact<Transaction>
           {...gridOptions}
           rowModelType="infinite"
