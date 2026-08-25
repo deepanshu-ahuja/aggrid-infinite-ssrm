@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import type {
   GetRowIdParams,
   GridApi,
   GridReadyEvent,
+  SelectionChangedEvent,
 } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
 import type { GridRowsLoader } from '@/shared/grid/data/gridData.types';
 import { useServerSideRowLoading } from '@/shared/grid/data/server-side/useServerSideRowLoading';
+import { buildSelectedTrackedGridUpdatePayload } from '@/shared/grid/editing/trackedGridEditing';
 import { useCurrentPageEditActions } from '@/shared/grid/editing/useCurrentPageEditActions';
 import { useTrackedGridEditing } from '@/shared/grid/editing/useTrackedGridEditing';
 import { GridErrorOverlay } from '@/shared/grid/overlays/GridErrorOverlay';
@@ -45,9 +47,11 @@ export function TransactionsSsrmGrid({
   const gridOptions =
     gridOptionsOverride ?? transactionsGridConfig.ssrm.gridOptions;
   const gridApi = useRef<GridApi<Transaction> | null>(null);
+  const [selectionRevision, setSelectionRevision] = useState(0);
 
   const {
     error: selectionError,
+    readSelectionIntent,
     selectCurrentPage,
     selectAllFiltered,
     clearSelection,
@@ -81,7 +85,7 @@ export function TransactionsSsrmGrid({
     handleCellValueChanged,
     acknowledgeChanges,
     discardRow,
-    discardAll,
+    discardRows,
   } = useTrackedGridEditing(transactionEditingConfig);
 
   const {
@@ -99,7 +103,7 @@ export function TransactionsSsrmGrid({
     gridApi.current?.refreshServerSide();
   }, []);
 
-  const { saveRow, saveAll, isSaving, saveError } =
+  const { saveRow, saveBulk, isSaving, saveError } =
     useTransactionEditPersistence({
       updates: payload.updates,
       acknowledgeChanges,
@@ -114,12 +118,39 @@ export function TransactionsSsrmGrid({
     [discardRow],
   );
 
-  const handleDiscardAll = useCallback(() => {
-    const api = gridApi.current;
-    if (api) discardAll(api);
-  }, [discardAll]);
+  /** Only rows that are both dirty and logically selected participate in aggregate persistence. */
+  const selectedDirtyUpdates = useMemo(
+    () =>
+      buildSelectedTrackedGridUpdatePayload(
+        state,
+        readSelectionIntent(),
+      ).updates,
+    [readSelectionIntent, selectionRevision, state],
+  );
 
-  /** Row actions and Save All share the same tracked draft state; no second edited-row list exists. */
+  const handleSaveSelected = useCallback(() => {
+    const updates = buildSelectedTrackedGridUpdatePayload(
+      state,
+      readSelectionIntent(),
+    ).updates;
+    saveBulk(updates);
+  }, [readSelectionIntent, saveBulk, state]);
+
+  const handleDiscardSelected = useCallback(() => {
+    const api = gridApi.current;
+    if (!api) return;
+
+    const updates = buildSelectedTrackedGridUpdatePayload(
+      state,
+      readSelectionIntent(),
+    ).updates;
+    discardRows(
+      api,
+      updates.map((update) => update.id),
+    );
+  }, [discardRows, readSelectionIntent, state]);
+
+  /** Row actions and aggregate actions share the same tracked draft state; no duplicate dirty list exists. */
   const rowEditActionsContext = useMemo<TransactionRowEditActionsContext>(
     () => ({
       isRowDirty: (rowId) => Boolean(state.changesById[rowId]),
@@ -131,7 +162,7 @@ export function TransactionsSsrmGrid({
   );
 
   useEffect(() => {
-    gridApi.current?.refreshCells({ columns: ['editActions'], force: true });
+    gridApi.current?.refreshCells?.({ columns: ['editActions'], force: true });
   }, [rowEditActionsContext]);
 
   const { initialState, onStateUpdated } =
@@ -154,6 +185,14 @@ export function TransactionsSsrmGrid({
     if (api) restoreTrackedEdits(api);
   }, [restoreTrackedEdits, syncSelectionAfterRowsChange]);
 
+  const handleSelectionChanged = useCallback(
+    (event: SelectionChangedEvent<Transaction>) => {
+      onSelectionChanged(event);
+      setSelectionRevision((revision) => revision + 1);
+    },
+    [onSelectionChanged],
+  );
+
   const handleFilterChanged = useCallback(() => {
     clearLoadError();
     resetFilterDependentSelection();
@@ -163,13 +202,14 @@ export function TransactionsSsrmGrid({
     <Stack spacing={2}>
       <TransactionEditingControls
         editedRowCount={editedRowCount}
+        selectedEditedRowCount={selectedDirtyUpdates.length}
         lastEdit={lastEdit}
         isSaving={isSaving}
         saveError={saveError}
         onApplyLastEdit={applyLastEdit}
         onApplyBulkEdit={applyBulkChanges}
-        onSaveAll={saveAll}
-        onDiscardAll={handleDiscardAll}
+        onSaveSelected={handleSaveSelected}
+        onDiscardSelected={handleDiscardSelected}
       />
 
       {editActionError ? (
@@ -223,7 +263,7 @@ export function TransactionsSsrmGrid({
           onGridReady={handleGridReady}
           onModelUpdated={handleModelUpdated}
           onRowSelected={onRowSelected}
-          onSelectionChanged={onSelectionChanged}
+          onSelectionChanged={handleSelectionChanged}
           onFilterChanged={handleFilterChanged}
           onCellValueChanged={handleCellValueChanged}
           onStateUpdated={onStateUpdated}
