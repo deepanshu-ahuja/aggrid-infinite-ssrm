@@ -1,22 +1,11 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FilterModel } from 'ag-grid-community';
-import type { ServerSelectionIntent } from '@/shared/grid/selection/serverSelection';
 import { serverBackedGridDefaults } from '@/shared/grid/config/serverBackedGridDefaults';
+import type { ServerSelectionIntent } from '@/shared/grid/selection/serverSelection';
+import { createEmptyTransactionEditingState } from './transactionEditing';
 import { TransactionsInfiniteGrid } from './TransactionsInfiniteGrid';
 
-/**
- * These tests validate the composition layer only.
- *
- * The child page/dataset grids already have their own selection/lifecycle tests. Here we replace them
- * with tiny captures so we can prove:
- *
- * selection + AG Grid filter context
- *              ↓
- * "Preview bulk payload"
- *              ↓
- * Transactions backend-ready selection JSON
- */
 interface CapturedChildProps {
   onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
   onFilterModelChange?: (filterModel: FilterModel) => void;
@@ -41,10 +30,8 @@ vi.mock('./TransactionsInfiniteDatasetGrid', () => ({
   },
 }));
 
-function readPreview() {
-  return JSON.parse(
-    screen.getByTestId('selection-payload-preview').textContent ?? '{}',
-  ) as unknown;
+function readPreview(testId: string) {
+  return JSON.parse(screen.getByTestId(testId).textContent ?? '{}') as unknown;
 }
 
 beforeEach(() => {
@@ -52,8 +39,8 @@ beforeEach(() => {
   childCapture.dataset = undefined;
 });
 
-describe('TransactionsInfiniteGrid bulk payload preview wiring', () => {
-  it('previews current-page/manual selection as exact include IDs', () => {
+describe('TransactionsInfiniteGrid action-preview composition', () => {
+  it('builds exact include selection from native page/manual selection emitted by the child', () => {
     render(
       <TransactionsInfiniteGrid
         selectionScope="page"
@@ -69,16 +56,16 @@ describe('TransactionsInfiniteGrid bulk payload preview wiring', () => {
     });
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'Preview bulk payload' }),
+      screen.getByRole('button', { name: 'Preview selection payload' }),
     );
 
-    expect(readPreview()).toEqual({
+    expect(readPreview('selection-payload-preview')).toEqual({
       mode: 'include',
       ids: ['txn-a', 'txn-b'],
     });
   });
 
-  it('previews Select All Filtered using the applied AG Grid filter model', () => {
+  it('uses the AG Grid applied filter model only when filtered exclude selection needs query context', () => {
     render(
       <TransactionsInfiniteGrid
         selectionScope="filtered"
@@ -93,11 +80,6 @@ describe('TransactionsInfiniteGrid bulk payload preview wiring', () => {
           type: 'equals',
           filter: 'Completed',
         },
-        amount: {
-          filterType: 'number',
-          type: 'greaterThan',
-          filter: 5_000,
-        },
       });
 
       childCapture.dataset?.onSelectionChange?.({
@@ -107,10 +89,10 @@ describe('TransactionsInfiniteGrid bulk payload preview wiring', () => {
     });
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'Preview bulk payload' }),
+      screen.getByRole('button', { name: 'Preview selection payload' }),
     );
 
-    expect(readPreview()).toEqual({
+    expect(readPreview('selection-payload-preview')).toEqual({
       mode: 'exclude',
       ids: ['txn-excluded'],
       filters: [
@@ -119,16 +101,11 @@ describe('TransactionsInfiniteGrid bulk payload preview wiring', () => {
           operator: 'equals',
           value: 'Completed',
         },
-        {
-          field: 'amount',
-          operator: 'greaterThan',
-          value: 5_000,
-        },
       ],
     });
   });
 
-  it('previews Select All Records with an explicit empty filter list', () => {
+  it('builds all-record exclude selection with an explicitly unfiltered backend scope', () => {
     render(
       <TransactionsInfiniteGrid
         selectionScope="all"
@@ -144,50 +121,47 @@ describe('TransactionsInfiniteGrid bulk payload preview wiring', () => {
     });
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'Preview bulk payload' }),
+      screen.getByRole('button', { name: 'Preview selection payload' }),
     );
 
-    expect(readPreview()).toEqual({
+    expect(readPreview('selection-payload-preview')).toEqual({
       mode: 'exclude',
       ids: ['txn-a'],
       filters: [],
     });
   });
 
-  it('clears a stale preview after selection changes', () => {
+  it('builds selected-edit preview as edited rows intersected with logical selection', () => {
+    const editingState = createEmptyTransactionEditingState();
+    editingState.changesById['txn-a'] = { amount: 100 };
+    editingState.changesById['txn-b'] = { status: 'Completed' };
+
     render(
       <TransactionsInfiniteGrid
         selectionScope="page"
         gridOptions={serverBackedGridDefaults}
+        editingState={editingState}
       />,
     );
 
     act(() => {
       childCapture.page?.onSelectionChange?.({
         mode: 'include',
-        ids: ['txn-a'],
+        ids: ['txn-b'],
       });
     });
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'Preview bulk payload' }),
+      screen.getByRole('button', { name: 'Preview selected edit payload' }),
     );
 
-    expect(screen.getByTestId('selection-payload-preview')).toBeInTheDocument();
-
-    /**
-     * A preview is a snapshot from the last explicit button click, not live selection state.
-     * Remove it as soon as selection changes so the UI cannot show stale JSON.
-     */
-    act(() => {
-      childCapture.page?.onSelectionChange?.({
-        mode: 'include',
-        ids: ['txn-a', 'txn-b'],
-      });
+    expect(readPreview('selected-edit-payload-preview')).toEqual({
+      updates: [
+        {
+          id: 'txn-b',
+          changes: { status: 'Completed' },
+        },
+      ],
     });
-
-    expect(
-      screen.queryByTestId('selection-payload-preview'),
-    ).not.toBeInTheDocument();
   });
-})
+});
