@@ -1,8 +1,6 @@
 # Transaction editing
 
-This document records the editing decisions for the Transactions grid while the UI is still a prototype.
-It is kept separate from the visual implementation so Flow 1 and Flow 2 can later move to completely
-different components without changing the underlying behavior.
+This document records the editing decisions for the Transactions grid while the final UI is still intentionally undecided. The behavior must remain reusable even if Flow 1 and Flow 2 later move to completely different components.
 
 ## Native-first rule
 
@@ -13,13 +11,26 @@ Before adding React state or a custom grid abstraction, check ownership in this 
 3. Application state only when the grid cannot represent the business meaning.
 4. Shared hook/helper only when behavior is genuinely common.
 
-Every remaining custom grid state should be explainable by answering: **why can AG Grid / this row model
-not own this state?**
+Every remaining custom grid state should be explainable by answering: **why can AG Grid / this row model not own this state?**
+
+## Root GridApi ownership
+
+Each concrete row-model root owns its rendered `<AgGridReact>` and one authoritative `GridApi` reference:
+
+- `TransactionsInfiniteGrid` owns the Infinite `GridApi`;
+- `TransactionsSsrmGrid` owns the SSRM `GridApi`.
+
+Native grid information is read from that API when needed. Do not move the authoritative GridApi into a lower presentation component and then mirror filter, sort, pagination, native selection, or other native grid information upward through React state/refs.
+
+Shared behavior such as `useTransactionEditFlows()` receives the root-owned GridApi instead of capturing a second API reference.
+
+`TransactionsPage` and the previous Infinite PageGrid / DatasetGrid / Table component chain were removed because they made GridApi ownership indirect and spread row-model lifecycle behavior across several layers.
+
+The application shell now renders a concrete row-model root directly. Switching between Infinite and SSRM for evaluation is an application/import choice, not a common grid-composition layer.
 
 ## Editing state is application-owned
 
-Unsaved transaction edits are keyed by stable backend row ID, not by RowNode or cache position. This is
-intentional because Infinite/SSRM can evict and recreate RowNodes before a future save action occurs.
+Unsaved transaction edits are keyed by stable backend row ID, not by RowNode or cache position. This is intentional because Infinite/SSRM can evict and recreate RowNodes before a future save action occurs.
 
 ```ts
 changesById = {
@@ -28,13 +39,11 @@ changesById = {
 };
 ```
 
-Only fields that differ from their original value remain in this state. Returning a field to its original
-value removes that field from the eventual update payload.
+Only fields that differ from their original value remain in this state. Returning a field to its original value removes that field from the eventual update payload.
 
 ## Flow 1
 
-A normal direct cell edit changes only its source row. The source row does **not** need to be selected.
-An explicit Flow 1 action can then propagate the most recently directly edited field/value to either:
+A normal direct cell edit changes only its source row. The source row does **not** need to be selected. An explicit Flow 1 action can then propagate the most recently directly edited field/value to either:
 
 - the entire current pagination page; or
 - selected rows on the current pagination page.
@@ -43,9 +52,7 @@ Selection is a target for the explicit Apply action. Editing a source row never 
 
 ## Flow 2
 
-Flow 2 is an explicit multi-field edit operation. A future UI may be a modal, drawer, toolbar or another
-presentation. The UI supplies one or more opted-in field/value pairs and the shared operation applies
-those values to either:
+Flow 2 is an explicit multi-field edit operation. A future UI may be a modal, drawer, toolbar or another presentation. The UI supplies one or more opted-in field/value pairs and the shared operation applies those values to either:
 
 - the entire current pagination page; or
 - selected rows on the current pagination page.
@@ -54,15 +61,11 @@ Unchecked/unprovided fields remain unchanged.
 
 ## Current page is not cache scope
 
-Both editing flows use the shared `getCurrentPageNodes()` grid helper. A visible pagination page is a
-user/business scope and must not be widened to whatever Infinite/SSRM cache blocks happen to be loaded.
-If one expected page row is still unresolved, the operation fails rather than partially editing the page.
+Both editing flows use the shared `getCurrentPageNodes()` grid helper. A visible pagination page is a user/business scope and must not be widened to whatever Infinite/SSRM cache blocks happen to be loaded. If one expected page row is still unresolved, the operation fails rather than partially editing the page.
 
 ## Accumulated edits across pages
 
-Manual edits, Flow 1 and Flow 2 all feed the same row-ID change engine. A user can edit Page 1, move to
-Page 5, edit more rows, then return later; accumulated edits remain represented even if AG Grid evicted
-old RowNodes.
+Manual edits, Flow 1 and Flow 2 all feed the same row-ID change engine. A user can edit Page 1, move to Page 5, edit more rows, then return later; accumulated edits remain represented even if AG Grid evicted old RowNodes.
 
 ## Two different payload concepts
 
@@ -101,8 +104,7 @@ Rules:
 - an edited+selected row from another visited page remains eligible;
 - Select All does not manufacture edits for untouched rows.
 
-The resulting update contract remains concrete IDs plus concrete changed fields. It does not send the
-selection `include/exclude` object as the edit payload.
+The resulting update contract remains concrete IDs plus concrete changed fields. It does not send the selection `include/exclude` object as the edit payload.
 
 ## Selection relationship
 
@@ -116,12 +118,10 @@ Selection and editing remain separate concerns:
 ## Reusable code boundaries
 
 - `useTransactionEditing()` owns accumulated transaction changes and restoration after RowNode reload.
-- `useTransactionEditFlows()` owns Flow 1/Flow 2 current-page targeting and application.
-- `getCurrentPageNodes()` is a shared grid pagination primitive used where row-model-independent page
-  boundaries are required.
+- `useTransactionEditFlows()` owns Flow 1 / Flow 2 current-page targeting and application, using the root-owned GridApi supplied by the concrete grid.
+- `getCurrentPageNodes()` is a shared grid pagination primitive used where row-model-independent page boundaries are required.
 - `buildSelectedTransactionUpdatePayload()` is a pure helper for `edited ∩ selected` backend payloads.
-- `InfiniteCurrentPageSelectionHeader` is shared Infinite-row-model behavior: it reads native page
-  RowNodes and calls native `setNodesSelected()` without storing selected IDs.
+- `InfiniteCurrentPageSelectionHeader` is shared Infinite-row-model behavior: it reads native page RowNodes and calls native `setNodesSelected()` without storing selected IDs.
 - `TransactionEditingControls` is prototype presentation only and is not the editing architecture.
 
 ## Row-model boundary after native-state audit
@@ -130,34 +130,26 @@ Infinite and SSRM are intentionally not forced through the same selection implem
 
 ### Infinite current-page/manual selection
 
-AG Grid is the selection source of truth. Stable `getRowId` lets the Infinite Row Model retain row
-selection through sorting, filtering and cache recreation. The current-page header is only a custom
-shortcut because Infinite does not provide a usable native server-backed Select All header. It derives
-its checkbox appearance from native RowNodes and changes selection through native `setNodesSelected()`.
-
-The removed `useCurrentPageSelection()` hook previously stored selected IDs and current-page IDs in React.
-That duplication is no longer necessary.
+AG Grid is the selection source of truth. Stable `getRowId` lets the Infinite Row Model retain row selection through sorting, filtering and cache recreation. The current-page header is only a custom shortcut because Infinite does not provide a usable native server-backed Select All header. It derives its checkbox appearance from native RowNodes and changes selection through native `setNodesSelected()`.
 
 ### Infinite filtered/all dataset selection
 
-Application selection state remains deliberate here. Infinite cannot represent Select All across unloaded
-server rows, nor the `exclude [exceptions]` meaning required for All Filtered / All Records. Once this mode
-is chosen, one compact logical controller owns that unsupported dataset-wide meaning and synchronises only
-currently materialised RowNodes for checkbox display.
+Application selection state remains deliberate here. Infinite cannot represent Select All across unloaded server rows, nor the `exclude [exceptions]` meaning required for All Filtered / All Records. One compact logical controller owns that unsupported dataset-wide meaning and synchronises only currently materialised RowNodes for checkbox display.
 
-Keeping one controller for this dataset mode is preferred over a half-native/half-custom state machine in
-which AG Grid owns some selected IDs while application state separately owns unloaded Select-All exceptions.
+Applied filters are read directly from the Infinite root GridApi when a filtered action payload is built. There is no separate filter-model React state/ref bridge.
 
 ### SSRM
 
-Manual selection and All Records remain Enterprise/native and are read through
-`getServerSideSelectionState()` / written through `setServerSideSelectionState()` where needed. Current Page
-uses native RowNodes + `setNodesSelected()` because SSRM does not support `selectAll: 'currentPage'`.
-Select All Filtered keeps small application state because SSRM also does not support
-`selectAll: 'filtered'` across unloaded rows.
+Manual selection and All Records remain Enterprise/native and are read through `getServerSideSelectionState()` / written through `setServerSideSelectionState()` where needed. Current Page uses native RowNodes + `setNodesSelected()` because SSRM does not support `selectAll: 'currentPage'`.
 
-Applied filter models are not mirrored into React state in either row model. They are read from AG Grid and
-retained only as non-rendering action-time refs where a future backend payload needs query context.
+Select All Filtered keeps small application state because SSRM does not support `selectAll: 'filtered'` across unloaded rows. The applied filter is still AG Grid-owned and is read directly through the SSRM root GridApi at action time; the previous filtered-selection filter-model ref was removed.
 
-The native/state/reuse audit is complete for the current foundation. The SSRM editing bridge and final Flow
-1 / Flow 2 presentation remain intentionally deferred until the editing UX discussion resumes.
+## Preferences
+
+Infinite and SSRM each own native Grid State lifecycle wiring in their root. Preference keys remain separate for the two row models.
+
+The current `browserGridStateStore` uses `localStorage`, but that is only the current storage implementation. The `GridStateStore` boundary is retained so a future profile/preferences API can replace browser storage without redesigning AG Grid state ownership.
+
+## Current implementation checkpoint
+
+The native/state/reuse/root-ownership cleanup is complete for the current foundation. The final Flow 1 / Flow 2 presentation and future backend Bulk Update endpoint remain intentionally deferred until the editing UX discussion resumes.
