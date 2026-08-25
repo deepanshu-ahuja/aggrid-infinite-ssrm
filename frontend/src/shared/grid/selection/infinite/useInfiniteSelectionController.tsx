@@ -47,9 +47,8 @@ export function useInfiniteSelectionController<TData>({
   onSelectionChange,
 }: UseInfiniteSelectionControllerOptions<TData>) {
   /**
-   * Filtered count is accepted-model state, not raw request-response state. Reading it after AG Grid
-   * updates its model prevents an older overlapping datasource response from overwriting the current
-   * query's selection-header count.
+   * Number of rows in the currently accepted filtered result. We keep this only because the custom
+   * Infinite "Select All Filtered" header needs a count for its checked/indeterminate state.
    */
   const [filteredTotal, setFilteredTotal] = useState(0);
 
@@ -63,7 +62,7 @@ export function useInfiniteSelectionController<TData>({
     headerState,
     headerLabel,
     setHeaderSelected,
-    onFilterChanged: onDatasetFilterChanged,
+    onFilterChanged: resetDatasetSelectionForFilter,
   } = useDatasetSelection({
     scope: scope === 'all' ? 'all' : 'filtered',
     totalRowCount: datasetTotal,
@@ -85,7 +84,7 @@ export function useInfiniteSelectionController<TData>({
     [datasetIntent, readPageSelectionIntent, scope],
   );
 
-  /** Reconcile application-owned dataset selection onto materialised Infinite RowNodes. */
+  /** Reconcile application-owned dataset selection onto Infinite rows that currently exist in memory. */
   const syncLoadedRows = useCallback(() => {
     if (scope === 'page') return;
 
@@ -100,9 +99,9 @@ export function useInfiniteSelectionController<TData>({
   }, [getRowId, gridApi, isRowSelected, scope]);
 
   /**
-   * AG Grid already received backend `filteredCount` when the datasource succeeded. Once the current
-   * model is accepted and its last row is known, its displayed row count is therefore the trusted
-   * filtered total for selection-header calculations.
+   * Runs after AG Grid changes the Infinite rows it currently knows about. This keeps newly loaded
+   * rows visually consistent with our custom dataset-wide selection and updates the filtered count
+   * once AG Grid knows the final size of the current filtered result.
    */
   const onRowsChanged = useCallback(() => {
     const api = gridApi.current;
@@ -172,18 +171,21 @@ export function useInfiniteSelectionController<TData>({
   );
 
   /**
-   * A new filter invalidates the old accepted filtered count immediately. Filtered/exclude selection
-   * is also cleared by `useDatasetSelection`; All Records selection remains independent of filters.
+   * Clear only selection/count state whose meaning came from the previous filter.
+   *
+   * Example: "Select All Filtered" while Status=Completed belongs to the Completed result. When the
+   * filter changes, that selection must not silently become "all rows in the new filter". All Records
+   * selection and ordinary explicit IDs are independent of the visible filter and are left alone.
    */
-  const onFilterChanged = useCallback(() => {
+  const resetFilterDependentSelection = useCallback(() => {
     if (scope === 'filtered') {
       setFilteredTotal(0);
     }
 
     if (scope !== 'page') {
-      onDatasetFilterChanged?.();
+      resetDatasetSelectionForFilter?.();
     }
-  }, [onDatasetFilterChanged, scope]);
+  }, [resetDatasetSelectionForFilter, scope]);
 
   return {
     selectionColumnDef,
@@ -191,6 +193,6 @@ export function useInfiniteSelectionController<TData>({
     onRowsChanged,
     onRowSelected,
     onSelectionChanged,
-    onFilterChanged,
+    resetFilterDependentSelection,
   };
 }
