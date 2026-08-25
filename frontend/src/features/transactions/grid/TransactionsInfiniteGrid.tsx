@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 import type {
   GetRowIdParams,
   GridApi,
   GridReadyEvent,
+  SelectionChangedEvent,
 } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
 import type { GridRowsLoader } from '@/shared/grid/data/gridData.types';
 import { useInfiniteRowLoading } from '@/shared/grid/data/infinite/useInfiniteRowLoading';
+import { buildSelectedTrackedGridUpdatePayload } from '@/shared/grid/editing/trackedGridEditing';
 import { useCurrentPageEditActions } from '@/shared/grid/editing/useCurrentPageEditActions';
 import { useTrackedGridEditing } from '@/shared/grid/editing/useTrackedGridEditing';
 import { GridErrorOverlay } from '@/shared/grid/overlays/GridErrorOverlay';
@@ -56,6 +58,9 @@ export function TransactionsInfiniteGrid({
     gridOptionsOverride ?? transactionsGridConfig.infinite.gridOptions;
   const gridApi = useRef<GridApi<Transaction> | null>(null);
 
+  /** Native page selection does not itself change React state, so this revision refreshes bulk-action counts. */
+  const [selectionRevision, setSelectionRevision] = useState(0);
+
   const {
     datasource,
     error: loadError,
@@ -66,6 +71,7 @@ export function TransactionsInfiniteGrid({
 
   const {
     selectionColumnDef,
+    readSelectionIntent,
     onRowsChanged: syncSelectionAfterRowsChange,
     onRowSelected,
     onSelectionChanged,
@@ -88,7 +94,7 @@ export function TransactionsInfiniteGrid({
     handleCellValueChanged,
     acknowledgeChanges,
     discardRow,
-    discardAll,
+    discardRows,
   } = useTrackedGridEditing(transactionEditingConfig);
 
   const {
@@ -106,7 +112,7 @@ export function TransactionsInfiniteGrid({
     gridApi.current?.refreshInfiniteCache();
   }, []);
 
-  const { saveRow, saveAll, isSaving, saveError } =
+  const { saveRow, saveBulk, isSaving, saveError } =
     useTransactionEditPersistence({
       updates: payload.updates,
       acknowledgeChanges,
@@ -121,14 +127,45 @@ export function TransactionsInfiniteGrid({
     [discardRow],
   );
 
-  const handleDiscardAll = useCallback(() => {
+  /**
+   * Aggregate persistence is the intersection of dirty drafts and logical checkbox selection.
+   * A row can be dirty because it was edited directly or via "Entire current page"; if it is not
+   * currently selected, it remains available for row-level Save/Discard but is excluded from bulk.
+   */
+  const selectedDirtyUpdates = useMemo(
+    () =>
+      buildSelectedTrackedGridUpdatePayload(
+        state,
+        readSelectionIntent(),
+      ).updates,
+    [readSelectionIntent, selectionRevision, state],
+  );
+
+  const handleSaveSelected = useCallback(() => {
+    const updates = buildSelectedTrackedGridUpdatePayload(
+      state,
+      readSelectionIntent(),
+    ).updates;
+    saveBulk(updates);
+  }, [readSelectionIntent, saveBulk, state]);
+
+  const handleDiscardSelected = useCallback(() => {
     const api = gridApi.current;
-    if (api) discardAll(api);
-  }, [discardAll]);
+    if (!api) return;
+
+    const updates = buildSelectedTrackedGridUpdatePayload(
+      state,
+      readSelectionIntent(),
+    ).updates;
+    discardRows(
+      api,
+      updates.map((update) => update.id),
+    );
+  }, [discardRows, readSelectionIntent, state]);
 
   /**
-   * The Actions column reads the SAME draft state that builds Save All. It does not own a separate
-   * dirty-row list, so reverting the last changed field removes both row actions and bulk pending state.
+   * The Actions column reads the SAME draft state that builds aggregate persistence. It does not own a
+   * second dirty-row list, so reverting the last changed field removes both row actions and bulk work.
    */
   const rowEditActionsContext = useMemo<TransactionRowEditActionsContext>(
     () => ({
@@ -142,7 +179,7 @@ export function TransactionsInfiniteGrid({
 
   /** Refresh only Actions cells when draft/pending state changes; data columns keep their native lifecycle. */
   useEffect(() => {
-    gridApi.current?.refreshCells({ columns: ['editActions'], force: true });
+    gridApi.current?.refreshCells?.({ columns: ['editActions'], force: true });
   }, [rowEditActionsContext]);
 
   const { initialState, onStateUpdated } =
@@ -166,6 +203,14 @@ export function TransactionsInfiniteGrid({
     if (api) restoreTrackedEdits(api);
   }, [restoreTrackedEdits, syncSelectionAfterRowsChange]);
 
+  const handleSelectionChanged = useCallback(
+    (event: SelectionChangedEvent<Transaction>) => {
+      onSelectionChanged(event);
+      setSelectionRevision((revision) => revision + 1);
+    },
+    [onSelectionChanged],
+  );
+
   const handleFilterChanged = useCallback(() => {
     clearLoadError();
     resetFilterDependentSelection();
@@ -175,13 +220,14 @@ export function TransactionsInfiniteGrid({
     <Stack spacing={2}>
       <TransactionEditingControls
         editedRowCount={editedRowCount}
+        selectedEditedRowCount={selectedDirtyUpdates.length}
         lastEdit={lastEdit}
         isSaving={isSaving}
         saveError={saveError}
         onApplyLastEdit={applyLastEdit}
         onApplyBulkEdit={applyBulkChanges}
-        onSaveAll={saveAll}
-        onDiscardAll={handleDiscardAll}
+        onSaveSelected={handleSaveSelected}
+        onDiscardSelected={handleDiscardSelected}
       />
 
       {editActionError ? (
@@ -215,7 +261,7 @@ export function TransactionsInfiniteGrid({
           onModelUpdated={handleRowsChanged}
           onPaginationChanged={handleRowsChanged}
           onRowSelected={onRowSelected}
-          onSelectionChanged={onSelectionChanged}
+          onSelectionChanged={handleSelectionChanged}
           onFilterChanged={handleFilterChanged}
           onCellValueChanged={handleCellValueChanged}
           onStateUpdated={onStateUpdated}
