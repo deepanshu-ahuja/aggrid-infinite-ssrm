@@ -14,4 +14,10 @@ class TransactionQueryView(APIView):
         result = query_transactions(query_serializer.validated_data)
         rows = TransactionSerializer(result["rows"], many=True).data
 
-        return Response({"rows": rows, "totalCount": result["totalCount"]})
+        return Response(
+            {
+                "rows": rows,
+                "totalCount": result["totalCount"],
+                "filteredCount": result["filteredCount"],
+            }
+        )
