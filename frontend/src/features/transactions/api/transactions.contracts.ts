@@ -32,6 +32,38 @@ export interface Transaction {
 }
 
 /**
+ * Backend-writable Transaction fields. Identity/reference/date remain read-only even though they are
+ * present on the row returned by the API.
+ *
+ * The backend validates the same editable surface. The grid's editing configuration remains free to
+ * choose how these fields are presented/edited without leaking AG Grid concepts into this contract.
+ */
+export type TransactionUpdateChanges = Partial<
+  Pick<Transaction, 'account' | 'amount' | 'currency' | 'status'>
+>;
+
+/** One explicit row patch used by the bulk update endpoint. */
+export interface TransactionBulkUpdateItem {
+  id: Transaction['id'];
+  changes: TransactionUpdateChanges;
+}
+
+export interface TransactionBulkUpdateRequest {
+  updates: TransactionBulkUpdateItem[];
+}
+
+/** Single-row save returns the backend-authoritative row after validation/persistence. */
+export interface TransactionUpdateResponse {
+  row: Transaction;
+}
+
+/** Bulk save returns every authoritative updated row in request order. */
+export interface TransactionBulkUpdateResponse {
+  rows: Transaction[];
+  updatedCount: number;
+}
+
+/**
  * Fields that the Transactions backend explicitly allows for server-side sorting/filtering.
  *
  * Do NOT replace this with plain `string`.
