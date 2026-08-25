@@ -26,7 +26,7 @@ const SSRM_STATE_KEY = 'transactions:ssrm';
  * while still reusing the same editing operations underneath.
  */
 export function TransactionsPage() {
-  const [showEditPayload, setShowEditPayload] = useState(false);
+  const [showAllLocalEdits, setShowAllLocalEdits] = useState(false);
 
   /** Core local edit/change engine shared by manual editing, Flow 1 and Flow 2. */
   const editing = useTransactionEditing();
@@ -117,12 +117,12 @@ export function TransactionsPage() {
             editedRowCount={editing.editedRowCount}
             lastEdit={editing.lastEdit}
             onApplyLastEdit={(target) => {
-              if (editFlows.applyLastEdit(target)) setShowEditPayload(false);
+              if (editFlows.applyLastEdit(target)) setShowAllLocalEdits(false);
             }}
             onApplyBulkEdit={(target, changes) => {
-              if (editFlows.applyBulkChanges(target, changes)) setShowEditPayload(false);
+              if (editFlows.applyBulkChanges(target, changes)) setShowAllLocalEdits(false);
             }}
-            onPreviewPayload={() => setShowEditPayload(true)}
+            onPreviewPayload={() => setShowAllLocalEdits(true)}
           />
 
           {editFlows.error ? (
@@ -131,10 +131,19 @@ export function TransactionsPage() {
             </Typography>
           ) : null}
 
-          {import.meta.env.DEV && showEditPayload ? (
+          {/*
+           * DEVELOPMENT PREVIEW: ALL LOCAL UI EDITS
+           * ---------------------------------------
+           * This intentionally includes edited-but-unselected rows. It answers "what has the user
+           * changed in the UI?", NOT "what would the selected backend Bulk Update send?".
+           *
+           * The Infinite grid has a separate `Preview selected edit payload` because that operation
+           * requires its logical include/exclude selection as well as this accumulated edit state.
+           */}
+          {import.meta.env.DEV && showAllLocalEdits ? (
             <Box
               component="pre"
-              data-testid="edited-payload-preview"
+              data-testid="all-local-edits-preview"
               sx={{
                 m: 0,
                 p: 1.5,
@@ -155,6 +164,7 @@ export function TransactionsPage() {
               key={`infinite-${transactionsGridConfig.infinite.selectionScope}`}
               selectionScope={transactionsGridConfig.infinite.selectionScope}
               gridOptions={infiniteGridOptions}
+              editingState={editing.state}
             />
           ) : (
             <TransactionsSsrmGrid key="ssrm" gridOptions={ssrmGridOptions} />
