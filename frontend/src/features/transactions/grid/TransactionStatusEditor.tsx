@@ -11,21 +11,41 @@ const TRANSACTION_STATUSES: readonly TransactionStatus[] = [
 /**
  * Example custom application editor built with MUI rather than AG Grid's provided editors.
  *
- * AG Grid's current React editor contract is controlled (`value` + `onValueChange`). Keeping the MUI
- * menu out of a document-level portal also prevents a menu click from looking like focus left the
- * grid editor before the chosen value is committed.
+ * MUI renders the Select menu in a document-level portal by default. That is desirable here because
+ * AG Grid cells/viewports use overflow clipping, so forcing the menu inside the cell can make the
+ * opened options appear missing.
+ *
+ * AG Grid asks third-party popups rendered outside the editor DOM to carry
+ * `ag-custom-component-popup`. This tells the grid that clicks inside MUI's portalled menu still
+ * belong to the active editor instead of being interpreted as a click outside that should end edit
+ * mode.
  */
 export function TransactionStatusEditor({
   value,
   onValueChange,
+  stopEditing,
 }: CustomCellEditorProps<Transaction, TransactionStatus>) {
   return (
     <Select<TransactionStatus>
       value={value ?? 'Pending'}
-      onChange={(event) =>
-        onValueChange(event.target.value as TransactionStatus)
-      }
-      MenuProps={{ disablePortal: true }}
+      onChange={(event) => {
+        const nextValue = event.target.value as TransactionStatus;
+
+        onValueChange(nextValue);
+
+        /**
+         * A select choice is a complete edit. Stop on the next task so AG Grid first receives the
+         * controlled value update and then commits that value through its normal editing lifecycle.
+         */
+        window.setTimeout(() => stopEditing(), 0);
+      }}
+      MenuProps={{
+        slotProps: {
+          paper: {
+            className: 'ag-custom-component-popup',
+          },
+        },
+      }}
       size="small"
       autoFocus
       fullWidth
