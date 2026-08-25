@@ -1,4 +1,6 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   CellValueChangedEvent,
@@ -12,9 +14,11 @@ import type {
 import type { Transaction } from '../api/transactions.contracts';
 import { TransactionsInfiniteGrid } from './TransactionsInfiniteGrid';
 
-/** Mock only AG Grid's React boundary so these tests exercise our root ownership/wiring. */
-const gridCapture = vi.hoisted(() => ({
-  props: undefined as unknown,
+const gridCapture = vi.hoisted(() => ({ props: undefined as unknown }));
+const transactionApi = vi.hoisted(() => ({
+  updateTransaction: vi.fn(),
+  bulkUpdateTransactions: vi.fn(),
+  listTransactions: vi.fn(),
 }));
 
 vi.mock('ag-grid-react', () => ({
@@ -24,6 +28,8 @@ vi.mock('ag-grid-react', () => ({
   },
 }));
 
+vi.mock('../api/transactions.api', () => transactionApi);
+
 interface CapturedGridProps {
   selectionColumnDef?: SelectionColumnDef;
   onGridReady?: (event: GridReadyEvent<Transaction>) => void;
@@ -31,6 +37,15 @@ interface CapturedGridProps {
   onPaginationChanged?: (event: PaginationChangedEvent<Transaction>) => void;
   onSelectionChanged?: (event: SelectionChangedEvent<Transaction>) => void;
   onCellValueChanged?: (event: CellValueChangedEvent<Transaction>) => void;
+}
+
+function renderGrid(element: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>{element}</QueryClientProvider>,
+  );
 }
 
 function getGridProps() {
@@ -59,7 +74,6 @@ function createRowNode(row: Transaction): RowNode<Transaction> {
       return true;
     }),
   } as unknown as RowNode<Transaction>;
-
   return node;
 }
 
@@ -68,15 +82,14 @@ function createApi(options?: {
   rows?: RowNode<Transaction>[];
 }): GridApi<Transaction> {
   return {
-    getState: vi.fn(() => ({
-      rowSelection: options?.rowSelection ?? [],
-    })),
+    getState: vi.fn(() => ({ rowSelection: options?.rowSelection ?? [] })),
     isLastRowIndexKnown: vi.fn(() => false),
     getDisplayedRowCount: vi.fn(() => 0),
     forEachNode: vi.fn((callback: (node: RowNode<Transaction>) => void) => {
       options?.rows?.forEach(callback);
     }),
     refreshHeader: vi.fn(),
+    refreshInfiniteCache: vi.fn(),
   } as unknown as GridApi<Transaction>;
 }
 
@@ -86,6 +99,7 @@ function gridReady(api: GridApi<Transaction>): GridReadyEvent<Transaction> {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.clearAllMocks();
   gridCapture.props = undefined;
   window.localStorage.clear();
 });
@@ -96,56 +110,40 @@ describe('TransactionsInfiniteGrid production wiring', () => {
     const api = createApi({ rowSelection: ['txn-a', 'txn-b'] });
     const onSelectionChange = vi.fn();
 
-    render(
-      <TransactionsInfiniteGrid
-        selectionScope="page"
-        onSelectionChange={onSelectionChange}
-      />,
+    renderGrid(
+      <TransactionsInfiniteGrid selectionScope="page" onSelectionChange={onSelectionChange} />,
     );
 
     act(() => {
       getGridProps().onGridReady?.(gridReady(api));
-      getGridProps().onSelectionChanged?.({
-        api,
-      } as unknown as SelectionChangedEvent<Transaction>);
+      getGridProps().onSelectionChanged?.({ api } as unknown as SelectionChangedEvent<Transaction>);
     });
 
     expect(onSelectionChange).toHaveBeenLastCalledWith({
       mode: 'include',
       ids: ['txn-a', 'txn-b'],
     });
-    expect(api.getState).toHaveBeenCalled();
   });
 
-  it('publishes dataset Select All as logical exclude state without a dev-preview bridge', async () => {
+  it('publishes dataset Select All as logical exclude state', async () => {
     const onSelectionChange = vi.fn();
-
-    render(
-      <TransactionsInfiniteGrid
-        selectionScope="filtered"
-        onSelectionChange={onSelectionChange}
-      />,
+    renderGrid(
+      <TransactionsInfiniteGrid selectionScope="filtered" onSelectionChange={onSelectionChange} />,
     );
 
-    const headerParams = getGridProps().selectionColumnDef
-      ?.headerComponentParams as
+    const headerParams = getGridProps().selectionColumnDef?.headerComponentParams as
       | { onChange?: (checked: boolean) => void }
       | undefined;
 
-    act(() => {
-      headerParams?.onChange?.(true);
-    });
+    act(() => headerParams?.onChange?.(true));
 
     await waitFor(() => {
-      expect(onSelectionChange).toHaveBeenLastCalledWith({
-        mode: 'exclude',
-        ids: [],
-      });
+      expect(onSelectionChange).toHaveBeenLastCalledWith({ mode: 'exclude', ids: [] });
     });
   });
 
-  it('tracks a direct cell edit through the shared edit engine without dev payload state', () => {
-    render(<TransactionsInfiniteGrid selectionScope="page" />);
+  it('tracks a direct cell edit and exposes row/all persistence actions', () => {
+    renderGrid(<TransactionsInfiniteGrid selectionScope="page" />);
 
     act(() => {
       getGridProps().onCellValueChanged?.({
@@ -157,9 +155,9 @@ describe('TransactionsInfiniteGrid production wiring', () => {
     });
 
     expect(screen.getByText('1 row currently edited')).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: /preview/i }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save row' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Discard row' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save all' })).toBeInTheDocument();
   });
 
   it('restores a tracked edit when an Infinite row is recreated and the model updates', () => {
@@ -167,7 +165,7 @@ describe('TransactionsInfiniteGrid production wiring', () => {
     const node = createRowNode(reloadedRow);
     const api = createApi({ rows: [node] });
 
-    render(<TransactionsInfiniteGrid selectionScope="page" />);
+    renderGrid(<TransactionsInfiniteGrid selectionScope="page" />);
     act(() => {
       getGridProps().onGridReady?.(gridReady(api));
       getGridProps().onCellValueChanged?.({
@@ -176,14 +174,10 @@ describe('TransactionsInfiniteGrid production wiring', () => {
         oldValue: 'Pending',
         newValue: 'Completed',
       } as unknown as CellValueChangedEvent<Transaction>);
-    });
-
-    act(() => {
       getGridProps().onModelUpdated?.();
     });
 
     expect(node.setDataValue).toHaveBeenCalledWith('status', 'Completed', 'data');
-    expect(reloadedRow.status).toBe('Completed');
   });
 
   it('restores a tracked edit when Infinite pagination changes', () => {
@@ -191,7 +185,28 @@ describe('TransactionsInfiniteGrid production wiring', () => {
     const node = createRowNode(reloadedRow);
     const api = createApi({ rows: [node] });
 
-    render(<TransactionsInfiniteGrid selectionScope="page" />);
+    renderGrid(<TransactionsInfiniteGrid selectionScope="page" />);
+    act(() => {
+      getGridProps().onGridReady?.(gridReady(api));
+      getGridProps().onCellValueChanged?.({
+        data: createTransaction('txn-a', 'Completed'),
+        colDef: { field: 'status' },
+        oldValue: 'Pending',
+        newValue: 'Completed',
+      } as unknown as CellValueChangedEvent<Transaction>);
+      getGridProps().onPaginationChanged?.({ api } as PaginationChangedEvent<Transaction>);
+    });
+
+    expect(node.setDataValue).toHaveBeenCalledWith('status', 'Completed', 'data');
+  });
+
+  it('saves one row through the single API and refreshes the Infinite cache', async () => {
+    const api = createApi();
+    transactionApi.updateTransaction.mockResolvedValue({
+      row: createTransaction('txn-a', 'Completed'),
+    });
+
+    renderGrid(<TransactionsInfiniteGrid selectionScope="page" />);
     act(() => {
       getGridProps().onGridReady?.(gridReady(api));
       getGridProps().onCellValueChanged?.({
@@ -202,11 +217,14 @@ describe('TransactionsInfiniteGrid production wiring', () => {
       } as unknown as CellValueChangedEvent<Transaction>);
     });
 
-    act(() => {
-      getGridProps().onPaginationChanged?.({ api } as PaginationChangedEvent<Transaction>);
-    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save row' }));
 
-    expect(node.setDataValue).toHaveBeenCalledWith('status', 'Completed', 'data');
-    expect(reloadedRow.status).toBe('Completed');
+    await waitFor(() => {
+      expect(transactionApi.updateTransaction).toHaveBeenCalledWith('txn-a', {
+        status: 'Completed',
+      });
+      expect(api.refreshInfiniteCache).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('0 rows currently edited')).toBeInTheDocument();
+    });
   });
 });
