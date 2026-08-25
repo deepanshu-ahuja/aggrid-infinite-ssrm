@@ -54,8 +54,12 @@ interface TransactionsGridConfig {
  *
  * If Transactions later needs a genuine exception, override only that native AG Grid property and
  * document why it differs rather than copying the whole defaults object.
+ *
+ * Use an explicit `TransactionsGridConfig` annotation rather than `satisfies` here. `satisfies`
+ * would preserve `activeGrid` as the exact literal currently written below, making TypeScript treat
+ * the other row-model branch in `TransactionsPage` as unreachable whenever this value is switched.
  */
-export const transactionsGridConfig = {
+export const transactionsGridConfig: TransactionsGridConfig = {
   activeGrid: 'infinite',
 
   infinite: {
@@ -74,4 +78,4 @@ export const transactionsGridConfig = {
       ...serverBackedGridDefaults,
     },
   },
-} satisfies TransactionsGridConfig;
+};
