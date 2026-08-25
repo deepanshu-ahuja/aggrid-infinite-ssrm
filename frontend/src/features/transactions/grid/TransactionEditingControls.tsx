@@ -16,13 +16,11 @@ import type {
   TransactionChanges,
   TransactionEditTarget,
   TransactionLastEdit,
-  TransactionUpdatePayload,
 } from './transactionEditing';
 
 interface TransactionEditingControlsProps {
   editedRowCount: number;
   lastEdit?: TransactionLastEdit;
-  updates: TransactionUpdatePayload['updates'];
   isSaving: boolean;
   saveError?: string;
   onApplyLastEdit: (target: TransactionEditTarget) => void;
@@ -30,8 +28,6 @@ interface TransactionEditingControlsProps {
     target: TransactionEditTarget,
     changes: TransactionChanges,
   ) => void;
-  onSaveRow: (rowId: string) => void;
-  onDiscardRow: (rowId: string) => void;
   onSaveAll: () => void;
   onDiscardAll: () => void;
 }
@@ -39,21 +35,18 @@ interface TransactionEditingControlsProps {
 const STATUSES: readonly TransactionStatus[] = ['Completed', 'Pending', 'Failed'];
 
 /**
- * Transactions editing presentation.
+ * Transactions editing presentation for multi-row actions.
  *
- * This component owns only UI/form choices. AG Grid owns cell editing, the shared edit engine owns
- * local draft mechanics, and TanStack Query/domain persistence live outside this component.
+ * Single-row Save/Discard lives in the grid Actions column. This panel owns only page/selection edit
+ * propagation plus aggregate Save All / Discard All controls.
  */
 export function TransactionEditingControls({
   editedRowCount,
   lastEdit,
-  updates,
   isSaving,
   saveError,
   onApplyLastEdit,
   onApplyBulkEdit,
-  onSaveRow,
-  onDiscardRow,
   onSaveAll,
   onDiscardAll,
 }: TransactionEditingControlsProps) {
@@ -69,12 +62,10 @@ export function TransactionEditingControls({
 
   const bulkChanges = useMemo<TransactionChanges>(() => {
     const changes: TransactionChanges = {};
-
     if (useAccount) changes.account = account;
     if (useAmount && amount !== '') changes.amount = Number(amount);
     if (useCurrency) changes.currency = currency;
     if (useStatus) changes.status = status;
-
     return changes;
   }, [
     account,
@@ -88,7 +79,7 @@ export function TransactionEditingControls({
   ]);
 
   const hasBulkChanges = Object.keys(bulkChanges).length > 0;
-  const hasTrackedEdits = updates.length > 0;
+  const hasTrackedEdits = editedRowCount > 0;
 
   return (
     <Stack spacing={1.5}>
@@ -240,75 +231,26 @@ export function TransactionEditingControls({
         </Stack>
       </Box>
 
-      <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
-        <Stack spacing={1}>
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={1}
-            alignItems={{ sm: 'center' }}
-          >
-            <Typography variant="subtitle2">Unsaved changes</Typography>
-            <Button
-              size="small"
-              variant="contained"
-              disabled={!hasTrackedEdits || isSaving}
-              onClick={onSaveAll}
-            >
-              {isSaving ? 'Saving…' : 'Save all'}
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              disabled={!hasTrackedEdits || isSaving}
-              onClick={onDiscardAll}
-            >
-              Discard all
-            </Button>
-          </Stack>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+        <Button
+          size="small"
+          variant="contained"
+          disabled={!hasTrackedEdits || isSaving}
+          onClick={onSaveAll}
+        >
+          {isSaving ? 'Saving…' : `Save all (${editedRowCount})`}
+        </Button>
+        <Button
+          size="small"
+          variant="outlined"
+          disabled={!hasTrackedEdits || isSaving}
+          onClick={onDiscardAll}
+        >
+          Discard all
+        </Button>
+      </Stack>
 
-          {saveError ? <Alert severity="error">{saveError}</Alert> : null}
-
-          {updates.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              No unsaved changes.
-            </Typography>
-          ) : (
-            updates.map((update) => (
-              <Stack
-                key={update.id}
-                direction={{ xs: 'column', sm: 'row' }}
-                spacing={1}
-                alignItems={{ sm: 'center' }}
-              >
-                <Typography variant="body2" sx={{ minWidth: 140 }}>
-                  {update.id}
-                </Typography>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ flex: 1 }}
-                >
-                  {Object.keys(update.changes).join(', ')}
-                </Typography>
-                <Button
-                  size="small"
-                  disabled={isSaving}
-                  onClick={() => onSaveRow(update.id)}
-                >
-                  Save row
-                </Button>
-                <Button
-                  size="small"
-                  disabled={isSaving}
-                  onClick={() => onDiscardRow(update.id)}
-                >
-                  Discard row
-                </Button>
-              </Stack>
-            ))
-          )}
-        </Stack>
-      </Box>
+      {saveError ? <Alert severity="error">{saveError}</Alert> : null}
     </Stack>
   );
 }
