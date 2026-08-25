@@ -4,6 +4,8 @@ import type {
   CellValueChangedEvent,
   GridApi,
   GridReadyEvent,
+  PaginationChangedEvent,
+  RowNode,
   SelectionChangedEvent,
   SelectionColumnDef,
 } from 'ag-grid-community';
@@ -25,6 +27,8 @@ vi.mock('ag-grid-react', () => ({
 interface CapturedGridProps {
   selectionColumnDef?: SelectionColumnDef;
   onGridReady?: (event: GridReadyEvent<Transaction>) => void;
+  onModelUpdated?: () => void;
+  onPaginationChanged?: (event: PaginationChangedEvent<Transaction>) => void;
   onSelectionChanged?: (event: SelectionChangedEvent<Transaction>) => void;
   onCellValueChanged?: (event: CellValueChangedEvent<Transaction>) => void;
 }
@@ -33,8 +37,35 @@ function getGridProps() {
   return gridCapture.props as CapturedGridProps;
 }
 
+function createTransaction(id: string, status: Transaction['status'] = 'Completed'): Transaction {
+  return {
+    id,
+    reference: `REF-${id}`,
+    account: 'Account',
+    amount: 100,
+    currency: 'USD',
+    status,
+    transactionDate: '2026-08-24',
+  };
+}
+
+function createRowNode(row: Transaction): RowNode<Transaction> {
+  const node = {
+    data: row,
+    setDataValue: vi.fn((field: keyof Transaction, value: unknown) => {
+      if (node.data) {
+        (node.data as unknown as Record<string, unknown>)[field] = value;
+      }
+      return true;
+    }),
+  } as unknown as RowNode<Transaction>;
+
+  return node;
+}
+
 function createApi(options?: {
   rowSelection?: string[];
+  rows?: RowNode<Transaction>[];
 }): GridApi<Transaction> {
   return {
     getState: vi.fn(() => ({
@@ -42,7 +73,9 @@ function createApi(options?: {
     })),
     isLastRowIndexKnown: vi.fn(() => false),
     getDisplayedRowCount: vi.fn(() => 0),
-    forEachNode: vi.fn(),
+    forEachNode: vi.fn((callback: (node: RowNode<Transaction>) => void) => {
+      options?.rows?.forEach(callback);
+    }),
     refreshHeader: vi.fn(),
   } as unknown as GridApi<Transaction>;
 }
@@ -116,15 +149,7 @@ describe('TransactionsInfiniteGrid production wiring', () => {
 
     act(() => {
       getGridProps().onCellValueChanged?.({
-        data: {
-          id: 'txn-b',
-          reference: 'REF-txn-b',
-          account: 'Account',
-          amount: 100,
-          currency: 'USD',
-          status: 'Completed',
-          transactionDate: '2026-08-24',
-        },
+        data: createTransaction('txn-b'),
         colDef: { field: 'status' },
         oldValue: 'Pending',
         newValue: 'Completed',
@@ -135,5 +160,53 @@ describe('TransactionsInfiniteGrid production wiring', () => {
     expect(
       screen.queryByRole('button', { name: /preview/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it('restores a tracked edit when an Infinite row is recreated and the model updates', () => {
+    const reloadedRow = createTransaction('txn-a', 'Pending');
+    const node = createRowNode(reloadedRow);
+    const api = createApi({ rows: [node] });
+
+    render(<TransactionsInfiniteGrid selectionScope="page" />);
+    act(() => {
+      getGridProps().onGridReady?.(gridReady(api));
+      getGridProps().onCellValueChanged?.({
+        data: createTransaction('txn-a', 'Completed'),
+        colDef: { field: 'status' },
+        oldValue: 'Pending',
+        newValue: 'Completed',
+      } as unknown as CellValueChangedEvent<Transaction>);
+    });
+
+    act(() => {
+      getGridProps().onModelUpdated?.();
+    });
+
+    expect(node.setDataValue).toHaveBeenCalledWith('status', 'Completed', 'data');
+    expect(reloadedRow.status).toBe('Completed');
+  });
+
+  it('restores a tracked edit when Infinite pagination changes', () => {
+    const reloadedRow = createTransaction('txn-a', 'Pending');
+    const node = createRowNode(reloadedRow);
+    const api = createApi({ rows: [node] });
+
+    render(<TransactionsInfiniteGrid selectionScope="page" />);
+    act(() => {
+      getGridProps().onGridReady?.(gridReady(api));
+      getGridProps().onCellValueChanged?.({
+        data: createTransaction('txn-a', 'Completed'),
+        colDef: { field: 'status' },
+        oldValue: 'Pending',
+        newValue: 'Completed',
+      } as unknown as CellValueChangedEvent<Transaction>);
+    });
+
+    act(() => {
+      getGridProps().onPaginationChanged?.({ api } as PaginationChangedEvent<Transaction>);
+    });
+
+    expect(node.setDataValue).toHaveBeenCalledWith('status', 'Completed', 'data');
+    expect(reloadedRow.status).toBe('Completed');
   });
 });
