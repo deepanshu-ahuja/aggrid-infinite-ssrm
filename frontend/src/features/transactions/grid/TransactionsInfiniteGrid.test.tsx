@@ -1,58 +1,74 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FilterModel } from 'ag-grid-community';
-import { serverBackedGridDefaults } from '@/shared/grid/config/serverBackedGridDefaults';
-import type { ServerSelectionIntent } from '@/shared/grid/selection/serverSelection';
-import { createEmptyTransactionEditingState } from './transactionEditing';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type {
+  CellValueChangedEvent,
+  GridApi,
+  GridReadyEvent,
+  SelectionColumnDef,
+} from 'ag-grid-community';
+import type { Transaction } from '../api/transactions.contracts';
 import { TransactionsInfiniteGrid } from './TransactionsInfiniteGrid';
 
-interface CapturedChildProps {
-  onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
-  onFilterModelChange?: (filterModel: FilterModel) => void;
+const gridCapture = vi.hoisted(() => ({
+  props: undefined as unknown,
+}));
+
+vi.mock('ag-grid-react', () => ({
+  AgGridReact: (props: unknown) => {
+    gridCapture.props = props;
+    return <div data-testid="mock-ag-grid" />;
+  },
+}));
+
+interface CapturedGridProps {
+  selectionColumnDef?: SelectionColumnDef;
+  onGridReady?: (event: GridReadyEvent<Transaction>) => void;
+  onCellValueChanged?: (event: CellValueChangedEvent<Transaction>) => void;
 }
 
-const childCapture = vi.hoisted(() => ({
-  page: undefined as CapturedChildProps | undefined,
-  dataset: undefined as CapturedChildProps | undefined,
-}));
+function getGridProps() {
+  return gridCapture.props as CapturedGridProps;
+}
 
-vi.mock('./TransactionsInfinitePageGrid', () => ({
-  TransactionsInfinitePageGrid: (props: CapturedChildProps) => {
-    childCapture.page = props;
-    return <div data-testid="page-grid" />;
-  },
-}));
+function createApi(options?: {
+  rowSelection?: string[];
+  filterModel?: Record<string, unknown>;
+}): GridApi<Transaction> {
+  return {
+    getState: vi.fn(() => ({
+      rowSelection: options?.rowSelection ?? [],
+    })),
+    getFilterModel: vi.fn(() => options?.filterModel ?? {}),
+    isLastRowIndexKnown: vi.fn(() => false),
+    getDisplayedRowCount: vi.fn(() => 0),
+    forEachNode: vi.fn(),
+    refreshHeader: vi.fn(),
+  } as unknown as GridApi<Transaction>;
+}
 
-vi.mock('./TransactionsInfiniteDatasetGrid', () => ({
-  TransactionsInfiniteDatasetGrid: (props: CapturedChildProps) => {
-    childCapture.dataset = props;
-    return <div data-testid="dataset-grid" />;
-  },
-}));
+function gridReady(api: GridApi<Transaction>): GridReadyEvent<Transaction> {
+  return { api } as unknown as GridReadyEvent<Transaction>;
+}
 
 function readPreview(testId: string) {
   return JSON.parse(screen.getByTestId(testId).textContent ?? '{}') as unknown;
 }
 
-beforeEach(() => {
-  childCapture.page = undefined;
-  childCapture.dataset = undefined;
+afterEach(() => {
+  vi.useRealTimers();
+  gridCapture.props = undefined;
+  window.localStorage.clear();
 });
 
-describe('TransactionsInfiniteGrid action-preview composition', () => {
-  it('builds exact include selection from native page/manual selection emitted by the child', () => {
-    render(
-      <TransactionsInfiniteGrid
-        selectionScope="page"
-        gridOptions={serverBackedGridDefaults}
-      />,
-    );
+describe('TransactionsInfiniteGrid root GridApi ownership', () => {
+  it('reads native page/manual selection directly from the root GridApi at action time', () => {
+    vi.useFakeTimers();
+    const api = createApi({ rowSelection: ['txn-a', 'txn-b'] });
+
+    render(<TransactionsInfiniteGrid selectionScope="page" />);
 
     act(() => {
-      childCapture.page?.onSelectionChange?.({
-        mode: 'include',
-        ids: ['txn-a', 'txn-b'],
-      });
+      getGridProps().onGridReady?.(gridReady(api));
     });
 
     fireEvent.click(
@@ -63,29 +79,28 @@ describe('TransactionsInfiniteGrid action-preview composition', () => {
       mode: 'include',
       ids: ['txn-a', 'txn-b'],
     });
+    expect(api.getState).toHaveBeenCalled();
   });
 
-  it('uses the AG Grid applied filter model only when filtered exclude selection needs query context', () => {
-    render(
-      <TransactionsInfiniteGrid
-        selectionScope="filtered"
-        gridOptions={serverBackedGridDefaults}
-      />,
-    );
-
-    act(() => {
-      childCapture.dataset?.onFilterModelChange?.({
+  it('reads the applied filter directly from GridApi when filtered Select All payload is built', () => {
+    vi.useFakeTimers();
+    const api = createApi({
+      filterModel: {
         status: {
           filterType: 'text',
           type: 'equals',
           filter: 'Completed',
         },
-      });
+      },
+    });
 
-      childCapture.dataset?.onSelectionChange?.({
-        mode: 'exclude',
-        ids: ['txn-excluded'],
-      });
+    render(<TransactionsInfiniteGrid selectionScope="filtered" />);
+
+    act(() => {
+      getGridProps().onGridReady?.(gridReady(api));
+      const headerParams = getGridProps().selectionColumnDef
+        ?.headerComponentParams as { onChange?: (checked: boolean) => void } | undefined;
+      headerParams?.onChange?.(true);
     });
 
     fireEvent.click(
@@ -94,7 +109,7 @@ describe('TransactionsInfiniteGrid action-preview composition', () => {
 
     expect(readPreview('selection-payload-preview')).toEqual({
       mode: 'exclude',
-      ids: ['txn-excluded'],
+      ids: [],
       filters: [
         {
           field: 'status',
@@ -103,52 +118,31 @@ describe('TransactionsInfiniteGrid action-preview composition', () => {
         },
       ],
     });
+    expect(api.getFilterModel).toHaveBeenCalled();
   });
 
-  it('builds all-record exclude selection with an explicitly unfiltered backend scope', () => {
-    render(
-      <TransactionsInfiniteGrid
-        selectionScope="all"
-        gridOptions={serverBackedGridDefaults}
-      />,
-    );
+  it('builds selected-edit preview from accumulated edits and native GridApi selection', () => {
+    vi.useFakeTimers();
+    const api = createApi({ rowSelection: ['txn-b'] });
+
+    render(<TransactionsInfiniteGrid selectionScope="page" />);
 
     act(() => {
-      childCapture.dataset?.onSelectionChange?.({
-        mode: 'exclude',
-        ids: ['txn-a'],
-      });
-    });
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Preview selection payload' }),
-    );
-
-    expect(readPreview('selection-payload-preview')).toEqual({
-      mode: 'exclude',
-      ids: ['txn-a'],
-      filters: [],
-    });
-  });
-
-  it('builds selected-edit preview as edited rows intersected with logical selection', () => {
-    const editingState = createEmptyTransactionEditingState();
-    editingState.changesById['txn-a'] = { amount: 100 };
-    editingState.changesById['txn-b'] = { status: 'Completed' };
-
-    render(
-      <TransactionsInfiniteGrid
-        selectionScope="page"
-        gridOptions={serverBackedGridDefaults}
-        editingState={editingState}
-      />,
-    );
-
-    act(() => {
-      childCapture.page?.onSelectionChange?.({
-        mode: 'include',
-        ids: ['txn-b'],
-      });
+      getGridProps().onGridReady?.(gridReady(api));
+      getGridProps().onCellValueChanged?.({
+        data: {
+          id: 'txn-b',
+          reference: 'REF-txn-b',
+          account: 'Account',
+          amount: 100,
+          currency: 'USD',
+          status: 'Completed',
+          transactionDate: '2026-08-24',
+        },
+        colDef: { field: 'status' },
+        oldValue: 'Pending',
+        newValue: 'Completed',
+      } as unknown as CellValueChangedEvent<Transaction>);
     });
 
     fireEvent.click(

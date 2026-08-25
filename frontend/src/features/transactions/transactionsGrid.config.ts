@@ -1,4 +1,3 @@
-import type { AgGridReactProps } from 'ag-grid-react';
 import {
   serverBackedGridDefaults,
   type ServerBackedGridOptions,
@@ -6,34 +5,16 @@ import {
 import type { InfiniteSelectionMode } from '@/shared/grid/selection/serverSelection';
 import type { Transaction } from './api/transactions.contracts';
 
-export type TransactionsRowModel = 'infinite' | 'ssrm';
-
-type TransactionsGridStateOptions = Pick<
-  AgGridReactProps<Transaction>,
-  'initialState' | 'onStateUpdated'
->;
-
 /**
- * Feature-level editing lifecycle passed to either native row-model implementation.
+ * Native AG Grid options that may be supplied to the concrete row-model roots.
  *
- * These are native AG Grid events, not a wrapper API. `TransactionsPage` uses them to accumulate
- * edited row/field values and restore those values when server-backed rows are rendered again.
+ * Grid lifecycle handlers (GridApi ownership, preferences, editing, selection) are intentionally
+ * composed inside `TransactionsInfiniteGrid` / `TransactionsSsrmGrid`, not in a common page.
  */
-type TransactionsGridEditingOptions = Pick<
-  AgGridReactProps<Transaction>,
-  'onCellValueChanged' | 'onFirstDataRendered' | 'onViewportChanged'
->;
-
-export type TransactionsInfiniteGridOptions = ServerBackedGridOptions<Transaction> &
-  TransactionsGridStateOptions &
-  TransactionsGridEditingOptions;
-export type TransactionsSsrmGridOptions = ServerBackedGridOptions<Transaction> &
-  TransactionsGridStateOptions &
-  TransactionsGridEditingOptions;
+export type TransactionsInfiniteGridOptions = ServerBackedGridOptions<Transaction>;
+export type TransactionsSsrmGridOptions = ServerBackedGridOptions<Transaction>;
 
 interface TransactionsGridConfig {
-  activeGrid: TransactionsRowModel;
-
   infinite: {
     selectionScope: InfiniteSelectionMode;
     gridOptions: TransactionsInfiniteGridOptions;
@@ -44,13 +25,8 @@ interface TransactionsGridConfig {
   };
 }
 
-/**
- * Transactions inherits shared server-backed defaults for both row models. Editing callbacks are
- * composed later by `TransactionsPage`; they are lifecycle behavior, not static application defaults.
- */
+/** Static feature choices; each row-model root is otherwise independently usable. */
 export const transactionsGridConfig: TransactionsGridConfig = {
-  activeGrid: 'infinite',
-
   infinite: {
     selectionScope: 'page',
     gridOptions: {

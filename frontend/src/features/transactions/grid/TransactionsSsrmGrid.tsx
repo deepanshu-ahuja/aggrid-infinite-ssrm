@@ -1,12 +1,14 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import type {
-  FilterModel,
+  FirstDataRenderedEvent,
   GetRowIdParams,
   GridApi,
   GridReadyEvent,
   RowSelectedEvent,
   SelectionChangedEvent,
+  StateUpdatedEvent,
+  ViewportChangedEvent,
 } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
 import { createServerSideDatasource } from '@/shared/grid/data/server-side/createServerSideDatasource';
@@ -24,37 +26,29 @@ import {
   readFlatServerSideSelectionState,
   serverSideSelectionToIntent,
 } from '@/shared/grid/selection/serverSideSelection';
+import { browserGridStateStore } from '@/shared/grid/state/gridStatePersistence';
 import { listTransactions } from '../api/transactions.api';
-import type {
-  Transaction,
-  TransactionFilter,
-} from '../api/transactions.contracts';
-import type { TransactionsSsrmGridOptions } from '../transactionsGrid.config';
+import type { Transaction, TransactionFilter } from '../api/transactions.contracts';
+import {
+  transactionsGridConfig,
+  type TransactionsSsrmGridOptions,
+} from '../transactionsGrid.config';
+import { TransactionEditingControls } from './TransactionEditingControls';
 import {
   buildTransactionBulkSelection,
   type TransactionBulkSelection,
 } from './transactionBulkSelection';
+import { useTransactionEditing } from './transactionEditing';
 import { transactionColumns } from './transactionColumns';
 import { mapTransactionGridRequest } from './transactionRequest.mapper';
+import { useTransactionEditFlows } from './useTransactionEditFlows';
 
-/**
- * Stable backend identity is required for SSRM server-side selection state.
- *
- * Sorting, filtering, pagination, cache eviction and store refreshes can move/recreate RowNodes, but
- * a Transaction ID remains the same logical record.
- */
+const SSRM_STATE_KEY = 'transactions:ssrm';
+
+/** Stable backend identity is required for SSRM server-side selection state and edit restoration. */
 const getRowId = ({ data }: GetRowIdParams<Transaction>) => data.id;
 
-/**
- * Custom state used ONLY for the capability AG Grid SSRM does not natively provide:
- * Select All Filtered across unloaded server rows.
- *
- * `exclude + []`
- *     all rows in the captured filtered dataset are selected.
- *
- * `exclude + [A]`
- *     all rows in that dataset except A are selected.
- */
+/** Custom state only for SSRM's unsupported Select All Filtered semantics. */
 function createFilteredSelectAllState(): ServerSelection<string> {
   return {
     mode: 'exclude',
@@ -63,73 +57,56 @@ function createFilteredSelectAllState(): ServerSelection<string> {
 }
 
 export interface TransactionsSsrmGridProps {
-  /** Native SSRM pagination/cache options assembled by Transactions configuration. */
-  gridOptions: TransactionsSsrmGridOptions;
+  /** Optional native GridOptions override for tests/embedding. */
+  gridOptions?: TransactionsSsrmGridOptions;
 }
 
 /**
- * Transactions implementation backed by AG Grid Enterprise Server-Side Row Model (SSRM).
+ * Production-shaped Transactions SSRM root.
  *
- * SELECTION BOUNDARY
- * ------------------
- * Use AG Grid natively whenever SSRM already supports the requirement:
+ * ROOT OWNERSHIP RULE
+ * -------------------
+ * This component owns `<AgGridReact>` and ONE authoritative `GridApi` ref. Native SSRM selection,
+ * filters, pagination, retry and Grid State are read/written through that API rather than mirrored
+ * into parent state or extra refs.
  *
- * - individual/manual rows -> native SSRM selection;
- * - native header checkbox -> native SSRM All Records;
- * - unloaded all-record selection -> `getServerSideSelectionState()` rules.
- *
- * AG Grid SSRM explicitly does NOT support native Select-All modes `currentPage` or `filtered`.
- * Therefore those two optional client behaviours are explicit controls:
- *
- * - Select current page -> native selection over the loaded RowNodes on the current pagination page;
- * - Select all filtered -> small application-owned include/exclude state + captured filter context.
- *
- * NATIVE-FIRST STATE RULE
- * -----------------------
- * React state below is limited to application/UI values AG Grid cannot own. In particular, the
- * applied filter model itself remains AG Grid-owned. When Select All Filtered is invoked we capture
- * its defining model into a ref because that snapshot is action context, not render state.
- *
- * We intentionally do NOT copy the complete Infinite selection implementation into SSRM.
+ * React/application state remains only for behavior SSRM cannot represent (Select All Filtered),
+ * accumulated unsaved edits, user-facing errors and temporary development previews.
  */
 export function TransactionsSsrmGrid({
-  gridOptions,
+  gridOptions: gridOptionsOverride,
 }: TransactionsSsrmGridProps) {
-  /** Imperative API for native SSRM selection, pagination and failed-load retry. */
+  const gridOptions = gridOptionsOverride ?? transactionsGridConfig.ssrm.gridOptions;
+
+  /** The single authoritative AG Grid API for this rendered SSRM grid. */
   const gridApi = useRef<GridApi<Transaction> | null>(null);
 
-  /** Datasource failure shown inside AG Grid using the shared Active Overlay. */
   const [loadError, setLoadError] = useState<string>();
-
-  /** Readable error for a selection command/adapter mismatch. */
   const [selectionError, setSelectionError] = useState<string>();
-
-  /**
-   * Undefined means AG Grid's native SSRM selection state is the source of truth.
-   *
-   * Defined means the user explicitly chose Select All Filtered, which SSRM cannot represent
-   * natively across unloaded rows.
-   */
   const [filteredSelection, setFilteredSelection] =
     useState<ServerSelection<string>>();
 
-  /**
-   * NOT React state: snapshot of the APPLIED AG Grid filter model that defined Select All Filtered.
-   *
-   * A ref is sufficient because no UI renders directly from this model. A later filter change clears
-   * the custom filtered selection, so the snapshot is used only when an explicit action/preview needs
-   * to interpret the active `exclude` selection against its original backend query.
-   */
-  const filteredSelectionFilterModel = useRef<FilterModel>({});
-
-  /** Development-only browser-validation payload; no real bulk endpoint is called. */
+  /** Development/UI state only. */
   const [preview, setPreview] = useState<TransactionBulkSelection>();
   const [previewError, setPreviewError] = useState<string>();
+  const [showAllLocalEdits, setShowAllLocalEdits] = useState(false);
 
-  /**
-   * Feature/domain loader. The shared SSRM datasource owns AG Grid callback plumbing; this callback
-   * owns Transactions request mapping and API access.
-   */
+  const editing = useTransactionEditing();
+  const editFlows = useTransactionEditFlows(editing, gridApi);
+
+  /** Native Grid State preferences; localStorage is only today's replaceable store implementation. */
+  const initialState = useMemo(
+    () => browserGridStateStore.load(SSRM_STATE_KEY),
+    [],
+  );
+
+  const handleStateUpdated = useCallback(
+    (event: StateUpdatedEvent<Transaction>) => {
+      browserGridStateStore.save(SSRM_STATE_KEY, event.state);
+    },
+    [],
+  );
+
   const loadRows = useCallback(
     (
       request: Parameters<typeof mapTransactionGridRequest>[0],
@@ -142,7 +119,6 @@ export function TransactionsSsrmGrid({
     [],
   );
 
-  /** Keep one datasource identity across ordinary React renders. */
   const datasource = useMemo(
     () =>
       createServerSideDatasource<Transaction>({
@@ -155,42 +131,37 @@ export function TransactionsSsrmGrid({
     [gridOptions.cacheBlockSize, loadRows],
   );
 
-  const handleGridReady = useCallback(
-    (event: GridReadyEvent<Transaction>) => {
-      gridApi.current = event.api;
+  const handleGridReady = useCallback((event: GridReadyEvent<Transaction>) => {
+    gridApi.current = event.api;
+  }, []);
+
+  const handleFirstDataRendered = useCallback(
+    (event: FirstDataRenderedEvent<Transaction>) => {
+      editing.restoreTrackedEdits(event.api);
     },
-    [],
+    [editing.restoreTrackedEdits],
   );
 
-  /** A preview is a snapshot, so clear it whenever selection meaning changes. */
+  const handleViewportChanged = useCallback(
+    (event: ViewportChangedEvent<Transaction>) => {
+      editing.restoreTrackedEdits(event.api);
+    },
+    [editing.restoreTrackedEdits],
+  );
+
   const clearPreview = useCallback(() => {
     setPreview(undefined);
     setPreviewError(undefined);
   }, []);
 
-  /**
-   * Makes currently loaded RowNodes visually agree with custom Select All Filtered state.
-   *
-   * `api.forEachNode()` visits loaded SSRM RowNodes only. Unloaded matching rows remain represented
-   * logically by `exclude`; loaded/reloaded rows receive their checkbox state here.
-   *
-   * Source `api` prevents programmatic checkbox restoration from feeding back into our custom
-   * exception list through `onRowSelected`.
-   */
   const syncLoadedFilteredSelection = useCallback(
-    (
-      selection: ServerSelection<string>,
-      api = gridApi.current,
-    ) => {
+    (selection: ServerSelection<string>, api = gridApi.current) => {
       if (!api) return;
 
       api.forEachNode((node) => {
         if (!node.data) return;
 
-        const shouldBeSelected = isServerRowSelected(
-          selection,
-          node.data.id,
-        );
+        const shouldBeSelected = isServerRowSelected(selection, node.data.id);
 
         if (node.isSelected() !== shouldBeSelected) {
           node.setSelected(shouldBeSelected, false, 'api');
@@ -200,16 +171,11 @@ export function TransactionsSsrmGrid({
     [],
   );
 
-  /** Restore custom filtered selection when SSRM creates/reloads RowNodes. */
   const handleModelUpdated = useCallback(() => {
     if (!filteredSelection) return;
     syncLoadedFilteredSelection(filteredSelection);
   }, [filteredSelection, syncLoadedFilteredSelection]);
 
-  /**
-   * Row checkbox changes stay native unless custom Select All Filtered is active. In filtered mode,
-   * unchecked rows become exceptions (`exclude [id]`). API-driven checkbox sync is ignored.
-   */
   const handleRowSelected = useCallback(
     (event: RowSelectedEvent<Transaction>) => {
       if (event.source === 'api' || !event.data) return;
@@ -229,10 +195,6 @@ export function TransactionsSsrmGrid({
     [clearPreview],
   );
 
-  /**
-   * If custom filtered Select All is active and the native header moves SSRM to `selectAll: true`,
-   * the user has explicitly switched to native All Records, so discard the custom filter context.
-   */
   const handleSelectionChanged = useCallback(
     (event: SelectionChangedEvent<Transaction>) => {
       clearPreview();
@@ -241,35 +203,21 @@ export function TransactionsSsrmGrid({
 
       try {
         const nativeState = readFlatServerSideSelectionState(
-          event.serverSideState ??
-            gridApi.current?.getServerSideSelectionState(),
+          event.serverSideState ?? gridApi.current?.getServerSideSelectionState(),
         );
 
         if (nativeState.selectAll) {
           setFilteredSelection(undefined);
-          filteredSelectionFilterModel.current = {};
           setSelectionError(undefined);
         }
       } catch {
-        /**
-         * Transactions is explicitly flat (`groupSelects: 'self'`). If that configuration changes
-         * later, the adapter/contract must be reviewed instead of crashing this UI event.
-         */
+        /** Flat Transactions selection assumes `groupSelects: 'self'`; revisit if grouping is added. */
       }
     },
     [clearPreview, filteredSelection],
   );
 
-  /**
-   * Explicit Current Page command.
-   *
-   * AG Grid SSRM does not support `selectAll: 'currentPage'`, so this command resolves the concrete
-   * current-page RowNodes through the shared pagination primitive and then uses AG Grid's native
-   * `setNodesSelected()` API. Ordinary manual selection remains native.
-   *
-   * If a dataset-wide mode is active (native All Records or custom All Filtered), Current Page first
-   * returns to ordinary explicit selection so incompatible meanings are not mixed.
-   */
+  /** SSRM has no native `selectAll: 'currentPage'`; resolve that page then use native selection. */
   const handleSelectCurrentPage = useCallback(() => {
     const api = gridApi.current;
     if (!api) return;
@@ -278,7 +226,6 @@ export function TransactionsSsrmGrid({
       const nativeState = readFlatServerSideSelectionState(
         api.getServerSideSelectionState(),
       );
-
       const pageNodes = getCurrentPageNodes(api);
 
       if (!pageNodes) {
@@ -290,12 +237,9 @@ export function TransactionsSsrmGrid({
 
       const wasFilteredSelectAll = Boolean(filteredSelection);
       setFilteredSelection(undefined);
-      filteredSelectionFilterModel.current = {};
 
       if (nativeState.selectAll || wasFilteredSelectAll) {
-        api.setServerSideSelectionState(
-          createEmptyServerSideSelectionState(),
-        );
+        api.setServerSideSelectionState(createEmptyServerSideSelectionState());
       }
 
       if (pageNodes.length > 0) {
@@ -317,10 +261,8 @@ export function TransactionsSsrmGrid({
   }, [clearPreview, filteredSelection]);
 
   /**
-   * Explicit Select All Filtered command.
-   *
-   * SSRM cannot natively express this across unloaded rows. Clear competing native selection,
-   * capture the applied filter model, store `exclude + []`, then sync currently loaded rows.
+   * SSRM cannot express Select All Filtered across unloaded rows. Only the logical include/exclude
+   * selection is custom; the applied filter itself remains AG Grid-owned.
    */
   const handleSelectAllFiltered = useCallback(() => {
     const api = gridApi.current;
@@ -328,19 +270,8 @@ export function TransactionsSsrmGrid({
 
     const nextSelection = createFilteredSelectAllState();
 
-    /** Clear old custom state first so native API-driven deselection cannot become exceptions. */
     setFilteredSelection(undefined);
-    filteredSelectionFilterModel.current = {};
-
-    api.setServerSideSelectionState(
-      createEmptyServerSideSelectionState(),
-    );
-
-    /**
-     * AG Grid remains the filter source of truth. Capture its applied model only at the moment the
-     * user defines Select All Filtered; do not maintain a second live React filter state.
-     */
-    filteredSelectionFilterModel.current = api.getFilterModel();
+    api.setServerSideSelectionState(createEmptyServerSideSelectionState());
     setFilteredSelection(nextSelection);
     syncLoadedFilteredSelection(nextSelection, api);
 
@@ -348,27 +279,21 @@ export function TransactionsSsrmGrid({
     clearPreview();
   }, [clearPreview, syncLoadedFilteredSelection]);
 
-  /**
-   * Filter changes invalidate only custom Select All Filtered. Native manual selection and native
-   * All Records remain AG Grid-owned and are preserved.
-   */
+  /** Filter changes invalidate only the unsupported custom Select All Filtered mode. */
   const handleFilterChanged = useCallback(() => {
     clearPreview();
 
     if (!filteredSelection) return;
 
     setFilteredSelection(undefined);
-    filteredSelectionFilterModel.current = {};
     gridApi.current?.setServerSideSelectionState(
       createEmptyServerSideSelectionState(),
     );
     setSelectionError(undefined);
   }, [clearPreview, filteredSelection]);
 
-  /** Explicit user clear resets both native and custom filtered selection. */
   const handleClearSelection = useCallback(() => {
     setFilteredSelection(undefined);
-    filteredSelectionFilterModel.current = {};
     gridApi.current?.setServerSideSelectionState(
       createEmptyServerSideSelectionState(),
     );
@@ -376,10 +301,7 @@ export function TransactionsSsrmGrid({
     clearPreview();
   }, [clearPreview]);
 
-  /**
-   * Development-only validation. Builds the exact selection/query payload a future bulk action
-   * would use, but deliberately performs NO backend action.
-   */
+  /** Native SSRM selection and native filter state are read from the root GridApi at action time. */
   const handlePreviewSelection = useCallback(() => {
     const api = gridApi.current;
     if (!api) return;
@@ -392,26 +314,17 @@ export function TransactionsSsrmGrid({
           toServerSelectionIntent(filteredSelection),
           {
             selectionScope: 'filtered',
-            filterModel: filteredSelectionFilterModel.current,
+            filterModel: api.getFilterModel(),
           },
         );
       } else {
-        /**
-         * No custom filtered mode is active: read native SSRM selection at action time. This avoids
-         * mirroring manual/All Records selection in React and works for unloaded selected rows.
-         */
         const intent = serverSideSelectionToIntent(
-          readFlatServerSideSelectionState(
-            api.getServerSideSelectionState(),
-          ),
+          readFlatServerSideSelectionState(api.getServerSideSelectionState()),
         );
 
         nextPreview =
           intent.mode === 'include'
-            ? buildGridBulkSelection<string, TransactionFilter>(
-                intent,
-                [],
-              )
+            ? buildGridBulkSelection<string, TransactionFilter>(intent, [])
             : buildTransactionBulkSelection(intent, {
                 selectionScope: 'all',
               });
@@ -429,63 +342,79 @@ export function TransactionsSsrmGrid({
     }
   }, [filteredSelection]);
 
-  /** SSRM-native failed-load retry; do not rebuild the datasource/cache manually. */
   const handleRetryLoad = useCallback(() => {
     setLoadError(undefined);
     gridApi.current?.retryServerSideLoads();
   }, []);
 
   return (
-    <Stack spacing={1.5}>
+    <Stack spacing={2}>
+      <TransactionEditingControls
+        editedRowCount={editing.editedRowCount}
+        lastEdit={editing.lastEdit}
+        onApplyLastEdit={(target) => {
+          if (editFlows.applyLastEdit(target)) setShowAllLocalEdits(false);
+        }}
+        onApplyBulkEdit={(target, changes) => {
+          if (editFlows.applyBulkChanges(target, changes)) {
+            setShowAllLocalEdits(false);
+          }
+        }}
+        onPreviewPayload={() => setShowAllLocalEdits(true)}
+      />
+
+      {editFlows.error ? (
+        <Typography variant="body2" color="warning.main">
+          {editFlows.error}
+        </Typography>
+      ) : null}
+
+      {import.meta.env.DEV && showAllLocalEdits ? (
+        <Box
+          component="pre"
+          data-testid="all-local-edits-preview"
+          sx={{
+            m: 0,
+            p: 1.5,
+            overflowX: 'auto',
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: 1,
+            bgcolor: 'background.default',
+            fontSize: '0.75rem',
+          }}
+        >
+          {JSON.stringify(editing.payload, null, 2)}
+        </Box>
+      ) : null}
+
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         spacing={1}
         alignItems={{ xs: 'stretch', sm: 'center' }}
       >
-        <Button
-          variant="outlined"
-          size="small"
-          onClick={handleSelectCurrentPage}
-        >
+        <Button variant="outlined" size="small" onClick={handleSelectCurrentPage}>
           Select current page
         </Button>
-
-        <Button
-          variant="outlined"
-          size="small"
-          onClick={handleSelectAllFiltered}
-        >
+        <Button variant="outlined" size="small" onClick={handleSelectAllFiltered}>
           Select all filtered
         </Button>
-
-        <Button
-          variant="outlined"
-          size="small"
-          onClick={handleClearSelection}
-        >
+        <Button variant="outlined" size="small" onClick={handleClearSelection}>
           Clear selection
         </Button>
-
         {import.meta.env.DEV ? (
-          <Button
-            variant="outlined"
-            size="small"
-            onClick={handlePreviewSelection}
-          >
+          <Button variant="outlined" size="small" onClick={handlePreviewSelection}>
             Preview selection payload
           </Button>
         ) : null}
       </Stack>
 
       <Typography variant="caption" color="text.secondary">
-        SSRM header checkbox selects all records. Current Page and All Filtered are explicit
-        controls because SSRM does not support those native Select-All modes.
+        SSRM header checkbox selects all records. Current Page and All Filtered are explicit controls
+        because SSRM does not support those native Select-All modes.
       </Typography>
 
-      {selectionError ? (
-        <Alert severity="warning">{selectionError}</Alert>
-      ) : null}
-
+      {selectionError ? <Alert severity="warning">{selectionError}</Alert> : null}
       {import.meta.env.DEV && previewError ? (
         <Alert severity="error">{previewError}</Alert>
       ) : null}
@@ -511,17 +440,12 @@ export function TransactionsSsrmGrid({
 
       <Box sx={{ height: 620, width: '100%' }}>
         <AgGridReact<Transaction>
+          {...gridOptions}
           rowModelType="serverSide"
           serverSideDatasource={datasource}
           columnDefs={transactionColumns}
-          {...gridOptions}
           getRowId={getRowId}
-          /**
-           * Keep SSRM's supported selection native and explicit.
-           *
-           * `selectAll: 'all'` keeps the native header as All Records, including unloaded rows.
-           * `groupSelects: 'self'` guarantees the flat SSRM selection-state shape used by our adapter.
-           */
+          initialState={initialState}
           rowSelection={{
             mode: 'multiRow',
             headerCheckbox: true,
@@ -538,10 +462,14 @@ export function TransactionsSsrmGrid({
               : undefined
           }
           onGridReady={handleGridReady}
+          onFirstDataRendered={handleFirstDataRendered}
+          onViewportChanged={handleViewportChanged}
           onModelUpdated={handleModelUpdated}
           onRowSelected={handleRowSelected}
           onSelectionChanged={handleSelectionChanged}
           onFilterChanged={handleFilterChanged}
+          onCellValueChanged={editing.handleCellValueChanged}
+          onStateUpdated={handleStateUpdated}
         />
       </Box>
     </Stack>

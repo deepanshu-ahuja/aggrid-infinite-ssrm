@@ -1,6 +1,13 @@
 import { Box, Container, Stack, Typography } from '@mui/material';
-import { TransactionsPage } from '@/features/transactions/TransactionsPage';
+import { TransactionsInfiniteGrid } from '@/features/transactions/grid/TransactionsInfiniteGrid';
 
+/**
+ * Application shell only.
+ *
+ * The row-model root is intentionally imported directly. To evaluate SSRM instead, replace this
+ * import/render with `TransactionsSsrmGrid`; there is no common Transactions page that owns grid
+ * lifecycle or GridApi state.
+ */
 export function App() {
   return (
     <Box component="main" sx={{ minHeight: '100vh', py: { xs: 3, md: 5 } }}>
@@ -14,7 +21,8 @@ export function App() {
               Server-backed transaction activity with consistent application theming.
             </Typography>
           </Box>
-          <TransactionsPage />
+
+          <TransactionsInfiniteGrid />
         </Stack>
       </Container>
     </Box>
