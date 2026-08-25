@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { CellValueChangedEvent, GridApi, IRowNode } from 'ag-grid-community';
+import type { ServerSelectionIntent } from '@/shared/grid/selection/serverSelection';
 import type { Transaction } from '../api/transactions.contracts';
 
 /**
@@ -51,6 +52,13 @@ export interface TransactionEditingState {
   originalsById: Record<string, TransactionChanges>;
 }
 
+/**
+ * Flow 1 / Flow 2 target within the CURRENT pagination page.
+ *
+ * `page` and `selected` affect only those two UI-propagation flows. They do not define the eventual
+ * backend bulk-edit scope; that later payload is derived separately from accumulated edits and the
+ * current logical row selection.
+ */
 export type TransactionEditTarget = 'page' | 'selected';
 
 export function createEmptyTransactionEditingState(): TransactionEditingState {
@@ -78,13 +86,18 @@ export function isTransactionEditableField(
 /**
  * Records one concrete row/field value transition.
  *
- * All editing paths use this same function:
- * - ordinary AG Grid cell editing;
- * - Flow 1 (apply the last edited field/value to the current page);
- * - Flow 2 (apply one or more chosen fields to the current page).
+ * ALL EDITING PATHS CONVERGE HERE
+ * -------------------------------
+ * - ordinary row/cell editing;
+ * - Flow 1: propagate one latest field/value;
+ * - Flow 2: propagate one or many explicitly chosen fields.
  *
- * Because the state is keyed by backend row ID rather than RowNode/cache position, edits can remain
- * represented even after the user navigates to another pagination page and AG Grid evicts a block.
+ * The function intentionally does not know which UI produced the change. That keeps today's
+ * prototype controls replaceable by a completely different client UI without changing the actual
+ * change-tracking contract.
+ *
+ * Because state is keyed by stable backend row ID rather than RowNode/cache position, edits remain
+ * represented even after pagination or cache eviction removes the original RowNode from memory.
  */
 export function recordTransactionCellChange(
   state: TransactionEditingState,
@@ -140,7 +153,15 @@ export function recordTransactionCellChange(
   };
 }
 
-/** Builds the backend-shaped preview from only rows/fields that are still changed. */
+/**
+ * DEVELOPMENT / LOCAL-EDIT VIEW
+ * -----------------------------
+ * Returns every row that currently has a real local change, regardless of whether that row is
+ * selected. This is useful for debugging the accumulated UI editing state.
+ *
+ * This is NOT the eventual backend bulk-edit payload when the product rule is "only selected rows
+ * participate in Bulk Update". Use `buildSelectedTransactionUpdatePayload` for that rule.
+ */
 export function buildTransactionUpdatePayload(
   state: TransactionEditingState,
 ): TransactionUpdatePayload {
@@ -152,11 +173,59 @@ export function buildTransactionUpdatePayload(
   };
 }
 
+/** Returns whether a concrete row ID belongs to the current logical selection. */
+export function isTransactionIdSelected(
+  selection: ServerSelectionIntent<string>,
+  id: string,
+) {
+  const ids = new Set(selection.ids);
+
+  return selection.mode === 'include' ? ids.has(id) : !ids.has(id);
+}
+
 /**
- * Small feature hook that connects AG Grid editing events to the row-ID change model above.
+ * BACKEND BULK-EDIT VIEW
+ * ----------------------
+ * Builds the exact intersection discussed for a future Bulk Update API:
  *
- * It does not know whether the host grid is Infinite or SSRM. Row-model-specific code still owns
- * how current-page RowNodes are found and how selection narrows those nodes.
+ *     rows with accumulated changes
+ *              ∩
+ *     rows currently logically selected
+ *              ↓
+ *     concrete `{ id, changes }` updates
+ *
+ * Important consequences:
+ * - selected but untouched row -> omitted;
+ * - edited but currently unselected row -> omitted;
+ * - edited + selected row from Page 1, 3 or 5 -> included by stable ID;
+ * - `include` and `exclude` logical selection both work without materialising every server row;
+ * - Select All alone never manufactures edits for unloaded/untouched records.
+ *
+ * This is deliberately a PURE helper. A future Save/Bulk Update button, API layer, test or totally
+ * different UI can call it without importing React, MUI or AG Grid RowNodes.
+ */
+export function buildSelectedTransactionUpdatePayload(
+  state: TransactionEditingState,
+  selection: ServerSelectionIntent<string>,
+): TransactionUpdatePayload {
+  return {
+    updates: Object.entries(state.changesById)
+      .filter(([id]) => isTransactionIdSelected(selection, id))
+      .map(([id, changes]) => ({ id, changes })),
+  };
+}
+
+/**
+ * Core reusable transaction edit engine.
+ *
+ * RESPONSIBILITY
+ * --------------
+ * Own the accumulated row-ID -> changed-fields state and bridge native AG Grid cell value events to
+ * that state. It intentionally does NOT own Flow 1/Flow 2 buttons, target UI, current-page lookup or
+ * final backend selection rules.
+ *
+ * Those concerns are separate because the real UI may change while this underlying editing contract
+ * should remain reusable.
  */
 export function useTransactionEditing() {
   const [state, setState] = useState<TransactionEditingState>(() =>
@@ -165,11 +234,12 @@ export function useTransactionEditing() {
   const [lastEdit, setLastEdit] = useState<TransactionLastEdit>();
 
   /**
-   * Programmatic page-level changes also fire AG Grid value-change events. We still record those
-   * changes, but they must not replace Flow 1's notion of the user's last directly edited cell.
+   * Programmatic Flow 1/2 changes also fire AG Grid value-change events. Record those changes, but
+   * do not let them replace Flow 1's notion of the user's most recent DIRECT cell edit.
    */
   const applyingProgrammaticChange = useRef(false);
 
+  /** Native manual-cell edit bridge. */
   const handleCellValueChanged = useCallback(
     (event: CellValueChangedEvent<Transaction>) => {
       if (!event.data || !isTransactionEditableField(event.colDef.field)) return;
@@ -196,8 +266,9 @@ export function useTransactionEditing() {
   );
 
   /**
-   * Applies changes to concrete loaded RowNodes and records exactly the same per-row changes that
-   * ordinary one-by-one editing would create.
+   * Shared mutation primitive used by BOTH Flow 1 and Flow 2 after their target rows are resolved.
+   * It records each resulting row/field change individually, then updates currently loaded RowNodes
+   * so the user immediately sees the same values in the grid.
    */
   const applyChangesToNodes = useCallback(
     (nodes: readonly IRowNode<Transaction>[], changes: TransactionChanges) => {
@@ -247,9 +318,9 @@ export function useTransactionEditing() {
   );
 
   /**
-   * Re-applies tracked edits when Infinite/SSRM creates a fresh RowNode for a row that was edited on
-   * another page earlier. The server still returns its persisted/original value until the future
-   * Save action exists, so the UI needs this row-ID reconciliation after cache reloads.
+   * Re-applies accumulated edits when Infinite/SSRM creates a fresh RowNode for an already-edited
+   * row. Until a real Save endpoint exists the backend still returns its old value, so navigation or
+   * cache eviction must not make the user's local edit visually disappear.
    */
   const restoreTrackedEdits = useCallback(
     (api: GridApi<Transaction>) => {
@@ -279,9 +350,11 @@ export function useTransactionEditing() {
     [state.changesById],
   );
 
+  /** All local UI edits, selected or not. */
   const payload = useMemo(() => buildTransactionUpdatePayload(state), [state]);
 
   return {
+    state,
     editedRowCount: payload.updates.length,
     handleCellValueChanged,
     lastEdit,
