@@ -7,6 +7,10 @@ import {
 } from '../api/transactions.api';
 import type { Transaction } from '../api/transactions.contracts';
 import type { TransactionUpdatePayload } from './transactionEditing';
+import {
+  mapTransactionBulkUpdateItems,
+  mapTransactionUpdateChanges,
+} from './transactionUpdate.mapper';
 
 type TransactionUpdate = TransactionUpdatePayload['updates'][number];
 
@@ -23,8 +27,9 @@ interface UseTransactionEditPersistenceOptions {
 /**
  * Transactions persistence lifecycle for tracked grid edits.
  *
- * TanStack Query owns request lifecycle. The feature hook chooses single vs bulk backend endpoint;
- * the concrete grid root still owns Infinite/SSRM refresh because those native APIs differ.
+ * TanStack Query owns request lifecycle. The feature hook chooses single vs bulk backend endpoint and
+ * maps the generic tracked-edit shape into the strict Transactions contract. Infinite/SSRM cache
+ * refresh remains at the concrete grid root because those native APIs differ.
  */
 export function useTransactionEditPersistence({
   updates,
@@ -36,11 +41,16 @@ export function useTransactionEditPersistence({
       mutationFn: async (command: SaveCommand) => {
         if (command.kind === 'row') {
           const update = command.updates[0];
-          const response = await updateTransaction(update.id, update.changes);
+          const response = await updateTransaction(
+            update.id,
+            mapTransactionUpdateChanges(update.changes),
+          );
           return [response.row];
         }
 
-        const response = await bulkUpdateTransactions({ updates: command.updates });
+        const response = await bulkUpdateTransactions({
+          updates: mapTransactionBulkUpdateItems(command.updates),
+        });
         return response.rows;
       },
       onSuccess: (rows, command) => {
