@@ -1,88 +1,51 @@
 import { useCallback, useState } from 'react';
 import { Alert, Box, Button, Stack, Typography } from '@mui/material';
-import type { GridApi } from 'ag-grid-community';
-import type { Transaction } from '../../api/transactions.contracts';
-import type {
-  InfiniteSelectionMode,
-  ServerSelectionIntent,
-} from '@/shared/grid/selection/serverSelection';
-import {
-  buildTransactionBulkSelection,
-  type TransactionBulkSelection,
-} from '../transactionBulkSelection';
-import {
-  buildSelectedTransactionUpdatePayload,
-  type TransactionEditingState,
-  type TransactionUpdatePayload,
-} from '../transactionEditing';
+import type { TransactionBulkSelection } from '../transactionBulkSelection';
+import type { TransactionUpdatePayload } from '../transactionEditing';
 
 interface UseTransactionsInfiniteGridDevToolsOptions {
-  /** Current Infinite selection semantics used to build the preview payload. */
-  selectionScope: InfiniteSelectionMode;
-
   /**
-   * Returns the grid's one authoritative API instance.
+   * Production-capable action logic supplied by the grid/feature layer.
    *
-   * The hook intentionally reads native filter state only when the developer clicks Preview rather
-   * than mirroring AG Grid state into React solely for debugging.
+   * Dev Tools deliberately do not know how selection is read, how AG Grid filters are obtained, or
+   * how backend-facing payloads are built. A future real UI can call these same functions directly.
    */
-  getGridApi: () => GridApi<Transaction> | null;
+  buildSelectionPayload: () => TransactionBulkSelection;
+  buildSelectedEditPayload: () => TransactionUpdatePayload;
 
-  /** Reads the application's current logical selection at action time. */
-  readLogicalSelection: () => ServerSelectionIntent<string>;
-
-  /** Current accumulated edit state used by the selected-edit preview. */
-  editState: TransactionEditingState;
-
-  /** Current accumulated backend-ready edit payload used by the all-edits preview. */
+  /** Already-built all-local-edit view owned by the production editing engine. */
   editPayload: TransactionUpdatePayload;
 }
 
 /**
- * Development-only Transactions Infinite diagnostics.
+ * Development-only Transactions Infinite presentation.
  *
- * WHY THIS IS A HOOK
- * ------------------
- * These previews are runtime developer instrumentation, not production grid behavior. Keeping their
- * state, payload-building callbacks and UI behind one integration point means they can be removed
- * without touching AG Grid lifecycle, selection or editing logic.
- *
- * Production behavior must never depend on any state owned here. The caller may notify this hook
- * that a real selection/filter/edit action happened so stale previews can be cleared, but the hook
- * never drives those actions itself.
+ * OWNERSHIP RULE
+ * --------------
+ * This hook owns only developer-facing visibility, snapshots and buttons. It must not own reusable
+ * algorithms for row selection, edited-row intersection, GridApi reads or bulk-action payloads.
+ * Those behaviors belong to production-capable helpers/hooks so the real product UI can reuse them.
  */
 export function useTransactionsInfiniteGridDevTools({
-  selectionScope,
-  getGridApi,
-  readLogicalSelection,
-  editState,
+  buildSelectionPayload,
+  buildSelectedEditPayload,
   editPayload,
 }: UseTransactionsInfiniteGridDevToolsOptions) {
-  /**
-   * Snapshot produced by the last explicit "Preview selection payload" click.
-   *
-   * React state is appropriate because rendering/removing the JSON preview must update the UI. It is
-   * deliberately not kept live with selection changes; `clearPreviews` removes stale snapshots.
-   */
+  /** Snapshot from the last explicit developer preview action. */
   const [selectionPreview, setSelectionPreview] =
     useState<TransactionBulkSelection>();
 
-  /** Visible validation failure from building the selection preview. */
+  /** Visible payload-building failure; debug presentation only. */
   const [selectionPreviewError, setSelectionPreviewError] = useState<string>();
 
-  /** Visible snapshot of edits restricted to the current logical selection. */
+  /** Snapshot of accumulated edits intersected with current logical selection. */
   const [selectedEditPreview, setSelectedEditPreview] =
     useState<TransactionUpdatePayload>();
 
-  /**
-   * Controls whether the already-owned edit payload is rendered for developer inspection.
-   *
-   * This stores only presentation visibility; the edit data itself remains owned by the production
-   * editing hook.
-   */
+  /** Controls developer visibility of the already-owned all-local-edit payload. */
   const [showAllLocalEdits, setShowAllLocalEdits] = useState(false);
 
-  /** Remove snapshots whenever real grid/edit state changes so debug JSON cannot look authoritative. */
+  /** Remove stale snapshots when real grid/edit state changes. */
   const clearPreviews = useCallback(() => {
     setSelectionPreview(undefined);
     setSelectionPreviewError(undefined);
@@ -98,22 +61,8 @@ export function useTransactionsInfiniteGridDevTools({
   }, []);
 
   const handlePreviewSelectionPayload = useCallback(() => {
-    const api = getGridApi();
-    if (!api) return;
-
     try {
-      const selection = readLogicalSelection();
-      const nextPreview =
-        selectionScope === 'filtered'
-          ? buildTransactionBulkSelection(selection, {
-              selectionScope: 'filtered',
-              filterModel: api.getFilterModel(),
-            })
-          : buildTransactionBulkSelection(selection, {
-              selectionScope,
-            });
-
-      setSelectionPreview(nextPreview);
+      setSelectionPreview(buildSelectionPayload());
       setSelectionPreviewError(undefined);
     } catch (error) {
       setSelectionPreview(undefined);
@@ -123,18 +72,12 @@ export function useTransactionsInfiniteGridDevTools({
           : 'The selection payload could not be built.',
       );
     }
-  }, [getGridApi, readLogicalSelection, selectionScope]);
+  }, [buildSelectionPayload]);
 
   const handlePreviewSelectedEdits = useCallback(() => {
-    setSelectedEditPreview(
-      buildSelectedTransactionUpdatePayload(editState, readLogicalSelection()),
-    );
-  }, [editState, readLogicalSelection]);
+    setSelectedEditPreview(buildSelectedEditPayload());
+  }, [buildSelectedEditPayload]);
 
-  /**
-   * Vite removes this branch from the production experience. All debug presentation stays here so
-   * the main grid component has one obvious dev-only integration point.
-   */
   const devToolsUi = import.meta.env.DEV ? (
     <Stack spacing={1.5}>
       <Stack
