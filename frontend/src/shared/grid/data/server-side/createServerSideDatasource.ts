@@ -35,9 +35,10 @@ export function createServerSideDatasource<TData>({
           { signal: controller.signal },
         );
 
+        // SSRM must size the currently visible query, not the complete unfiltered dataset.
         params.success({
           rowData: result.rows,
-          rowCount: result.totalCount,
+          rowCount: result.filteredCount,
         });
       } catch (error) {
         if (!controller.signal.aborted) {
