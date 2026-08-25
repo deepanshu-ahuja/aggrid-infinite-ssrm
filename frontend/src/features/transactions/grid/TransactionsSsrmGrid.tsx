@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import type {
   GetRowIdParams,
@@ -20,6 +20,7 @@ import {
   type TransactionsSsrmGridOptions,
 } from '../transactionsGrid.config';
 import { TransactionEditingControls } from './TransactionEditingControls';
+import type { TransactionRowEditActionsContext } from './TransactionRowEditActions';
 import { transactionEditingConfig } from './transactionEditing';
 import { transactionColumns } from './transactionColumns';
 import { mapTransactionGridRequest } from './transactionRequest.mapper';
@@ -71,6 +72,7 @@ export function TransactionsSsrmGrid({
   });
 
   const {
+    state,
     payload,
     editedRowCount,
     lastEdit,
@@ -117,6 +119,21 @@ export function TransactionsSsrmGrid({
     if (api) discardAll(api);
   }, [discardAll]);
 
+  /** Row actions and Save All share the same tracked draft state; no second edited-row list exists. */
+  const rowEditActionsContext = useMemo<TransactionRowEditActionsContext>(
+    () => ({
+      isRowDirty: (rowId) => Boolean(state.changesById[rowId]),
+      isSaving,
+      onSaveRow: saveRow,
+      onDiscardRow: handleDiscardRow,
+    }),
+    [handleDiscardRow, isSaving, saveRow, state.changesById],
+  );
+
+  useEffect(() => {
+    gridApi.current?.refreshCells({ columns: ['editActions'], force: true });
+  }, [rowEditActionsContext]);
+
   const { initialState, onStateUpdated } =
     useGridStatePersistence<Transaction>({ key: SSRM_STATE_KEY });
 
@@ -147,13 +164,10 @@ export function TransactionsSsrmGrid({
       <TransactionEditingControls
         editedRowCount={editedRowCount}
         lastEdit={lastEdit}
-        updates={payload.updates}
         isSaving={isSaving}
         saveError={saveError}
         onApplyLastEdit={applyLastEdit}
         onApplyBulkEdit={applyBulkChanges}
-        onSaveRow={saveRow}
-        onDiscardRow={handleDiscardRow}
         onSaveAll={saveAll}
         onDiscardAll={handleDiscardAll}
       />
@@ -188,19 +202,12 @@ export function TransactionsSsrmGrid({
       {selectionError ? <Alert severity="warning">{selectionError}</Alert> : null}
 
       <Box sx={{ height: 620, width: '100%' }}>
-        {/*
-         * Important native SSRM wiring:
-         * - onGridReady stores the one authoritative GridApi.
-         * - onModelUpdated restores only still-unsaved drafts and custom filtered selection.
-         * - successful Save uses refreshServerSide() above because sorting/filtering is server-owned.
-         * - onFilterChanged clears only application state tied to the previous query.
-         * - onCellValueChanged records drafts outside temporary RowNodes.
-         */}
         <AgGridReact<Transaction>
           {...gridOptions}
           rowModelType="serverSide"
           serverSideDatasource={datasource}
           columnDefs={transactionColumns}
+          context={rowEditActionsContext}
           getRowId={getRowId}
           initialState={initialState}
           rowSelection={{
