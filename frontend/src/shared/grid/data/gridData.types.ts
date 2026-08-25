@@ -12,9 +12,17 @@ export interface FlatGridBlockRequest {
   filterModel: object;
 }
 
+/**
+ * Generic result returned by a flat server-backed grid loader.
+ *
+ * `totalCount` describes the complete dataset independent of the current filters.
+ * `filteredCount` describes the current query result and is therefore the value datasource adapters
+ * must report to AG Grid as the row-model size.
+ */
 export interface GridBlockResult<TData> {
   rows: TData[];
   totalCount: number;
+  filteredCount: number;
 }
 
 export interface GridLoadContext {
