@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { GridState } from 'ag-grid-community';
 import {
   browserGridStateStore,
@@ -6,6 +6,38 @@ import {
 } from './gridStatePersistence';
 
 const KEY = 'test-grid';
+
+/**
+ * The application uses browser `localStorage`, but the test must not depend on Node's own Web
+ * Storage implementation. Newer Node versions expose an experimental `localStorage` global that can
+ * be unavailable unless Node is started with `--localstorage-file`, even while Vitest is using
+ * jsdom. Installing a tiny standards-shaped in-memory store keeps this test focused on our
+ * persistence contract instead of the host process configuration.
+ */
+function createMemoryStorage(): Storage {
+  const values = new Map<string, string>();
+
+  return {
+    get length() {
+      return values.size;
+    },
+    clear() {
+      values.clear();
+    },
+    getItem(key) {
+      return values.get(key) ?? null;
+    },
+    key(index) {
+      return Array.from(values.keys())[index] ?? null;
+    },
+    removeItem(key) {
+      values.delete(key);
+    },
+    setItem(key, value) {
+      values.set(key, String(value));
+    },
+  };
+}
 
 function createState(): GridState {
   return {
@@ -31,8 +63,11 @@ function createState(): GridState {
   } as unknown as GridState;
 }
 
-afterEach(() => {
-  window.localStorage.clear();
+beforeEach(() => {
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: createMemoryStorage(),
+  });
 });
 
 describe('gridStatePersistence', () => {
