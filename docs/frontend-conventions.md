@@ -13,7 +13,23 @@ Use MUI components directly. Shared components should represent an application c
 - Render and type `AgGridReact<TData>` directly; do not introduce a wrapper merely to forward native AG Grid props, refs or defaults.
 - Prefer native AG Grid state/APIs over parallel React state when AG Grid already owns the behavior.
 - Keep environment access at integration points such as the Enterprise license initializer.
-- Comment architectural reasons, non-obvious translations and lifecycle behavior; do not narrate syntax.
+- Runtime-only diagnostics/debugging should be isolated behind a clearly named dev-only integration point when they form one real concern. Production behavior must not depend on dev-tool state, and removing the tooling should require minimal production-code changes.
+
+## Comments and JSDoc
+
+Comments should explain ownership, lifecycle, constraints and non-obvious decisions; they should not translate TypeScript syntax into English.
+
+For meaningful React state, refs, effects, memoized values and callbacks, document the rationale when it is not obvious from the name alone. A useful comment answers the relevant questions:
+
+- what the value represents;
+- why it is React state, a ref, or a derived value;
+- who updates it and from which lifecycle/API source;
+- what consumes it;
+- when it resets or deliberately survives;
+- how it differs from nearby state that looks similar;
+- what race condition, ownership boundary or third-party lifecycle rule makes the implementation necessary.
+
+Do not add noise such as `// set the error` above `setError(...)` or `// return the result` above a return statement. The goal is to make architectural intent recoverable by another developer or coding agent without narrating obvious code.
 
 ## Testing
 
