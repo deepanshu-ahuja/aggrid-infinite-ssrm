@@ -19,6 +19,7 @@ type SaveCommand =
   | { kind: 'bulk'; updates: TransactionUpdate[] };
 
 interface UseTransactionEditPersistenceOptions {
+  /** All current drafts are needed for single-row Save lookup. */
   updates: TransactionUpdate[];
   acknowledgeChanges: (updates: TransactionUpdate[]) => void;
   onPersistedRows: (rows: Transaction[]) => void;
@@ -30,6 +31,10 @@ interface UseTransactionEditPersistenceOptions {
  * TanStack Query owns request lifecycle. The feature hook chooses single vs bulk backend endpoint and
  * maps the generic tracked-edit shape into the strict Transactions contract. Infinite/SSRM cache
  * refresh remains at the concrete grid root because those native APIs differ.
+ *
+ * Bulk selection semantics intentionally stay OUTSIDE this hook. The concrete grid root owns current
+ * selection, intersects that selection with dirty drafts, then passes only those explicit updates to
+ * `saveBulk`. This prevents an unselected dirty row from leaking into a bulk request.
  */
 export function useTransactionEditPersistence({
   updates,
@@ -70,14 +75,17 @@ export function useTransactionEditPersistence({
     [isPending, mutate, updates],
   );
 
-  const saveAll = useCallback(() => {
-    if (updates.length === 0 || isPending) return;
-    mutate({ kind: 'bulk', updates: [...updates] });
-  }, [isPending, mutate, updates]);
+  const saveBulk = useCallback(
+    (bulkUpdates: TransactionUpdate[]) => {
+      if (bulkUpdates.length === 0 || isPending) return;
+      mutate({ kind: 'bulk', updates: [...bulkUpdates] });
+    },
+    [isPending, mutate],
+  );
 
   return {
     saveRow,
-    saveAll,
+    saveBulk,
     isSaving: isPending,
     saveError:
       error instanceof Error
