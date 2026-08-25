@@ -38,61 +38,66 @@ export interface TransactionsSsrmGridProps {
 
 /**
  * Transactions SSRM root: compose reusable capabilities while keeping native AG Grid wiring explicit.
- *
- * The root owns the one authoritative `GridApi`, Transaction columns/configuration and the visible
- * composition of loading, selection, editing and Grid State capabilities. SSRM-specific selection
- * mechanics live together in `useSsrmSelectionController` rather than being copied by every feature.
+ * The root owns the authoritative API and cross-capability composition; SSRM loading/selection and
+ * row-model-neutral editing mechanics stay in focused shared capabilities.
  */
 export function TransactionsSsrmGrid({
   gridOptions: gridOptionsOverride,
 }: TransactionsSsrmGridProps) {
-  /** Derived configuration; no independent React state lifecycle is required. */
   const gridOptions =
     gridOptionsOverride ?? transactionsGridConfig.ssrm.gridOptions;
 
-  /**
-   * The concrete grid remains the single owner of AG Grid's imperative API. Shared capabilities
-   * receive the ref only for their narrowly-scoped native operations.
-   */
+  /** The concrete grid remains the single owner of AG Grid's imperative API. */
   const gridApi = useRef<GridApi<Transaction> | null>(null);
 
-  /**
-   * SSRM selection keeps native explicit/All Records behavior in AG Grid and owns application state
-   * only for the missing Select All Filtered semantics.
-   */
-  const ssrmSelection = useSsrmSelectionController({
+  const {
+    error: selectionError,
+    selectCurrentPage,
+    selectAllFiltered,
+    clearSelection,
+    onModelUpdated,
+    onRowSelected,
+    onSelectionChanged,
+    onFilterChanged: onSelectionFilterChanged,
+  } = useSsrmSelectionController({
     gridApi,
     getRowId: getTransactionId,
   });
 
-  /**
-   * SSRM loading owns datasource identity/error/retry mechanics. The same Transaction flat-row loader
-   * is shared with Infinite; only the row-model datasource adapter differs.
-   */
-  const ssrmLoading = useServerSideRowLoading({
+  const {
+    datasource,
+    error: loadError,
+    retry: retryLoad,
+    clearError: clearLoadError,
+  } = useServerSideRowLoading({
     gridApi,
     loadRows: loadTransactionGridRows,
     defaultBlockSize: gridOptions.cacheBlockSize ?? 100,
   });
 
-  /** Editing mechanics are row-model-neutral; Transactions supplies only editable-field semantics. */
-  const editing = useTrackedGridEditing(transactionEditingConfig);
+  const {
+    editedRowCount,
+    lastEdit,
+    applyChangesToNodes,
+    restoreTrackedEdits,
+    handleCellValueChanged,
+  } = useTrackedGridEditing(transactionEditingConfig);
 
-  /** Current-page editing resolves targets from the same root GridApi for both Infinite and SSRM. */
-  const editActions = useCurrentPageEditActions(
-    {
-      lastEdit: editing.lastEdit,
-      applyChangesToNodes: editing.applyChangesToNodes,
-    },
+  const {
+    error: editActionError,
+    applyLastEdit,
+    applyBulkChanges,
+  } = useCurrentPageEditActions(
+    { lastEdit, applyChangesToNodes },
     gridApi,
   );
 
-  /** Persist native AG Grid preferences without introducing an application grid wrapper. */
-  const gridState = useGridStatePersistence<Transaction>({
-    key: SSRM_STATE_KEY,
-  });
+  const { initialState, onStateUpdated } =
+    useGridStatePersistence<Transaction>({
+      key: SSRM_STATE_KEY,
+    });
 
-  /** Root lifecycle composition stays visible: grid readiness establishes the authoritative API. */
+  /** Grid readiness establishes the one authoritative native API for every capability. */
   const handleGridReady = useCallback(
     (event: GridReadyEvent<Transaction>) => {
       gridApi.current = event.api;
@@ -100,41 +105,37 @@ export function TransactionsSsrmGrid({
     [],
   );
 
-  /** Restore accumulated local edits when SSRM first materialises RowNodes. */
+  /** Restore accumulated edits whenever SSRM materialises/recreates RowNodes. */
   const handleFirstDataRendered = useCallback(
     (event: FirstDataRenderedEvent<Transaction>) =>
-      editing.restoreTrackedEdits(event.api),
-    [editing.restoreTrackedEdits],
+      restoreTrackedEdits(event.api),
+    [restoreTrackedEdits],
   );
 
-  /** Restore local edits again when SSRM cache/viewport changes materialise different RowNodes. */
   const handleViewportChanged = useCallback(
     (event: ViewportChangedEvent<Transaction>) =>
-      editing.restoreTrackedEdits(event.api),
-    [editing.restoreTrackedEdits],
+      restoreTrackedEdits(event.api),
+    [restoreTrackedEdits],
   );
 
-  /**
-   * A filter change crosses loading and selection capabilities: remove a stale visible load error and
-   * invalidate only custom filtered-selection semantics. Native All Records remains meaningful.
-   */
+  /** Filter changes cross loading and SSRM selection, so the root composes both effects explicitly. */
   const handleFilterChanged = useCallback(() => {
-    ssrmLoading.clearError();
-    ssrmSelection.onFilterChanged();
-  }, [ssrmLoading.clearError, ssrmSelection.onFilterChanged]);
+    clearLoadError();
+    onSelectionFilterChanged();
+  }, [clearLoadError, onSelectionFilterChanged]);
 
   return (
     <Stack spacing={2}>
       <TransactionEditingControls
-        editedRowCount={editing.editedRowCount}
-        lastEdit={editing.lastEdit}
-        onApplyLastEdit={editActions.applyLastEdit}
-        onApplyBulkEdit={editActions.applyBulkChanges}
+        editedRowCount={editedRowCount}
+        lastEdit={lastEdit}
+        onApplyLastEdit={applyLastEdit}
+        onApplyBulkEdit={applyBulkChanges}
       />
 
-      {editActions.error ? (
+      {editActionError ? (
         <Typography variant="body2" color="warning.main">
-          {editActions.error}
+          {editActionError}
         </Typography>
       ) : null}
 
@@ -143,25 +144,13 @@ export function TransactionsSsrmGrid({
         spacing={1}
         alignItems={{ xs: 'stretch', sm: 'center' }}
       >
-        <Button
-          variant="outlined"
-          size="small"
-          onClick={ssrmSelection.selectCurrentPage}
-        >
+        <Button variant="outlined" size="small" onClick={selectCurrentPage}>
           Select current page
         </Button>
-        <Button
-          variant="outlined"
-          size="small"
-          onClick={ssrmSelection.selectAllFiltered}
-        >
+        <Button variant="outlined" size="small" onClick={selectAllFiltered}>
           Select all filtered
         </Button>
-        <Button
-          variant="outlined"
-          size="small"
-          onClick={ssrmSelection.clearSelection}
-        >
+        <Button variant="outlined" size="small" onClick={clearSelection}>
           Clear selection
         </Button>
       </Stack>
@@ -171,42 +160,42 @@ export function TransactionsSsrmGrid({
         because SSRM does not support those native Select-All modes.
       </Typography>
 
-      {ssrmSelection.error ? (
-        <Alert severity="warning">{ssrmSelection.error}</Alert>
+      {selectionError ? (
+        <Alert severity="warning">{selectionError}</Alert>
       ) : null}
 
       <Box sx={{ height: 620, width: '100%' }}>
         <AgGridReact<Transaction>
           {...gridOptions}
           rowModelType="serverSide"
-          serverSideDatasource={ssrmLoading.datasource}
+          serverSideDatasource={datasource}
           columnDefs={transactionColumns}
           getRowId={getRowId}
-          initialState={gridState.initialState}
+          initialState={initialState}
           rowSelection={{
             mode: 'multiRow',
             headerCheckbox: true,
             selectAll: 'all',
             groupSelects: 'self',
           }}
-          activeOverlay={ssrmLoading.error ? GridErrorOverlay : undefined}
+          activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={
-            ssrmLoading.error
+            loadError
               ? {
-                  message: ssrmLoading.error,
-                  onRetry: ssrmLoading.retry,
+                  message: loadError,
+                  onRetry: retryLoad,
                 }
               : undefined
           }
           onGridReady={handleGridReady}
           onFirstDataRendered={handleFirstDataRendered}
           onViewportChanged={handleViewportChanged}
-          onModelUpdated={ssrmSelection.onModelUpdated}
-          onRowSelected={ssrmSelection.onRowSelected}
-          onSelectionChanged={ssrmSelection.onSelectionChanged}
+          onModelUpdated={onModelUpdated}
+          onRowSelected={onRowSelected}
+          onSelectionChanged={onSelectionChanged}
           onFilterChanged={handleFilterChanged}
-          onCellValueChanged={editing.handleCellValueChanged}
-          onStateUpdated={gridState.onStateUpdated}
+          onCellValueChanged={handleCellValueChanged}
+          onStateUpdated={onStateUpdated}
         />
       </Box>
     </Stack>
