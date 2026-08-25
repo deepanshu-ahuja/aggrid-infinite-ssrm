@@ -47,6 +47,7 @@ export function TransactionsSsrmGrid({
   const gridOptions =
     gridOptionsOverride ?? transactionsGridConfig.ssrm.gridOptions;
   const gridApi = useRef<GridApi<Transaction> | null>(null);
+  const [isGridReady, setIsGridReady] = useState(false);
   const [selectionRevision, setSelectionRevision] = useState(0);
 
   const {
@@ -119,16 +120,18 @@ export function TransactionsSsrmGrid({
   );
 
   /** Only rows that are both dirty and logically selected participate in aggregate persistence. */
-  const selectedDirtyUpdates = useMemo(
-    () =>
-      buildSelectedTrackedGridUpdatePayload(
-        state,
-        readSelectionIntent(),
-      ).updates,
-    [readSelectionIntent, selectionRevision, state],
-  );
+  const selectedDirtyUpdates = useMemo(() => {
+    if (!isGridReady) return [];
+
+    return buildSelectedTrackedGridUpdatePayload(
+      state,
+      readSelectionIntent(),
+    ).updates;
+  }, [isGridReady, readSelectionIntent, selectionRevision, state]);
 
   const handleSaveSelected = useCallback(() => {
+    if (!gridApi.current) return;
+
     const updates = buildSelectedTrackedGridUpdatePayload(
       state,
       readSelectionIntent(),
@@ -171,6 +174,7 @@ export function TransactionsSsrmGrid({
   const handleGridReady = useCallback(
     (event: GridReadyEvent<Transaction>) => {
       gridApi.current = event.api;
+      setIsGridReady(true);
     },
     [],
   );
