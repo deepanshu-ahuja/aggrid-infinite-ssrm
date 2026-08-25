@@ -106,10 +106,14 @@ export type TransactionListRequest = GridListRequest<TransactionField>;
 /**
  * Backend response for a Transactions grid query.
  *
- * This reuses the company-wide `{ rows, totalCount }` response shape while preserving the concrete
- * `Transaction[]` row type.
+ * This reuses the shared `{ rows, totalCount, filteredCount }` response shape while preserving the
+ * concrete `Transaction[]` row type.
  *
- * `totalCount` means the total number of backend records matching the current query, not the number
- * of rows returned in the current block.
+ * - `totalCount`: complete Transactions dataset before applying the request filters;
+ * - `filteredCount`: number of Transactions matching the current request filters.
+ *
+ * Infinite/SSRM use `filteredCount` to size the current AG Grid row model. Infinite All Records
+ * selection can use `totalCount` from the same normal page response, so it does not need a separate
+ * count-only backend request.
  */
 export type TransactionListResponse = GridListResponse<Transaction>;
