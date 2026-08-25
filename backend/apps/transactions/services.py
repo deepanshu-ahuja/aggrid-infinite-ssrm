@@ -99,5 +99,9 @@ def query_transactions(query: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "rows": sorted_rows[offset:end],
-        "totalCount": len(sorted_rows),
+        # Complete dataset size is stable across the current filter and is useful for actions such as
+        # Infinite "Select All Records" without issuing a second count-only request.
+        "totalCount": len(TRANSACTIONS),
+        # AG Grid row-model sizing must follow the CURRENT query result, not the unfiltered dataset.
+        "filteredCount": len(filtered_rows),
     }
