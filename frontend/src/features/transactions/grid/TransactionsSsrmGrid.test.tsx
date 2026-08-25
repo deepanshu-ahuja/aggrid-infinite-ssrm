@@ -81,6 +81,11 @@ function createRowNode(id: string, rowIndex: number): TestRowNode {
   };
 }
 
+/** AG Grid's method type does not expose Vitest mock helpers, so narrow it only inside tests. */
+function clearSetSelectedMock(node: RowNode<Transaction>) {
+  vi.mocked(node.setSelected).mockClear();
+}
+
 interface NativeSelectionState {
   selectAll: boolean;
   toggledNodes: string[];
@@ -314,7 +319,7 @@ describe('TransactionsSsrmGrid selection', () => {
       );
     });
 
-    rowA.node.setSelected.mockClear();
+    clearSetSelectedMock(rowA.node);
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Select all filtered' }),
@@ -334,7 +339,7 @@ describe('TransactionsSsrmGrid selection', () => {
       screen.getByRole('button', { name: 'Select all filtered' }),
     );
 
-    rowB.node.setSelected.mockClear();
+    clearSetSelectedMock(rowB.node);
     fixture.setRows([rowA.node, rowB.node]);
 
     act(() => {
@@ -359,7 +364,7 @@ describe('TransactionsSsrmGrid selection', () => {
       getGridProps().onFilterChanged?.();
     });
 
-    rowB.node.setSelected.mockClear();
+    clearSetSelectedMock(rowB.node);
     fixture.setRows([rowA.node, rowB.node]);
     act(() => {
       getGridProps().onModelUpdated?.();
@@ -370,7 +375,9 @@ describe('TransactionsSsrmGrid selection', () => {
       selectAll: true,
       toggledNodes: ['txn-a'],
     });
-    const setNativeState = vi.mocked(fixture.api.setServerSideSelectionState);
+    const setNativeState = vi.mocked(
+      fixture.api.setServerSideSelectionState,
+    );
     setNativeState.mockClear();
 
     act(() => {
@@ -403,7 +410,7 @@ describe('TransactionsSsrmGrid selection', () => {
       toggledNodes: [],
     });
 
-    rowB.node.setSelected.mockClear();
+    clearSetSelectedMock(rowB.node);
     fixture.setRows([rowA.node, rowB.node]);
     act(() => {
       getGridProps().onModelUpdated?.();
@@ -435,7 +442,7 @@ describe('TransactionsSsrmGrid selection', () => {
       );
     });
 
-    rowB.node.setSelected.mockClear();
+    clearSetSelectedMock(rowB.node);
     fixture.setRows([rowA.node, rowB.node]);
     act(() => {
       getGridProps().onModelUpdated?.();
