@@ -54,6 +54,35 @@ Current defaults include:
 
 A feature can override an individual option when there is a measured UX/backend reason to differ.
 
+### Native Grid State persistence
+
+User table preferences now use AG Grid's native `GridState` instead of parallel React state.
+
+The shared persistence boundary stores only state that is genuinely common to both current row models:
+
+- column order;
+- column pinning;
+- column widths;
+- column visibility;
+- filter state;
+- sort state.
+
+Each row model has its own persistence key:
+
+- `transactions:infinite`;
+- `transactions:ssrm`.
+
+This separation is deliberate. Infinite and SSRM may support different native state capabilities over time, so one row model must never overwrite the other's saved preferences.
+
+State is restored through native `initialState` and saved from native `onStateUpdated` events. The grids themselves do not contain `localStorage` calls.
+
+The current storage implementation uses browser storage behind `GridStateStore`. A future user/profile API can replace that implementation without changing AG Grid lifecycle wiring.
+
+Two state areas are deliberately not persisted:
+
+- pagination position, because restore requirements differ by row model and page position is not currently a required preference;
+- row selection, because SSRM can restore native selection state while Infinite cannot, and selection in this application is transient business state rather than a durable layout preference.
+
 ### Infinite Row Model
 
 The Transactions Infinite implementation covers:
@@ -136,7 +165,8 @@ Regression coverage exists around:
 - datasource adapters;
 - server-side selection-state mapping;
 - generic and Transactions bulk-selection builders;
-- Transactions sort/filter request mapping.
+- Transactions sort/filter request mapping;
+- Grid State preference filtering and browser persistence behavior.
 
 Tests should focus on our contracts and lifecycle wiring, not reimplement AG Grid's internal test suite.
 
@@ -152,46 +182,38 @@ Tests should focus on our contracts and lifecycle wiring, not reimplement AG Gri
 8. Sorting does not clear selection merely because row positions changed.
 9. Filter-change selection behavior depends on selection semantics; do not add one blanket reset rule.
 10. Reuse the same backend filter mapper for normal queries and filtered bulk actions.
-11. Explain AG Grid lifecycle and design rationale in comments/JSDoc, especially around API-driven selection and async row loading.
+11. Use native `GridState` for grid preferences; do not create a second application-owned representation of column/filter/sort state.
+12. Treat Infinite and SSRM state capabilities independently when AG Grid support differs.
+13. Explain AG Grid lifecycle and design rationale in comments/JSDoc, especially around API-driven selection and async row loading.
 
-## Remaining foundation work
+## Foundation review status
 
-### Native Grid / Column State
+The architecture/code review is complete for the current planned foundation.
 
-Still to design and implement using AG Grid's native state APIs rather than custom React state.
+Completed review items:
 
-Candidate user state includes:
+- checked Infinite and SSRM separately rather than forcing equivalent implementations;
+- checked shared grid utilities for unnecessary abstraction;
+- kept Grid State preference concerns separate from server-backed pagination/cache defaults;
+- removed stale `AppGrid` guidance and outdated selection-review wording from project docs;
+- synchronized architecture/convention docs with the current native AG Grid design.
 
-- column order;
-- column width;
-- column visibility;
-- sorting;
-- filters;
-- pinned columns if a product requirement appears.
+Executable verification still needs to be run in an environment with the repository and dependencies available:
 
-Persistence destination should be decided separately from the AG Grid state representation.
+- complete frontend test suite;
+- TypeScript/build validation;
+- manual reload check for saved Infinite state;
+- manual switch to SSRM and check its separate saved state.
 
-### Documentation alignment
-
-Architecture docs must stay synchronized with code as the foundation changes. Stale wrapper names, old defaults, or old selection rules should be treated as bugs because future developers and coding agents will rely on these documents.
-
-### Final foundation review
-
-After Grid/Column State is implemented:
-
-- run the complete frontend test suite;
-- run TypeScript/build validation;
-- review shared grid code for unnecessary abstractions;
-- update architecture/convention docs;
-- then consider the foundation complete.
+Once those checks pass, the current AG Grid foundation can be considered complete. No additional speculative grid feature is required.
 
 ## Intentionally outside current foundation scope
 
 Do not implement these speculatively:
 
 - actual Delete/Approve/Export bulk endpoints;
-- SSRM grouping/tree data/pivot/aggregation unless a real feature needs them;
-- database-backed user grid preferences before persistence requirements are known;
+- advanced SSRM capabilities that the planned tables do not require;
+- database-backed user grid preferences before a real user/persistence requirement exists;
 - generalized business-grid wrappers;
 - Docker infrastructure for this Databricks same-repository application.
 

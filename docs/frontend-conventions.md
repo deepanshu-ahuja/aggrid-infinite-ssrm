@@ -10,7 +10,8 @@ Use MUI components directly. Shared components should represent an application c
 
 - Prefer props, ordinary functions and local state before creating a custom hook.
 - Keep server communication outside render components. Components compose a datasource with a feature API loader.
-- Preserve precise row types through `AppGrid<TData>` and typed column definitions.
+- Render and type `AgGridReact<TData>` directly; do not introduce a wrapper merely to forward native AG Grid props, refs or defaults.
+- Prefer native AG Grid state/APIs over parallel React state when AG Grid already owns the behavior.
 - Keep environment access at integration points such as the Enterprise license initializer.
 - Comment architectural reasons, non-obvious translations and lifecycle behavior; do not narrate syntax.
 

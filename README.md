@@ -58,4 +58,5 @@ Configure `DJANGO_SECRET_KEY` and the AG Grid license key through Databricks App
 - [Frontend conventions](docs/frontend-conventions.md)
 - [Theming and design tokens](docs/theming.md)
 - [AG Grid architecture](docs/ag-grid.md)
+- [AG Grid foundation status](docs/ag-grid-foundation-status.md)
 - [API and data flow](docs/api-data-flow.md)

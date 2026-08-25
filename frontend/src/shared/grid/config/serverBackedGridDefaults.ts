@@ -4,23 +4,11 @@ import type { AgGridReactProps } from 'ag-grid-react';
  * Native AG Grid options that our server-backed tables commonly configure.
  *
  * Both the Infinite Row Model and the Server-Side Row Model (SSRM) request data from the server in
- * blocks, so they currently share the same pagination/cache defaults. Keeping this type here avoids
- * every feature (Transactions, Payments, Customers, etc.) redefining the same subset of
- * `AgGridReactProps`.
+ * blocks, so they currently share the same pagination/cache defaults.
  *
  * Important: this is NOT an application-specific replacement API for AG Grid. The property names
  * intentionally remain AG Grid's native names so a developer can look them up directly in the
  * AG Grid documentation.
- *
- * Features are expected to spread these defaults and override only the options that genuinely need
- * different behaviour. For example:
- *
- * ```ts
- * gridOptions: {
- *   ...serverBackedGridDefaults,
- *   paginationPageSize: 50,
- * }
- * ```
  */
 export type ServerBackedGridOptions<TData> = Pick<
   AgGridReactProps<TData>,

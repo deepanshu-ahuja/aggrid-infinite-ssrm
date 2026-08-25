@@ -30,7 +30,7 @@ Today the intentionally small global surface is:
 - `theme`;
 - `defaultColDef`.
 
-If another native GridOption later becomes truly application-wide, it may also belong in `provideGlobalGridOptions`. Examples could include shared locale text or a company-wide menu/tooltip policy.
+If another native GridOption later becomes truly application-wide, it may also belong in `provideGlobalGridOptions`.
 
 Do not move row-model or feature behavior there merely because two grids currently share it. Keep these visible on the owning grid unless there is a real application-wide rule:
 
@@ -53,6 +53,7 @@ Current responsibilities include:
 - filter/query helpers;
 - selection primitives and adapters;
 - generic backend-facing bulk-selection builder;
+- native Grid State persistence boundary;
 - formatters;
 - AG Grid module/license bootstrap.
 
@@ -143,6 +144,8 @@ These are defaults, not immutable rules. A feature may override one property whe
 
 Pagination page size and datasource block size are separate concepts. A 50-row block can, for example, satisfy two 25-row pages while the block remains cached.
 
+`initialState` and `onStateUpdated` are also allowed through the native server-backed GridOptions type so a feature can compose AG Grid state persistence without changing the actual row-model grid implementation.
+
 ## Feature configuration
 
 `frontend/src/features/transactions/transactionsGrid.config.ts` owns Transactions-specific choices.
@@ -158,6 +161,47 @@ Use `'ssrm'` for the SSRM implementation when that deployment/product choice is 
 The configuration also owns the Infinite header-selection strategy and any future Transactions-specific GridOption overrides.
 
 Shared defaults should not be copied into the feature merely for convenience. Override only the property that intentionally differs.
+
+## Native Grid State persistence
+
+User table preferences use AG Grid's serializable `GridState`.
+
+The feature composition layer supplies native props:
+
+```text
+saved GridState
+→ initialState
+→ AgGridReact
+→ onStateUpdated
+→ saved GridState
+```
+
+The actual Infinite and SSRM grid components do not know about browser storage. They already accept native `gridOptions`, so the state props flow to `AgGridReact` without another wrapper.
+
+The shared `GridStateStore` is only a persistence boundary. The current implementation uses browser storage, but a future backend/profile store can replace it without changing the grid lifecycle.
+
+### Persisted common state
+
+Only state that is currently useful and common to both row models is retained:
+
+- column order;
+- column pinning;
+- column sizing;
+- column visibility;
+- column filters;
+- sorting.
+
+### Deliberately excluded state
+
+Pagination is not persisted today. Restoring page position has row-model-specific initial-row-count requirements and is not a current product requirement.
+
+Row selection is also excluded. AG Grid can restore SSRM row selection state but cannot restore Infinite row selection in the same way, and our selection represents transient business intent rather than a durable grid-layout preference.
+
+This is an example of the project rule: do not force identical behavior across Infinite and SSRM when AG Grid's native capabilities differ.
+
+### Separate row-model keys
+
+Transactions uses distinct storage keys for Infinite and SSRM. Their state must not overwrite each other because the two row-model implementations can evolve independently.
 
 ## Data flow
 
@@ -217,7 +261,7 @@ Once real bulk actions exist, their actual network request becomes the preferred
 | `GridApi` | AG Grid's imperative API after the grid initializes. |
 | RowNode | AG Grid's browser-side representation of one loaded row. |
 | `selectionColumnDef` | Configuration for the dedicated selection checkbox column. |
-| Grid State / Column State | Native AG Grid representation/APIs for user grid state such as columns, sorting and filters. |
+| Grid State | Native AG Grid serializable state for columns, filters, sorting and other supported grid state. |
 
 ## Error and retry behavior
 
@@ -254,15 +298,12 @@ After an AG Grid upgrade, verify:
 6. SSRM selection lifecycle tests;
 7. server-side selection-state adapter/API registration;
 8. Transactions sorting/filtering against the backend contract;
-9. development payload preview still remains development-only;
-10. TypeScript and production build.
-
-If Grid/Column State persistence has been introduced, include state restore/migration behavior in the upgrade verification.
+9. Grid State restore/save behavior and compatibility with previously saved `version` values;
+10. development payload preview remains development-only;
+11. TypeScript and production build.
 
 ## Remaining architecture work
 
-The main planned foundation item still outstanding is native AG Grid Grid/Column State for user-configurable table state such as column order, width, visibility, sorting and filters.
+No additional speculative AG Grid feature is required for the current table plan.
 
-Implement this with AG Grid's native state APIs rather than inventing parallel React state.
-
-Do not speculatively implement SSRM grouping, pivot, aggregation, tree data, generalized business-grid wrappers, or database-backed preference storage until a real product requirement exists.
+The remaining work is validation and maintenance: run the full frontend test/build checks, manually verify saved state for both row models, and keep these architecture documents synchronized with the code.
