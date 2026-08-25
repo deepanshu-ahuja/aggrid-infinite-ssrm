@@ -9,11 +9,11 @@ const TRANSACTION_STATUSES: readonly TransactionStatus[] = [
 ];
 
 /**
- * Example of a custom application cell editor built with MUI rather than AG Grid's provided editors.
+ * Example custom application editor built with MUI rather than AG Grid's provided editors.
  *
- * This deliberately uses AG Grid's controlled React editor contract (`value` + `onValueChange`).
- * The surrounding edit tracking listens to AG Grid's normal cell-value lifecycle, so it does not
- * care whether a value came from this MUI component or from a built-in text/number editor.
+ * AG Grid's current React editor contract is controlled (`value` + `onValueChange`). Keeping the MUI
+ * menu out of a document-level portal also prevents a menu click from looking like focus left the
+ * grid editor before the chosen value is committed.
  */
 export function TransactionStatusEditor({
   value,
@@ -21,8 +21,11 @@ export function TransactionStatusEditor({
 }: CustomCellEditorProps<Transaction, TransactionStatus>) {
   return (
     <Select<TransactionStatus>
-      value={value}
-      onChange={(event) => onValueChange(event.target.value as TransactionStatus)}
+      value={value ?? 'Pending'}
+      onChange={(event) =>
+        onValueChange(event.target.value as TransactionStatus)
+      }
+      MenuProps={{ disablePortal: true }}
       size="small"
       autoFocus
       fullWidth
