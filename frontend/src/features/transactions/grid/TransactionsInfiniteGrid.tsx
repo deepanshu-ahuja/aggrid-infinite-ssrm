@@ -1,11 +1,9 @@
 import { useCallback, useRef } from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 import type {
-  FirstDataRenderedEvent,
   GetRowIdParams,
   GridApi,
   GridReadyEvent,
-  ViewportChangedEvent,
 } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
 import type { GridRowsLoader } from '@/shared/grid/data/gridData.types';
@@ -38,11 +36,11 @@ const getTransactionId = (row: Transaction) => row.id;
 const getRowId = ({ data }: GetRowIdParams<Transaction>) => getTransactionId(data);
 
 /**
- * Concrete feature composition: translate the generic flat-grid request and call the Transactions API.
+ * AG Grid asks for rows later, when Infinite needs another block/page. The shared loading hook needs a
+ * callable it can invoke at that time; there is no requested row range available during React render.
  *
- * This intentionally stays in the root instead of a dedicated `loadTransactionGridRows.ts` file.
- * The function adds no validation, policy, lifecycle or domain behavior of its own, so extracting it
- * would create a pass-through abstraction merely because Infinite and SSRM repeat a few lines.
+ * This stable local function performs only the required boundary conversion:
+ * AG Grid flat request -> Transactions backend request -> Transactions API.
  */
 const loadTransactionRows: GridRowsLoader<Transaction> = (request, context) =>
   listTransactions(
@@ -60,11 +58,8 @@ export interface TransactionsInfiniteGridProps {
 }
 
 /**
- * Transactions Infinite root: compose reusable capabilities, keep native AG Grid wiring visible.
- *
- * The root owns the authoritative `GridApi`, Transaction columns/configuration and the visible
- * composition of loading, selection, editing and Grid State. Normal row loading now provides both
- * complete and filtered counts, so selection never performs its own backend request.
+ * Transactions Infinite root. Native AG Grid configuration stays visible here while focused shared
+ * hooks own loading, selection, editing and Grid State behavior that genuinely has its own lifecycle.
  */
 export function TransactionsInfiniteGrid({
   selectionScope: selectionScopeOverride,
@@ -76,13 +71,9 @@ export function TransactionsInfiniteGrid({
   const gridOptions =
     gridOptionsOverride ?? transactionsGridConfig.infinite.gridOptions;
 
-  /** The concrete root remains the single owner of AG Grid's imperative API. */
+  /** Keep the one AG Grid API instance here because this root renders and owns this grid. */
   const gridApi = useRef<GridApi<Transaction> | null>(null);
 
-  /**
-   * Loading owns datasource/error/retry state and exposes the complete dataset count returned by the
-   * normal page request. No count-only API request exists anymore.
-   */
   const {
     datasource,
     error: loadError,
@@ -94,16 +85,12 @@ export function TransactionsInfiniteGrid({
     loadRows: loadTransactionRows,
   });
 
-  /**
-   * Infinite selection consumes the normal loading metadata. Filtered count is read from AG Grid's
-   * accepted current model; all-record count comes from `totalCount` above.
-   */
   const {
     selectionColumnDef,
-    onRowsChanged,
+    onRowsChanged: syncSelectionAfterRowsChange,
     onRowSelected,
     onSelectionChanged,
-    onFilterChanged: onSelectionFilterChanged,
+    resetFilterDependentSelection,
   } = useInfiniteSelectionController({
     gridApi,
     scope: selectionScope,
@@ -112,7 +99,6 @@ export function TransactionsInfiniteGrid({
     onSelectionChange,
   });
 
-  /** Transaction configuration supplies only editable fields/identity; mechanics stay shared. */
   const {
     editedRowCount,
     lastEdit,
@@ -135,33 +121,49 @@ export function TransactionsInfiniteGrid({
       key: INFINITE_STATE_KEY,
     });
 
-  /** Capture the authoritative API, then let selection inspect the materialised model asynchronously. */
+  /**
+   * AG Grid gives us its API once the grid has initialised. Selection then performs one deferred read
+   * because the API can be ready slightly before the initial Infinite rows have been materialised.
+   */
   const handleGridReady = useCallback(
     (event: GridReadyEvent<Transaction>) => {
       gridApi.current = event.api;
-      window.setTimeout(onRowsChanged, 0);
+      window.setTimeout(syncSelectionAfterRowsChange, 0);
     },
-    [onRowsChanged],
+    [syncSelectionAfterRowsChange],
   );
 
-  /** Restore accumulated edits whenever Infinite creates/recreates RowNodes. */
-  const handleFirstDataRendered = useCallback(
-    (event: FirstDataRenderedEvent<Transaction>) =>
-      restoreTrackedEdits(event.api),
-    [restoreTrackedEdits],
-  );
+  /**
+   * Runs when AG Grid changes/loads rows for the Infinite model or pagination.
+   *
+   * If a transaction was edited locally, then its old backend value may appear again after its page or
+   * cache block is loaded later. Reapply the unsaved value so navigating away and back does not make
+   * the user's edit disappear. The same row change is also where custom dataset selection is synced.
+   *
+   * We do not use `viewportChanged`: ordinary scrolling can change which DOM rows are visible without
+   * representing the server-row lifecycle we care about. `firstDataRendered` is also unnecessary for
+   * edit restoration because no user edit can exist before the first data render in this grid instance.
+   */
+  const handleRowsChanged = useCallback(() => {
+    syncSelectionAfterRowsChange();
 
-  const handleViewportChanged = useCallback(
-    (event: ViewportChangedEvent<Transaction>) =>
-      restoreTrackedEdits(event.api),
-    [restoreTrackedEdits],
-  );
+    const api = gridApi.current;
+    if (api) {
+      restoreTrackedEdits(api);
+    }
+  }, [restoreTrackedEdits, syncSelectionAfterRowsChange]);
 
-  /** Filter changes cross loading and selection, so the root composes those two capabilities visibly. */
+  /**
+   * Runs after the user changes a grid filter.
+   *
+   * A new filter starts a different server query, so an error from the previous query should disappear.
+   * Also clear selection state whose meaning depended on the previous filtered result. All Records and
+   * ordinary explicit IDs remain valid because they do not depend on the visible filter.
+   */
   const handleFilterChanged = useCallback(() => {
     clearLoadError();
-    onSelectionFilterChanged();
-  }, [clearLoadError, onSelectionFilterChanged]);
+    resetFilterDependentSelection();
+  }, [clearLoadError, resetFilterDependentSelection]);
 
   return (
     <Stack spacing={2}>
@@ -202,10 +204,8 @@ export function TransactionsInfiniteGrid({
               : undefined
           }
           onGridReady={handleGridReady}
-          onFirstDataRendered={handleFirstDataRendered}
-          onViewportChanged={handleViewportChanged}
-          onModelUpdated={onRowsChanged}
-          onPaginationChanged={onRowsChanged}
+          onModelUpdated={handleRowsChanged}
+          onPaginationChanged={handleRowsChanged}
           onRowSelected={onRowSelected}
           onSelectionChanged={onSelectionChanged}
           onFilterChanged={handleFilterChanged}
