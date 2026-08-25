@@ -120,16 +120,44 @@ Selection and editing remain separate concerns:
 - `getCurrentPageNodes()` is a shared grid pagination primitive used where row-model-independent page
   boundaries are required.
 - `buildSelectedTransactionUpdatePayload()` is a pure helper for `edited ∩ selected` backend payloads.
+- `InfiniteCurrentPageSelectionHeader` is shared Infinite-row-model behavior: it reads native page
+  RowNodes and calls native `setNodesSelected()` without storing selected IDs.
 - `TransactionEditingControls` is prototype presentation only and is not the editing architecture.
 
-## Row-model boundary
+## Row-model boundary after native-state audit
 
-Infinite and SSRM must not be forced through the same selection implementation.
+Infinite and SSRM are intentionally not forced through the same selection implementation.
 
-- Infinite: use native row selection where supported; custom state is justified only for behavior the
-  Infinite Row Model cannot represent, especially dataset-wide Select All across unloaded rows.
-- SSRM: prefer Enterprise server-side selection state (`getServerSideSelectionState()` /
-  `setServerSideSelectionState()`) for unloaded/native selection. Custom logic is reserved for unsupported
-  semantics such as Select All Filtered or Current Page behavior where documented by AG Grid.
+### Infinite current-page/manual selection
 
-The SSRM editing bridge should be added only after the native-selection audit is complete.
+AG Grid is the selection source of truth. Stable `getRowId` lets the Infinite Row Model retain row
+selection through sorting, filtering and cache recreation. The current-page header is only a custom
+shortcut because Infinite does not provide a usable native server-backed Select All header. It derives
+its checkbox appearance from native RowNodes and changes selection through native `setNodesSelected()`.
+
+The removed `useCurrentPageSelection()` hook previously stored selected IDs and current-page IDs in React.
+That duplication is no longer necessary.
+
+### Infinite filtered/all dataset selection
+
+Application selection state remains deliberate here. Infinite cannot represent Select All across unloaded
+server rows, nor the `exclude [exceptions]` meaning required for All Filtered / All Records. Once this mode
+is chosen, one compact logical controller owns that unsupported dataset-wide meaning and synchronises only
+currently materialised RowNodes for checkbox display.
+
+Keeping one controller for this dataset mode is preferred over a half-native/half-custom state machine in
+which AG Grid owns some selected IDs while application state separately owns unloaded Select-All exceptions.
+
+### SSRM
+
+Manual selection and All Records remain Enterprise/native and are read through
+`getServerSideSelectionState()` / written through `setServerSideSelectionState()` where needed. Current Page
+uses native RowNodes + `setNodesSelected()` because SSRM does not support `selectAll: 'currentPage'`.
+Select All Filtered keeps small application state because SSRM also does not support
+`selectAll: 'filtered'` across unloaded rows.
+
+Applied filter models are not mirrored into React state in either row model. They are read from AG Grid and
+retained only as non-rendering action-time refs where a future backend payload needs query context.
+
+The native/state/reuse audit is complete for the current foundation. The SSRM editing bridge and final Flow
+1 / Flow 2 presentation remain intentionally deferred until the editing UX discussion resumes.
