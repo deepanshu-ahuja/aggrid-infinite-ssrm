@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import { Alert, Box, Stack, Typography } from '@mui/material';
+import { Box, Stack, Typography } from '@mui/material';
 import type {
   FirstDataRenderedEvent,
   GetRowIdParams,
@@ -18,7 +18,6 @@ import type {
   ServerSelectionIntent,
 } from '@/shared/grid/selection/serverSelection';
 import { useGridStatePersistence } from '@/shared/grid/state/useGridStatePersistence';
-import { listTransactions } from '../api/transactions.api';
 import type { Transaction } from '../api/transactions.contracts';
 import {
   transactionsGridConfig,
@@ -48,172 +47,155 @@ export interface TransactionsInfiniteGridProps {
 /**
  * Transactions Infinite root: compose reusable capabilities, keep native AG Grid wiring visible.
  *
- * The root intentionally owns only cross-capability orchestration and feature composition:
- * - one authoritative `GridApi`;
- * - Transaction columns/config/API-specific count loader;
- * - editing + Infinite selection + Infinite row-loading capabilities;
- * - native AG Grid event/prop wiring.
- *
- * Row-model mechanics themselves live under `shared/grid`; Transactions-specific request/API logic
- * remains under the feature. This keeps the next Infinite table from copying lifecycle machinery while
- * avoiding a broad wrapper around `AgGridReact`.
+ * The root owns the authoritative `GridApi`, Transaction columns/configuration and the visible
+ * composition of loading, selection, editing and Grid State. Normal row loading now provides both
+ * complete and filtered counts, so selection never performs its own backend request.
  */
 export function TransactionsInfiniteGrid({
   selectionScope: selectionScopeOverride,
   gridOptions: gridOptionsOverride,
   onSelectionChange,
 }: TransactionsInfiniteGridProps) {
-  /** Derived configuration has no independent lifecycle and therefore does not need React state. */
   const selectionScope =
     selectionScopeOverride ?? transactionsGridConfig.infinite.selectionScope;
   const gridOptions =
     gridOptionsOverride ?? transactionsGridConfig.infinite.gridOptions;
 
-  /**
-   * The root remains the single owner of AG Grid's imperative API. Capability hooks receive the ref
-   * so they can perform narrowly-scoped native operations without introducing another API owner.
-   */
+  /** The concrete root remains the single owner of AG Grid's imperative API. */
   const gridApi = useRef<GridApi<Transaction> | null>(null);
 
   /**
-   * All-record Infinite selection needs one unfiltered count. The lifecycle is generic, but the API
-   * request remains Transaction-specific. Limit 1 avoids transferring a full page for a count only.
+   * Loading owns datasource/error/retry state and exposes the complete dataset count returned by the
+   * normal page request. No count-only API request exists anymore.
    */
-  const loadAllTotal = useCallback(async (signal: AbortSignal) => {
-    const { totalCount } = await listTransactions(
-      { offset: 0, limit: 1, sort: [], filters: [] },
-      signal,
-    );
-    return totalCount;
-  }, []);
-
-  /**
-   * One cohesive Infinite-selection capability owns totals, logical dataset selection, loaded-row
-   * reconciliation, selection-column headers and row-model-specific selection events.
-   */
-  const infiniteSelection = useInfiniteSelectionController({
-    gridApi,
-    scope: selectionScope,
-    getRowId: getTransactionId,
-    loadAllTotal,
-    onSelectionChange,
-  });
-
-  /**
-   * Infinite loading owns datasource identity/error/retry mechanics. The feature loader itself is
-   * shared with SSRM because both row-model adapters already emit the same flat block request.
-   */
-  const infiniteLoading = useInfiniteRowLoading({
+  const {
+    datasource,
+    error: loadError,
+    totalCount,
+    retry: retryLoad,
+    clearError: clearLoadError,
+  } = useInfiniteRowLoading({
     gridApi,
     loadRows: loadTransactionGridRows,
   });
 
-  /** Transaction configuration supplies only editable fields/identity; edit state is row-model-neutral. */
-  const editing = useTrackedGridEditing(transactionEditingConfig);
+  /**
+   * Infinite selection consumes the normal loading metadata. Filtered count is read from AG Grid's
+   * accepted current model; all-record count comes from `totalCount` above.
+   */
+  const {
+    selectionColumnDef,
+    onRowsChanged,
+    onRowSelected,
+    onSelectionChanged,
+    onFilterChanged: onSelectionFilterChanged,
+  } = useInfiniteSelectionController({
+    gridApi,
+    scope: selectionScope,
+    getRowId: getTransactionId,
+    totalCount,
+    onSelectionChange,
+  });
 
-  /** Current-page edit actions are also row-model-neutral and resolve targets from the root GridApi. */
-  const editActions = useCurrentPageEditActions(
-    {
-      lastEdit: editing.lastEdit,
-      applyChangesToNodes: editing.applyChangesToNodes,
-    },
+  /** Transaction configuration supplies only editable fields/identity; mechanics stay shared. */
+  const {
+    editedRowCount,
+    lastEdit,
+    applyChangesToNodes,
+    restoreTrackedEdits,
+    handleCellValueChanged,
+  } = useTrackedGridEditing(transactionEditingConfig);
+
+  const {
+    error: editActionError,
+    applyLastEdit,
+    applyBulkChanges,
+  } = useCurrentPageEditActions(
+    { lastEdit, applyChangesToNodes },
     gridApi,
   );
 
-  /** Persist native AG Grid preference state without hiding native props behind an application wrapper. */
-  const gridState = useGridStatePersistence<Transaction>({
-    key: INFINITE_STATE_KEY,
-  });
+  const { initialState, onStateUpdated } =
+    useGridStatePersistence<Transaction>({
+      key: INFINITE_STATE_KEY,
+    });
 
-  /**
-   * Root lifecycle orchestration stays visible: capture the authoritative API first, then let the
-   * Infinite selection capability read model-derived state after AG Grid materialises initial rows.
-   */
+  /** Capture the authoritative API, then let selection inspect the materialised model asynchronously. */
   const handleGridReady = useCallback(
     (event: GridReadyEvent<Transaction>) => {
       gridApi.current = event.api;
-      window.setTimeout(infiniteSelection.onRowsChanged, 0);
+      window.setTimeout(onRowsChanged, 0);
     },
-    [infiniteSelection.onRowsChanged],
+    [onRowsChanged],
   );
 
-  /** Restore accumulated unsaved edits when initial Infinite RowNodes materialise. */
+  /** Restore accumulated edits whenever Infinite creates/recreates RowNodes. */
   const handleFirstDataRendered = useCallback(
     (event: FirstDataRenderedEvent<Transaction>) =>
-      editing.restoreTrackedEdits(event.api),
-    [editing.restoreTrackedEdits],
+      restoreTrackedEdits(event.api),
+    [restoreTrackedEdits],
   );
 
-  /** Restore edits again when pagination/cache churn creates a different set of RowNodes. */
   const handleViewportChanged = useCallback(
     (event: ViewportChangedEvent<Transaction>) =>
-      editing.restoreTrackedEdits(event.api),
-    [editing.restoreTrackedEdits],
+      restoreTrackedEdits(event.api),
+    [restoreTrackedEdits],
   );
 
-  /**
-   * Filter change crosses two capabilities: a fresh query should not show an old loading error, and
-   * Infinite selection must invalidate query-derived totals/filtered selection where appropriate.
-   */
+  /** Filter changes cross loading and selection, so the root composes those two capabilities visibly. */
   const handleFilterChanged = useCallback(() => {
-    infiniteLoading.clearError();
-    infiniteSelection.onFilterChanged();
-  }, [infiniteLoading.clearError, infiniteSelection.onFilterChanged]);
+    clearLoadError();
+    onSelectionFilterChanged();
+  }, [clearLoadError, onSelectionFilterChanged]);
 
   return (
     <Stack spacing={2}>
       <TransactionEditingControls
-        editedRowCount={editing.editedRowCount}
-        lastEdit={editing.lastEdit}
-        onApplyLastEdit={editActions.applyLastEdit}
-        onApplyBulkEdit={editActions.applyBulkChanges}
+        editedRowCount={editedRowCount}
+        lastEdit={lastEdit}
+        onApplyLastEdit={applyLastEdit}
+        onApplyBulkEdit={applyBulkChanges}
       />
 
-      {editActions.error ? (
+      {editActionError ? (
         <Typography variant="body2" color="warning.main">
-          {editActions.error}
+          {editActionError}
         </Typography>
-      ) : null}
-
-      {infiniteSelection.supportError ? (
-        <Alert severity="error">{infiniteSelection.supportError}</Alert>
       ) : null}
 
       <Box sx={{ height: 620, width: '100%' }}>
         <AgGridReact<Transaction>
           {...gridOptions}
           rowModelType="infinite"
-          datasource={infiniteLoading.datasource}
+          datasource={datasource}
           columnDefs={transactionColumns}
           getRowId={getRowId}
-          initialState={gridState.initialState}
+          initialState={initialState}
           rowSelection={{
             mode: 'multiRow',
             headerCheckbox: false,
             enableClickSelection: false,
           }}
-          selectionColumnDef={infiniteSelection.selectionColumnDef}
-          activeOverlay={
-            infiniteLoading.error ? GridErrorOverlay : undefined
-          }
+          selectionColumnDef={selectionColumnDef}
+          activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={
-            infiniteLoading.error
+            loadError
               ? {
-                  message: infiniteLoading.error,
-                  onRetry: infiniteLoading.retry,
+                  message: loadError,
+                  onRetry: retryLoad,
                 }
               : undefined
           }
           onGridReady={handleGridReady}
           onFirstDataRendered={handleFirstDataRendered}
           onViewportChanged={handleViewportChanged}
-          onModelUpdated={infiniteSelection.onRowsChanged}
-          onPaginationChanged={infiniteSelection.onRowsChanged}
-          onRowSelected={infiniteSelection.onRowSelected}
-          onSelectionChanged={infiniteSelection.onSelectionChanged}
+          onModelUpdated={onRowsChanged}
+          onPaginationChanged={onRowsChanged}
+          onRowSelected={onRowSelected}
+          onSelectionChanged={onSelectionChanged}
           onFilterChanged={handleFilterChanged}
-          onCellValueChanged={editing.handleCellValueChanged}
-          onStateUpdated={gridState.onStateUpdated}
+          onCellValueChanged={handleCellValueChanged}
+          onStateUpdated={onStateUpdated}
         />
       </Box>
     </Stack>
