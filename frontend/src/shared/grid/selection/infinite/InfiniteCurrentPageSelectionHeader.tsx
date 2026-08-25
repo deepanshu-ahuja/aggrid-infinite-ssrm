@@ -15,63 +15,45 @@ const EMPTY_HEADER_STATE: SelectionHeaderState = {
   disabled: true,
 };
 
+/** Derive the visual checkbox state from AG Grid without creating another selection source of truth. */
+function readCurrentPageHeaderState<TData>(api: GridApi<TData>): SelectionHeaderState {
+  const pageNodes = getCurrentPageNodes(api);
+
+  if (!pageNodes || pageNodes.length === 0) return EMPTY_HEADER_STATE;
+
+  const selectedCount = pageNodes.reduce(
+    (count, node) => count + (node.isSelected() === true ? 1 : 0),
+    0,
+  );
+
+  return {
+    checked: selectedCount === pageNodes.length,
+    indeterminate: selectedCount > 0 && selectedCount < pageNodes.length,
+    disabled: false,
+  };
+}
+
 /**
  * Infinite Row Model header shortcut for selecting/clearing the CURRENT pagination page.
- *
- * WHY THIS COMPONENT EXISTS
- * -------------------------
- * Infinite Row Model supports native per-row selection but does not provide a native Select-All
- * header across its server-backed rows. For the `page` UX we therefore need a custom header action.
- *
- * WHAT IS NATIVE
- * --------------
- * The selected rows themselves remain AG Grid-owned. This component does NOT keep selected IDs or
- * current-page IDs in React. At render/refresh time it reads native RowNodes; on click it calls
- * native `api.setNodesSelected()`.
- *
- * WHAT THE SMALL REACT STATE IS
- * -----------------------------
- * `headerState` is presentation state only (checked/indeterminate/disabled) for this custom MUI
- * checkbox. It is always re-derived from AG Grid events and is never a second selection source of
- * truth.
+ * Selected rows remain AG Grid-owned; React stores only derived checkbox presentation state.
  */
 export function InfiniteCurrentPageSelectionHeader<TData>({
   api,
 }: InfiniteCurrentPageSelectionHeaderProps<TData>) {
-  const [headerState, setHeaderState] =
-    useState<SelectionHeaderState>(EMPTY_HEADER_STATE);
+  /** Read the initial external-grid snapshot during state initialization, not by setting state in an effect. */
+  const [headerState, setHeaderState] = useState<SelectionHeaderState>(() =>
+    readCurrentPageHeaderState(api),
+  );
 
   const refreshFromGrid = useCallback(() => {
-    const pageNodes = getCurrentPageNodes(api);
-
-    if (!pageNodes || pageNodes.length === 0) {
-      setHeaderState(EMPTY_HEADER_STATE);
-      return;
-    }
-
-    const selectedCount = pageNodes.reduce(
-      (count, node) => count + (node.isSelected() === true ? 1 : 0),
-      0,
-    );
-
-    setHeaderState({
-      checked: selectedCount === pageNodes.length,
-      indeterminate: selectedCount > 0 && selectedCount < pageNodes.length,
-      disabled: false,
-    });
+    setHeaderState(readCurrentPageHeaderState(api));
   }, [api]);
 
   useEffect(() => {
-    /**
-     * These are AG Grid lifecycle events, not application mirrors. Any event that can change which
-     * rows are on the page or whether they are selected causes the visual header state to be read
-     * again from the native grid.
-     */
+    /** The effect only subscribes/unsubscribes to AG Grid; events drive later React state updates. */
     api.addEventListener('selectionChanged', refreshFromGrid);
     api.addEventListener('paginationChanged', refreshFromGrid);
     api.addEventListener('modelUpdated', refreshFromGrid);
-
-    refreshFromGrid();
 
     return () => {
       api.removeEventListener('selectionChanged', refreshFromGrid);
@@ -97,10 +79,6 @@ export function InfiniteCurrentPageSelectionHeader<TData>({
             const pageNodes = getCurrentPageNodes(api);
             if (!pageNodes) return;
 
-            /**
-             * Native AG Grid selection preserves selections from other pages. Selecting/clearing this
-             * page therefore changes only these concrete RowNodes; it does not rebuild global IDs.
-             */
             api.setNodesSelected({
               nodes: pageNodes,
               newValue: !headerState.checked,

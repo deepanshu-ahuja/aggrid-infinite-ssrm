@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Box, Button, Stack, Typography } from '@mui/material';
+import { Alert, Box, Stack, Typography } from '@mui/material';
 import type {
   FirstDataRenderedEvent,
   GetRowIdParams,
@@ -8,17 +8,22 @@ import type {
   RowSelectedEvent,
   SelectionChangedEvent,
   SelectionColumnDef,
-  StateUpdatedEvent,
   ViewportChangedEvent,
 } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
 import { createInfiniteDatasource } from '@/shared/grid/data/infinite/createInfiniteDatasource';
+import { useCurrentPageEditActions } from '@/shared/grid/editing/useCurrentPageEditActions';
+import { useTrackedGridEditing } from '@/shared/grid/editing/useTrackedGridEditing';
 import { GridErrorOverlay } from '@/shared/grid/overlays/GridErrorOverlay';
 import { InfiniteCurrentPageSelectionHeader } from '@/shared/grid/selection/infinite/InfiniteCurrentPageSelectionHeader';
 import { useDatasetSelection } from '@/shared/grid/selection/infinite/useDatasetSelection';
+import { useInfiniteDatasetSelectionSupport } from '@/shared/grid/selection/infinite/useInfiniteDatasetSelectionSupport';
 import { SelectionHeaderCheckbox } from '@/shared/grid/selection/SelectionHeaderCheckbox';
-import type { InfiniteSelectionMode, ServerSelectionIntent } from '@/shared/grid/selection/serverSelection';
-import { browserGridStateStore } from '@/shared/grid/state/gridStatePersistence';
+import type {
+  InfiniteSelectionMode,
+  ServerSelectionIntent,
+} from '@/shared/grid/selection/serverSelection';
+import { useGridStatePersistence } from '@/shared/grid/state/useGridStatePersistence';
 import { listTransactions } from '../api/transactions.api';
 import type { Transaction } from '../api/transactions.contracts';
 import {
@@ -26,138 +31,152 @@ import {
   type TransactionsInfiniteGridOptions,
 } from '../transactionsGrid.config';
 import { TransactionEditingControls } from './TransactionEditingControls';
-import {
-  buildTransactionBulkSelection,
-  type TransactionBulkSelection,
-} from './transactionBulkSelection';
-import {
-  buildSelectedTransactionUpdatePayload,
-  useTransactionEditing,
-  type TransactionUpdatePayload,
-} from './transactionEditing';
+import { transactionEditingConfig } from './transactionEditing';
 import { transactionColumns } from './transactionColumns';
 import { mapTransactionGridRequest } from './transactionRequest.mapper';
-import { useTransactionEditFlows } from './useTransactionEditFlows';
 
+/**
+ * Grid State persistence key is row-model-specific because Infinite and SSRM may legitimately save
+ * different native AG Grid state even when they render the same Transaction columns.
+ */
 const INFINITE_STATE_KEY = 'transactions:infinite';
 
-/** Stable backend identity lets Infinite preserve native row selection across cache recreation. */
+/**
+ * Stable backend identity is required for native Infinite row selection and local edit restoration
+ * to survive cache eviction / RowNode recreation.
+ */
 const getRowId = ({ data }: GetRowIdParams<Transaction>) => data.id;
 
 export interface TransactionsInfiniteGridProps {
-  /** Optional override for the Infinite header selection behavior. */
+  /** Optional selection mode override used by embedding/tests; config remains the normal source. */
   selectionScope?: InfiniteSelectionMode;
-  /** Optional native GridOptions override for tests/embedding. */
+  /** Optional native AG Grid options override; this is not a wrapper-specific option surface. */
   gridOptions?: TransactionsInfiniteGridOptions;
-  /** Optional consumer notification of the current logical selection. */
+  /** Publishes the logical include/exclude selection without exposing internal selection machinery. */
   onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
 }
 
 /**
- * Production-shaped Transactions Infinite root.
+ * Concrete Transactions Infinite-grid composition.
  *
- * ROOT OWNERSHIP RULE
- * -------------------
- * This component owns the actual `<AgGridReact>` and ONE authoritative `GridApi` ref. Native filter,
- * sort, pagination and ordinary selection information is read from that API when needed; it is not
- * mirrored upward through React state/refs.
+ * OWNERSHIP BOUNDARY
+ * ------------------
+ * This component deliberately owns `<AgGridReact>` and the one authoritative `GridApi` ref. Shared
+ * hooks provide narrowly-scoped capabilities around that root (editing, dataset selection support,
+ * Grid State persistence), but they do not hide native AG Grid props/events behind an app wrapper.
  *
- * Application state remains only where Infinite cannot represent the business meaning:
- * - dataset-wide Select All over unloaded filtered/all records;
- * - accumulated unsaved edits keyed by stable transaction ID;
- * - supporting totals/errors and temporary development preview UI.
+ * TEMPORARY DEV UI
+ * ----------------
+ * Developer payload previews are intentionally NOT wired into this root. Temporary diagnostics must
+ * not force production lifecycle callbacks, dependency arrays or selection/edit state to exist. The
+ * underlying reusable selection/edit helpers remain available for a future real action UI.
  */
 export function TransactionsInfiniteGrid({
   selectionScope: selectionScopeOverride,
   gridOptions: gridOptionsOverride,
   onSelectionChange,
 }: TransactionsInfiniteGridProps) {
+  /** Derived configuration; no independent state lifecycle is required. */
   const selectionScope =
     selectionScopeOverride ?? transactionsGridConfig.infinite.selectionScope;
   const gridOptions =
     gridOptionsOverride ?? transactionsGridConfig.infinite.gridOptions;
 
-  /** The single authoritative AG Grid API for this rendered Infinite grid. */
+  /**
+   * Single authoritative imperative AG Grid API for this rendered grid.
+   * A ref is correct because assigning the API does not itself change UI.
+   */
   const gridApi = useRef<GridApi<Transaction> | null>(null);
 
+  /**
+   * Failure from the normal Infinite row datasource. This is separate from selection-support errors
+   * because supporting totals may fail while ordinary row loading remains usable.
+   */
   const [loadError, setLoadError] = useState<string>();
-  const [filteredTotal, setFilteredTotal] = useState(0);
-  const [allTotal, setAllTotal] = useState(0);
-  const [totalError, setTotalError] = useState<string>();
-
-  /** Development presentation state only; these do not duplicate AG Grid state. */
-  const [selectionPreview, setSelectionPreview] =
-    useState<TransactionBulkSelection>();
-  const [selectionPreviewError, setSelectionPreviewError] = useState<string>();
-  const [selectedEditPreview, setSelectedEditPreview] =
-    useState<TransactionUpdatePayload>();
-  const [showAllLocalEdits, setShowAllLocalEdits] = useState(false);
 
   /**
-   * Dataset selection is the one Infinite selection capability that must remain application-owned.
-   * Page/manual mode never uses this controller as its source of truth.
+   * Feature-owned way to load the COMPLETE unfiltered Transaction count. The shared support hook
+   * owns request lifetime/error/count state; Transactions owns only the API request shape.
    */
-  const datasetSelection = useDatasetSelection({
+  const loadAllTotal = useCallback(async (signal: AbortSignal) => {
+    const { totalCount } = await listTransactions(
+      { offset: 0, limit: 1, sort: [], filters: [] },
+      signal,
+    );
+    return totalCount;
+  }, []);
+
+  /**
+   * Supporting counts required for dataset-level Infinite selection across unloaded rows.
+   * `setFilteredTotal` receives AG Grid's accepted model count; reset removes stale old-query data.
+   */
+  const {
+    totalRowCount,
+    error: datasetSupportError,
+    setFilteredTotal,
+    resetFilteredTotal,
+  } = useInfiniteDatasetSelectionSupport({
+    scope: selectionScope,
+    loadAllTotal,
+  });
+
+  /**
+   * Application-owned logical selection exists only for filtered/all dataset modes. Page/manual
+   * selection remains native AG Grid state and is published from `onSelectionChanged` below.
+   */
+  const {
+    intent: datasetSelectionIntent,
+    isRowSelected,
+    setRowSelected,
+    headerState,
+    headerLabel,
+    setHeaderSelected,
+    onFilterChanged: onDatasetFilterChanged,
+  } = useDatasetSelection({
     scope: selectionScope === 'all' ? 'all' : 'filtered',
-    totalRowCount:
-      selectionScope === 'all'
-        ? allTotal
-        : selectionScope === 'filtered'
-          ? filteredTotal
-          : 0,
+    totalRowCount,
     onSelectionChange:
       selectionScope === 'page' ? undefined : onSelectionChange,
   });
 
-  /** Accumulated local edits survive Infinite cache eviction by stable transaction ID. */
-  const editing = useTransactionEditing();
+  /**
+   * Shared edit engine owns cache-surviving mechanics; Transactions supplies row identity, editable
+   * fields and typed field reads through `transactionEditingConfig`.
+   */
+  const {
+    editedRowCount,
+    handleCellValueChanged,
+    lastEdit,
+    applyChangesToNodes,
+    restoreTrackedEdits,
+  } = useTrackedGridEditing(transactionEditingConfig);
 
-  /** Flow 1 / Flow 2 consume the SAME root GridApi instead of capturing another API ref. */
-  const editFlows = useTransactionEditFlows(editing, gridApi);
-
-  /** Native Grid State preferences; localStorage is only today's replaceable store implementation. */
-  const initialState = useMemo(
-    () => browserGridStateStore.load(INFINITE_STATE_KEY),
-    [],
+  /**
+   * Reusable current-page edit actions resolve page/selected-page RowNodes from the same root GridApi
+   * and delegate mutation to the edit engine.
+   */
+  const {
+    error: editActionError,
+    applyLastEdit,
+    applyBulkChanges,
+  } = useCurrentPageEditActions(
+    { lastEdit, applyChangesToNodes },
+    gridApi,
   );
 
-  const handleStateUpdated = useCallback(
-    (event: StateUpdatedEvent<Transaction>) => {
-      browserGridStateStore.save(INFINITE_STATE_KEY, event.state);
-    },
-    [],
-  );
+  /**
+   * Shared bridge persists native AG Grid user preferences while this root still wires the returned
+   * native props directly onto `<AgGridReact>`.
+   */
+  const { initialState, onStateUpdated } =
+    useGridStatePersistence<Transaction>({
+      key: INFINITE_STATE_KEY,
+    });
 
-  /** All-record custom Select All needs a complete unfiltered backend total. */
-  useEffect(() => {
-    if (selectionScope !== 'all') return;
-
-    const controller = new AbortController();
-
-    void listTransactions(
-      {
-        offset: 0,
-        limit: 1,
-        sort: [],
-        filters: [],
-      },
-      controller.signal,
-    )
-      .then(({ totalCount }) => {
-        setAllTotal(totalCount);
-        setTotalError(undefined);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setTotalError(
-            'The total row count required for all-record selection could not be loaded.',
-          );
-        }
-      });
-
-    return () => controller.abort();
-  }, [selectionScope]);
-
+  /**
+   * Feature-specific row loader. AG Grid request translation stays at the Transactions boundary;
+   * successful recovery clears the visible row-load error after a request actually succeeds.
+   */
   const loadRows = useCallback(
     async (
       request: Parameters<typeof mapTransactionGridRequest>[0],
@@ -179,22 +198,16 @@ export function TransactionsInfiniteGrid({
     () =>
       createInfiniteDatasource<Transaction>({
         loadRows,
-        onError: () => {
-          setLoadError('Rows could not be loaded. Please retry.');
-        },
+        onError: () =>
+          setLoadError('Rows could not be loaded. Please retry.'),
       }),
     [loadRows],
   );
 
-  const clearActionPreviews = useCallback(() => {
-    setSelectionPreview(undefined);
-    setSelectionPreviewError(undefined);
-    setSelectedEditPreview(undefined);
-  }, []);
-
   /**
-   * Dataset Select All can describe unloaded rows, so newly materialised RowNodes reconcile from the
-   * custom include/exclude state. Page/manual mode deliberately skips this synchronization.
+   * Dataset selection can describe unloaded records while AG Grid checkboxes exist only for loaded
+   * RowNodes. Reconcile materialised nodes from logical include/exclude state. Page mode skips this
+   * because native selection already owns its rows.
    */
   const syncLoadedDatasetCheckboxes = useCallback(() => {
     if (selectionScope === 'page') return;
@@ -202,14 +215,19 @@ export function TransactionsInfiniteGrid({
     gridApi.current?.forEachNode((node) => {
       if (!node.data) return;
 
-      const shouldBeChecked = datasetSelection.isRowSelected(node.data.id);
+      const shouldBeChecked = isRowSelected(node.data.id);
 
       if (node.isSelected() !== shouldBeChecked) {
+        /** API source prevents visual reconciliation from becoming a new user selection action. */
         node.setSelected(shouldBeChecked, false, 'api');
       }
     });
-  }, [datasetSelection.isRowSelected, selectionScope]);
+  }, [isRowSelected, selectionScope]);
 
+  /**
+   * Runs after AG Grid changes its accepted model. Filtered totals are read from that accepted model
+   * rather than overlapping datasource responses, avoiding stale-request races.
+   */
   const updateAfterRowsChange = useCallback(() => {
     const api = gridApi.current;
     if (!api) return;
@@ -219,15 +237,20 @@ export function TransactionsInfiniteGrid({
     }
 
     syncLoadedDatasetCheckboxes();
-  }, [selectionScope, syncLoadedDatasetCheckboxes]);
+  }, [selectionScope, setFilteredTotal, syncLoadedDatasetCheckboxes]);
 
   useEffect(() => {
     if (selectionScope === 'page') return;
 
+    /** Logical selection can change without AG Grid replacing RowNodes, so refresh visible state. */
     syncLoadedDatasetCheckboxes();
     gridApi.current?.refreshHeader();
-  }, [datasetSelection.intent, selectionScope, syncLoadedDatasetCheckboxes]);
+  }, [datasetSelectionIntent, selectionScope, syncLoadedDatasetCheckboxes]);
 
+  /**
+   * Configure only AG Grid's dedicated selection column. Page mode keeps native row selection with a
+   * current-page header; dataset modes need an application header for unloaded filtered/all rows.
+   */
   const selectionColumnDef = useMemo<SelectionColumnDef>(() => {
     const base: SelectionColumnDef = {
       width: 52,
@@ -248,39 +271,14 @@ export function TransactionsInfiniteGrid({
       ...base,
       headerComponent: SelectionHeaderCheckbox,
       headerComponentParams: {
-        ...datasetSelection.headerState,
-        label: datasetSelection.headerLabel,
-        onChange: (checked: boolean) => {
-          datasetSelection.setHeaderSelected(checked);
-          clearActionPreviews();
-        },
+        ...headerState,
+        label: headerLabel,
+        onChange: setHeaderSelected,
       },
     };
-  }, [
-    clearActionPreviews,
-    datasetSelection.headerLabel,
-    datasetSelection.headerState,
-    datasetSelection.setHeaderSelected,
-    selectionScope,
-  ]);
+  }, [headerLabel, headerState, selectionScope, setHeaderSelected]);
 
-  const readPageSelectionIntent = useCallback((): ServerSelectionIntent<string> => {
-    const nativeSelection = gridApi.current?.getState().rowSelection;
-
-    return {
-      mode: 'include',
-      ids: Array.isArray(nativeSelection) ? nativeSelection : [],
-    };
-  }, []);
-
-  const readLogicalSelection = useCallback(
-    () =>
-      selectionScope === 'page'
-        ? readPageSelectionIntent()
-        : datasetSelection.intent,
-    [datasetSelection.intent, readPageSelectionIntent, selectionScope],
-  );
-
+  /** Capture the root GridApi and defer model-derived reads until AG Grid constructs initial rows. */
   const handleGridReady = useCallback(
     (event: GridReadyEvent<Transaction>) => {
       gridApi.current = event.api;
@@ -289,38 +287,48 @@ export function TransactionsInfiniteGrid({
     [updateAfterRowsChange],
   );
 
+  /** Restore local unsaved edits when the first set of RowNodes is materialised. */
   const handleFirstDataRendered = useCallback(
-    (event: FirstDataRenderedEvent<Transaction>) => {
-      editing.restoreTrackedEdits(event.api);
-    },
-    [editing.restoreTrackedEdits],
+    (event: FirstDataRenderedEvent<Transaction>) =>
+      restoreTrackedEdits(event.api),
+    [restoreTrackedEdits],
   );
 
+  /** Restore local edits when pagination/cache churn creates different RowNodes. */
   const handleViewportChanged = useCallback(
-    (event: ViewportChangedEvent<Transaction>) => {
-      editing.restoreTrackedEdits(event.api);
-    },
-    [editing.restoreTrackedEdits],
+    (event: ViewportChangedEvent<Transaction>) =>
+      restoreTrackedEdits(event.api),
+    [restoreTrackedEdits],
   );
 
+  /**
+   * Dataset-mode user checkbox changes update logical include/exclude state. API-sourced events are
+   * ignored because they were emitted by our own checkbox reconciliation.
+   */
   const handleRowSelected = useCallback(
     (event: RowSelectedEvent<Transaction>) => {
-      if (selectionScope === 'page') return;
-      if (event.source === 'api' || !event.data) return;
+      if (
+        selectionScope === 'page' ||
+        event.source === 'api' ||
+        !event.data
+      ) {
+        return;
+      }
 
-      datasetSelection.setRowSelected(
+      setRowSelected(
         event.data.id,
         event.node.isSelected() === true,
       );
-      clearActionPreviews();
     },
-    [clearActionPreviews, datasetSelection.setRowSelected, selectionScope],
+    [selectionScope, setRowSelected],
   );
 
+  /**
+   * Page mode publishes native AG Grid selection. Dataset modes publish from `useDatasetSelection`,
+   * so this event intentionally does not create a second publication path for those modes.
+   */
   const handleSelectionChanged = useCallback(
     (event: SelectionChangedEvent<Transaction>) => {
-      clearActionPreviews();
-
       if (selectionScope !== 'page') return;
 
       const nativeSelection = event.api.getState().rowSelection;
@@ -329,63 +337,26 @@ export function TransactionsInfiniteGrid({
         ids: Array.isArray(nativeSelection) ? nativeSelection : [],
       });
     },
-    [clearActionPreviews, onSelectionChange, selectionScope],
+    [onSelectionChange, selectionScope],
   );
 
+  /**
+   * A filter change starts a new server query: clear old row-load error, reset the old filtered
+   * count, then let dataset-selection semantics decide whether logical selection must reset.
+   */
   const handleFilterChanged = useCallback(() => {
     setLoadError(undefined);
-    clearActionPreviews();
 
     if (selectionScope === 'filtered') {
-      setFilteredTotal(0);
+      resetFilteredTotal();
     }
 
     if (selectionScope !== 'page') {
-      datasetSelection.onFilterChanged?.();
+      onDatasetFilterChanged?.();
     }
-  }, [clearActionPreviews, datasetSelection.onFilterChanged, selectionScope]);
+  }, [onDatasetFilterChanged, resetFilteredTotal, selectionScope]);
 
-  /**
-   * Reads native filter state from THIS root GridApi only when the action needs it. No filter ref,
-   * filter callback bridge or duplicate React state is maintained.
-   */
-  const handlePreviewSelectionPayload = useCallback(() => {
-    const api = gridApi.current;
-    if (!api) return;
-
-    try {
-      const selection = readLogicalSelection();
-      const nextPreview =
-        selectionScope === 'filtered'
-          ? buildTransactionBulkSelection(selection, {
-              selectionScope: 'filtered',
-              filterModel: api.getFilterModel(),
-            })
-          : buildTransactionBulkSelection(selection, {
-              selectionScope,
-            });
-
-      setSelectionPreview(nextPreview);
-      setSelectionPreviewError(undefined);
-    } catch (error) {
-      setSelectionPreview(undefined);
-      setSelectionPreviewError(
-        error instanceof Error
-          ? error.message
-          : 'The selection payload could not be built.',
-      );
-    }
-  }, [readLogicalSelection, selectionScope]);
-
-  const handlePreviewSelectedEdits = useCallback(() => {
-    setSelectedEditPreview(
-      buildSelectedTransactionUpdatePayload(
-        editing.state,
-        readLogicalSelection(),
-      ),
-    );
-  }, [editing.state, readLogicalSelection]);
-
+  /** Retry AG Grid's native Infinite cache after removing the currently rendered error overlay. */
   const handleRetryLoad = useCallback(() => {
     setLoadError(undefined);
     gridApi.current?.refreshInfiniteCache();
@@ -394,115 +365,21 @@ export function TransactionsInfiniteGrid({
   return (
     <Stack spacing={2}>
       <TransactionEditingControls
-        editedRowCount={editing.editedRowCount}
-        lastEdit={editing.lastEdit}
-        onApplyLastEdit={(target) => {
-          if (editFlows.applyLastEdit(target)) setShowAllLocalEdits(false);
-        }}
-        onApplyBulkEdit={(target, changes) => {
-          if (editFlows.applyBulkChanges(target, changes)) {
-            setShowAllLocalEdits(false);
-          }
-        }}
-        onPreviewPayload={() => setShowAllLocalEdits(true)}
+        editedRowCount={editedRowCount}
+        lastEdit={lastEdit}
+        onApplyLastEdit={applyLastEdit}
+        onApplyBulkEdit={applyBulkChanges}
       />
 
-      {editFlows.error ? (
+      {editActionError ? (
         <Typography variant="body2" color="warning.main">
-          {editFlows.error}
+          {editActionError}
         </Typography>
       ) : null}
 
-      {import.meta.env.DEV ? (
-        <Stack spacing={1.5}>
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={1}
-            alignItems={{ sm: 'center' }}
-          >
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={handlePreviewSelectionPayload}
-            >
-              Preview selection payload
-            </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={handlePreviewSelectedEdits}
-            >
-              Preview selected edit payload
-            </Button>
-            <Typography variant="caption" color="text.secondary">
-              Development validation only — no backend action is called.
-            </Typography>
-          </Stack>
-
-          {showAllLocalEdits ? (
-            <Box
-              component="pre"
-              data-testid="all-local-edits-preview"
-              sx={{
-                m: 0,
-                p: 1.5,
-                overflowX: 'auto',
-                border: 1,
-                borderColor: 'divider',
-                borderRadius: 1,
-                bgcolor: 'background.default',
-                fontSize: '0.75rem',
-              }}
-            >
-              {JSON.stringify(editing.payload, null, 2)}
-            </Box>
-          ) : null}
-
-          {selectionPreviewError ? (
-            <Alert severity="error">{selectionPreviewError}</Alert>
-          ) : null}
-
-          {selectionPreview ? (
-            <Box
-              component="pre"
-              data-testid="selection-payload-preview"
-              sx={{
-                m: 0,
-                p: 1.5,
-                overflowX: 'auto',
-                border: 1,
-                borderColor: 'divider',
-                borderRadius: 1,
-                bgcolor: 'background.default',
-                fontSize: '0.75rem',
-              }}
-            >
-              {JSON.stringify(selectionPreview, null, 2)}
-            </Box>
-          ) : null}
-
-          {selectedEditPreview ? (
-            <Box
-              component="pre"
-              data-testid="selected-edit-payload-preview"
-              sx={{
-                m: 0,
-                p: 1.5,
-                overflowX: 'auto',
-                border: 1,
-                borderColor: 'divider',
-                borderRadius: 1,
-                bgcolor: 'background.default',
-                fontSize: '0.75rem',
-              }}
-            >
-              {JSON.stringify(selectedEditPreview, null, 2)}
-            </Box>
-          ) : null}
-        </Stack>
+      {datasetSupportError ? (
+        <Alert severity="error">{datasetSupportError}</Alert>
       ) : null}
-
-      {totalError ? <Alert severity="error">{totalError}</Alert> : null}
 
       <Box sx={{ height: 620, width: '100%' }}>
         <AgGridReact<Transaction>
@@ -521,10 +398,7 @@ export function TransactionsInfiniteGrid({
           activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={
             loadError
-              ? {
-                  message: loadError,
-                  onRetry: handleRetryLoad,
-                }
+              ? { message: loadError, onRetry: handleRetryLoad }
               : undefined
           }
           onGridReady={handleGridReady}
@@ -535,8 +409,8 @@ export function TransactionsInfiniteGrid({
           onRowSelected={handleRowSelected}
           onSelectionChanged={handleSelectionChanged}
           onFilterChanged={handleFilterChanged}
-          onCellValueChanged={editing.handleCellValueChanged}
-          onStateUpdated={handleStateUpdated}
+          onCellValueChanged={handleCellValueChanged}
+          onStateUpdated={onStateUpdated}
         />
       </Box>
     </Stack>
