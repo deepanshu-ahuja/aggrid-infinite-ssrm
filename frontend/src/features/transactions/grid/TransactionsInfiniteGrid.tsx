@@ -13,7 +13,6 @@ import type {
 import { AgGridReact } from 'ag-grid-react';
 import { createInfiniteDatasource } from '@/shared/grid/data/infinite/createInfiniteDatasource';
 import { useCurrentPageEditActions } from '@/shared/grid/editing/useCurrentPageEditActions';
-import { buildSelectedTrackedGridUpdatePayload } from '@/shared/grid/editing/trackedGridEditing';
 import { useTrackedGridEditing } from '@/shared/grid/editing/useTrackedGridEditing';
 import { GridErrorOverlay } from '@/shared/grid/overlays/GridErrorOverlay';
 import { InfiniteCurrentPageSelectionHeader } from '@/shared/grid/selection/infinite/InfiniteCurrentPageSelectionHeader';
@@ -31,9 +30,7 @@ import {
   transactionsGridConfig,
   type TransactionsInfiniteGridOptions,
 } from '../transactionsGrid.config';
-import { useTransactionsInfiniteGridDevTools } from './dev/useTransactionsInfiniteGridDevTools';
 import { TransactionEditingControls } from './TransactionEditingControls';
-import { buildTransactionBulkSelection } from './transactionBulkSelection';
 import { transactionEditingConfig } from './transactionEditing';
 import { transactionColumns } from './transactionColumns';
 import { mapTransactionGridRequest } from './transactionRequest.mapper';
@@ -68,20 +65,18 @@ export interface TransactionsInfiniteGridProps {
  * hooks provide narrowly-scoped capabilities around that root (editing, dataset selection support,
  * Grid State persistence), but they do not hide native AG Grid props/events behind an app wrapper.
  *
- * WHAT STAYS FEATURE-SPECIFIC
- * ---------------------------
- * Transaction columns, request mapping, API calls, editable-field configuration and final backend
- * selection payload mapping remain here/under the Transactions feature.
+ * TEMPORARY DEV UI
+ * ----------------
+ * Developer payload previews are intentionally NOT wired into this root. Temporary diagnostics must
+ * not force production lifecycle callbacks, dependency arrays or selection/edit state to exist. The
+ * underlying reusable selection/edit helpers remain available for a future real action UI.
  */
 export function TransactionsInfiniteGrid({
   selectionScope: selectionScopeOverride,
   gridOptions: gridOptionsOverride,
   onSelectionChange,
 }: TransactionsInfiniteGridProps) {
-  /**
-   * These are derived configuration values, not React state: a render is already triggered when the
-   * caller changes an override, and there is no independent lifecycle for these values to manage.
-   */
+  /** Derived configuration; no independent state lifecycle is required. */
   const selectionScope =
     selectionScopeOverride ?? transactionsGridConfig.infinite.selectionScope;
   const gridOptions =
@@ -89,27 +84,19 @@ export function TransactionsInfiniteGrid({
 
   /**
    * Single authoritative imperative AG Grid API for this rendered grid.
-   *
-   * A ref is correct because assigning the API does not itself change UI. Consumers read it only for
-   * imperative/native operations such as retry, reading Grid State/filter state, synchronising loaded
-   * checkboxes, or resolving current-page edit targets.
+   * A ref is correct because assigning the API does not itself change UI.
    */
   const gridApi = useRef<GridApi<Transaction> | null>(null);
 
   /**
-   * Failure from the normal Infinite row datasource.
-   *
-   * React state is required because the active AG Grid overlay depends on it. This is intentionally
-   * separate from `datasetSupportError`: supporting totals may fail while ordinary row loading works.
+   * Failure from the normal Infinite row datasource. This is separate from selection-support errors
+   * because supporting totals may fail while ordinary row loading remains usable.
    */
   const [loadError, setLoadError] = useState<string>();
 
   /**
-   * Feature-owned implementation for loading the COMPLETE unfiltered Transaction count.
-   *
-   * The shared selection-support hook owns when this is requested/aborted and how its error/count is
-   * stored. Transactions owns only the API contract and request shape. Limit 1 avoids transferring a
-   * full page when only `totalCount` is needed.
+   * Feature-owned way to load the COMPLETE unfiltered Transaction count. The shared support hook
+   * owns request lifetime/error/count state; Transactions owns only the API request shape.
    */
   const loadAllTotal = useCallback(async (signal: AbortSignal) => {
     const { totalCount } = await listTransactions(
@@ -120,9 +107,8 @@ export function TransactionsInfiniteGrid({
   }, []);
 
   /**
-   * Query-count support required only because Infinite cannot natively represent unloaded dataset
-   * selection. `setFilteredTotal` is fed from AG Grid's accepted model; `resetFilteredTotal` clears a
-   * stale old-query count immediately when filters change.
+   * Supporting counts required for dataset-level Infinite selection across unloaded rows.
+   * `setFilteredTotal` receives AG Grid's accepted model count; reset removes stale old-query data.
    */
   const {
     totalRowCount,
@@ -135,11 +121,8 @@ export function TransactionsInfiniteGrid({
   });
 
   /**
-   * Application-owned logical selection exists only for filtered/all dataset modes.
-   *
-   * Page mode remains native AG Grid selection; in that mode this controller is not the published
-   * source of truth. Destructuring the individual capabilities also keeps hook dependencies explicit
-   * instead of depending on an opaque controller object.
+   * Application-owned logical selection exists only for filtered/all dataset modes. Page/manual
+   * selection remains native AG Grid state and is published from `onSelectionChanged` below.
    */
   const {
     intent: datasetSelectionIntent,
@@ -157,22 +140,20 @@ export function TransactionsInfiniteGrid({
   });
 
   /**
-   * Shared edit engine owns cache-surviving mechanics; Transactions supplies only row identity,
-   * editable fields and typed field reads through `transactionEditingConfig`.
+   * Shared edit engine owns cache-surviving mechanics; Transactions supplies row identity, editable
+   * fields and typed field reads through `transactionEditingConfig`.
    */
   const {
-    state: editingState,
     editedRowCount,
     handleCellValueChanged,
     lastEdit,
     applyChangesToNodes,
     restoreTrackedEdits,
-    payload: editPayload,
   } = useTrackedGridEditing(transactionEditingConfig);
 
   /**
-   * Reusable current-page edit actions consume the SAME root GridApi. They resolve either the whole
-   * visible page or its selected RowNodes, then delegate the actual mutations to the edit engine.
+   * Reusable current-page edit actions resolve page/selected-page RowNodes from the same root GridApi
+   * and delegate mutation to the edit engine.
    */
   const {
     error: editActionError,
@@ -184,84 +165,8 @@ export function TransactionsInfiniteGrid({
   );
 
   /**
-   * Page/manual selection is native AG Grid state, so read it only when an action needs it rather
-   * than mirroring selected IDs into another React collection.
-   */
-  const readPageSelectionIntent = useCallback(
-    (): ServerSelectionIntent<string> => {
-      const nativeSelection = gridApi.current?.getState().rowSelection;
-
-      return {
-        mode: 'include',
-        ids: Array.isArray(nativeSelection) ? nativeSelection : [],
-      };
-    },
-    [],
-  );
-
-  /**
-   * Gives production actions one logical-selection reader while preserving the ownership split:
-   * native Grid State for page mode, application include/exclude intent for dataset modes.
-   */
-  const readLogicalSelection = useCallback(
-    () =>
-      selectionScope === 'page'
-        ? readPageSelectionIntent()
-        : datasetSelectionIntent,
-    [datasetSelectionIntent, readPageSelectionIntent, selectionScope],
-  );
-
-  /**
-   * Production-capable selection payload builder.
-   *
-   * Dev Tools call this today, but the logic deliberately lives outside `/dev` because a future real
-   * Delete/Export/Bulk Update UI needs the same current selection + applied-filter translation.
-   */
-  const buildSelectionPayload = useCallback(() => {
-    const api = gridApi.current;
-    if (!api) throw new Error('The grid is not ready yet.');
-
-    const selection = readLogicalSelection();
-
-    return selectionScope === 'filtered'
-      ? buildTransactionBulkSelection(selection, {
-          selectionScope: 'filtered',
-          filterModel: api.getFilterModel(),
-        })
-      : buildTransactionBulkSelection(selection, { selectionScope });
-  }, [readLogicalSelection, selectionScope]);
-
-  /**
-   * Production-capable intersection of tracked edits with the CURRENT logical selection.
-   * Selected-but-unedited rows and edited-but-unselected rows are both omitted.
-   */
-  const buildSelectedEditPayload = useCallback(
-    () =>
-      buildSelectedTrackedGridUpdatePayload(
-        editingState,
-        readLogicalSelection(),
-      ),
-    [editingState, readLogicalSelection],
-  );
-
-  /**
-   * Dev tooling owns snapshots/buttons only. It receives production builders/results and must never
-   * become the owner of selection membership, edit intersection, filter reads or target resolution.
-   */
-  const {
-    clearPreviews,
-    hideAllLocalEdits,
-    showAllLocalEditsPreview,
-    devToolsUi,
-  } = useTransactionsInfiniteGridDevTools({
-    buildSelectionPayload,
-    buildSelectedEditPayload,
-    editPayload,
-  });
-
-  /**
    * Shared bridge persists native AG Grid user preferences while this root still wires the returned
-   * native `initialState` / `onStateUpdated` props directly onto `<AgGridReact>`.
+   * native props directly onto `<AgGridReact>`.
    */
   const { initialState, onStateUpdated } =
     useGridStatePersistence<Transaction>({
@@ -269,10 +174,8 @@ export function TransactionsInfiniteGrid({
     });
 
   /**
-   * Feature-specific row loader.
-   *
-   * AG Grid request translation stays at the Transactions boundary. Successful recovery clears the
-   * visible row-load error only after a request actually succeeds.
+   * Feature-specific row loader. AG Grid request translation stays at the Transactions boundary;
+   * successful recovery clears the visible row-load error after a request actually succeeds.
    */
   const loadRows = useCallback(
     async (
@@ -290,10 +193,7 @@ export function TransactionsInfiniteGrid({
     [],
   );
 
-  /**
-   * Stable datasource identity is important: recreating the Infinite datasource on ordinary React
-   * renders would reset AG Grid cache/request state. Only the stable `loadRows` dependency belongs here.
-   */
+  /** Stable datasource identity prevents ordinary React renders from resetting Infinite cache state. */
   const datasource = useMemo(
     () =>
       createInfiniteDatasource<Transaction>({
@@ -305,9 +205,9 @@ export function TransactionsInfiniteGrid({
   );
 
   /**
-   * Dataset selection can describe unloaded records, while AG Grid checkboxes exist only for loaded
-   * RowNodes. Reconcile those materialised nodes from the logical include/exclude intent whenever
-   * rows or selection change. Page mode skips this because native selection already owns its nodes.
+   * Dataset selection can describe unloaded records while AG Grid checkboxes exist only for loaded
+   * RowNodes. Reconcile materialised nodes from logical include/exclude state. Page mode skips this
+   * because native selection already owns its rows.
    */
   const syncLoadedDatasetCheckboxes = useCallback(() => {
     if (selectionScope === 'page') return;
@@ -318,17 +218,15 @@ export function TransactionsInfiniteGrid({
       const shouldBeChecked = isRowSelected(node.data.id);
 
       if (node.isSelected() !== shouldBeChecked) {
-        /** `api` source prevents visual reconciliation from becoming a new user selection event. */
+        /** API source prevents visual reconciliation from becoming a new user selection action. */
         node.setSelected(shouldBeChecked, false, 'api');
       }
     });
   }, [isRowSelected, selectionScope]);
 
   /**
-   * Runs only after AG Grid's current row model changes.
-   *
-   * For filtered Select All, read the count from AG Grid's ACCEPTED model instead of directly from
-   * overlapping datasource responses; that avoids an older request racing to publish a stale total.
+   * Runs after AG Grid changes its accepted model. Filtered totals are read from that accepted model
+   * rather than overlapping datasource responses, avoiding stale-request races.
    */
   const updateAfterRowsChange = useCallback(() => {
     const api = gridApi.current;
@@ -344,19 +242,14 @@ export function TransactionsInfiniteGrid({
   useEffect(() => {
     if (selectionScope === 'page') return;
 
-    /**
-     * Logical selection can change without AG Grid replacing RowNodes. Refresh loaded checkbox state
-     * and the custom header from application-owned intent; no duplicate selected-ID state is created.
-     */
+    /** Logical selection can change without AG Grid replacing RowNodes, so refresh visible state. */
     syncLoadedDatasetCheckboxes();
     gridApi.current?.refreshHeader();
   }, [datasetSelectionIntent, selectionScope, syncLoadedDatasetCheckboxes]);
 
   /**
-   * Configure only AG Grid's dedicated selection column.
-   *
-   * Page mode uses the custom current-page header while keeping native row selection. Dataset modes
-   * use the application header because Infinite cannot select unloaded filtered/all records natively.
+   * Configure only AG Grid's dedicated selection column. Page mode keeps native row selection with a
+   * current-page header; dataset modes need an application header for unloaded filtered/all rows.
    */
   const selectionColumnDef = useMemo<SelectionColumnDef>(() => {
     const base: SelectionColumnDef = {
@@ -380,21 +273,12 @@ export function TransactionsInfiniteGrid({
       headerComponentParams: {
         ...headerState,
         label: headerLabel,
-        onChange: (checked: boolean) => {
-          setHeaderSelected(checked);
-          clearPreviews();
-        },
+        onChange: setHeaderSelected,
       },
     };
-  }, [
-    clearPreviews,
-    headerLabel,
-    headerState,
-    selectionScope,
-    setHeaderSelected,
-  ]);
+  }, [headerLabel, headerState, selectionScope, setHeaderSelected]);
 
-  /** Capture the one root GridApi and defer model-derived reads until AG Grid builds initial rows. */
+  /** Capture the root GridApi and defer model-derived reads until AG Grid constructs initial rows. */
   const handleGridReady = useCallback(
     (event: GridReadyEvent<Transaction>) => {
       gridApi.current = event.api;
@@ -410,7 +294,7 @@ export function TransactionsInfiniteGrid({
     [restoreTrackedEdits],
   );
 
-  /** Restore local edits again when pagination/cache churn creates different RowNodes. */
+  /** Restore local edits when pagination/cache churn creates different RowNodes. */
   const handleViewportChanged = useCallback(
     (event: ViewportChangedEvent<Transaction>) =>
       restoreTrackedEdits(event.api),
@@ -418,8 +302,8 @@ export function TransactionsInfiniteGrid({
   );
 
   /**
-   * In dataset modes, user checkbox changes update logical include/exclude state.
-   * API-sourced events are ignored because they were emitted by our own checkbox reconciliation.
+   * Dataset-mode user checkbox changes update logical include/exclude state. API-sourced events are
+   * ignored because they were emitted by our own checkbox reconciliation.
    */
   const handleRowSelected = useCallback(
     (event: RowSelectedEvent<Transaction>) => {
@@ -435,18 +319,16 @@ export function TransactionsInfiniteGrid({
         event.data.id,
         event.node.isSelected() === true,
       );
-      clearPreviews();
     },
-    [clearPreviews, selectionScope, setRowSelected],
+    [selectionScope, setRowSelected],
   );
 
   /**
    * Page mode publishes native AG Grid selection. Dataset modes publish from `useDatasetSelection`,
-   * so this handler intentionally does not create a second publication path for those modes.
+   * so this event intentionally does not create a second publication path for those modes.
    */
   const handleSelectionChanged = useCallback(
     (event: SelectionChangedEvent<Transaction>) => {
-      clearPreviews();
       if (selectionScope !== 'page') return;
 
       const nativeSelection = event.api.getState().rowSelection;
@@ -455,20 +337,15 @@ export function TransactionsInfiniteGrid({
         ids: Array.isArray(nativeSelection) ? nativeSelection : [],
       });
     },
-    [clearPreviews, onSelectionChange, selectionScope],
+    [onSelectionChange, selectionScope],
   );
 
   /**
-   * A filter change starts a new server query.
-   *
-   * - row-load error is cleared so an old failure does not mask a fresh request;
-   * - dev snapshots are invalidated because they describe old grid state;
-   * - filtered total is reset because the old count belongs to the old query;
-   * - dataset-selection semantics decide whether their logical selection must also reset.
+   * A filter change starts a new server query: clear old row-load error, reset the old filtered
+   * count, then let dataset-selection semantics decide whether logical selection must reset.
    */
   const handleFilterChanged = useCallback(() => {
     setLoadError(undefined);
-    clearPreviews();
 
     if (selectionScope === 'filtered') {
       resetFilteredTotal();
@@ -477,12 +354,7 @@ export function TransactionsInfiniteGrid({
     if (selectionScope !== 'page') {
       onDatasetFilterChanged?.();
     }
-  }, [
-    clearPreviews,
-    onDatasetFilterChanged,
-    resetFilteredTotal,
-    selectionScope,
-  ]);
+  }, [onDatasetFilterChanged, resetFilteredTotal, selectionScope]);
 
   /** Retry AG Grid's native Infinite cache after removing the currently rendered error overlay. */
   const handleRetryLoad = useCallback(() => {
@@ -495,13 +367,8 @@ export function TransactionsInfiniteGrid({
       <TransactionEditingControls
         editedRowCount={editedRowCount}
         lastEdit={lastEdit}
-        onApplyLastEdit={(target) => {
-          if (applyLastEdit(target)) hideAllLocalEdits();
-        }}
-        onApplyBulkEdit={(target, changes) => {
-          if (applyBulkChanges(target, changes)) hideAllLocalEdits();
-        }}
-        onPreviewPayload={showAllLocalEditsPreview}
+        onApplyLastEdit={applyLastEdit}
+        onApplyBulkEdit={applyBulkChanges}
       />
 
       {editActionError ? (
@@ -509,8 +376,6 @@ export function TransactionsInfiniteGrid({
           {editActionError}
         </Typography>
       ) : null}
-
-      {devToolsUi}
 
       {datasetSupportError ? (
         <Alert severity="error">{datasetSupportError}</Alert>
