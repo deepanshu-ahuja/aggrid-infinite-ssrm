@@ -1,14 +1,16 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   CellValueChangedEvent,
   GridApi,
   GridReadyEvent,
+  SelectionChangedEvent,
   SelectionColumnDef,
 } from 'ag-grid-community';
 import type { Transaction } from '../api/transactions.contracts';
 import { TransactionsInfiniteGrid } from './TransactionsInfiniteGrid';
 
+/** Mock only AG Grid's React boundary so these tests exercise our root ownership/wiring. */
 const gridCapture = vi.hoisted(() => ({
   props: undefined as unknown,
 }));
@@ -23,6 +25,7 @@ vi.mock('ag-grid-react', () => ({
 interface CapturedGridProps {
   selectionColumnDef?: SelectionColumnDef;
   onGridReady?: (event: GridReadyEvent<Transaction>) => void;
+  onSelectionChanged?: (event: SelectionChangedEvent<Transaction>) => void;
   onCellValueChanged?: (event: CellValueChangedEvent<Transaction>) => void;
 }
 
@@ -32,13 +35,11 @@ function getGridProps() {
 
 function createApi(options?: {
   rowSelection?: string[];
-  filterModel?: Record<string, unknown>;
 }): GridApi<Transaction> {
   return {
     getState: vi.fn(() => ({
       rowSelection: options?.rowSelection ?? [],
     })),
-    getFilterModel: vi.fn(() => options?.filterModel ?? {}),
     isLastRowIndexKnown: vi.fn(() => false),
     getDisplayedRowCount: vi.fn(() => 0),
     forEachNode: vi.fn(),
@@ -50,85 +51,70 @@ function gridReady(api: GridApi<Transaction>): GridReadyEvent<Transaction> {
   return { api } as unknown as GridReadyEvent<Transaction>;
 }
 
-function readPreview(testId: string) {
-  return JSON.parse(screen.getByTestId(testId).textContent ?? '{}') as unknown;
-}
-
 afterEach(() => {
   vi.useRealTimers();
   gridCapture.props = undefined;
   window.localStorage.clear();
 });
 
-describe('TransactionsInfiniteGrid root GridApi ownership', () => {
-  it('reads native page/manual selection directly from the root GridApi at action time', () => {
+describe('TransactionsInfiniteGrid production wiring', () => {
+  it('publishes native page/manual selection directly from the root GridApi event', () => {
     vi.useFakeTimers();
     const api = createApi({ rowSelection: ['txn-a', 'txn-b'] });
+    const onSelectionChange = vi.fn();
 
-    render(<TransactionsInfiniteGrid selectionScope="page" />);
+    render(
+      <TransactionsInfiniteGrid
+        selectionScope="page"
+        onSelectionChange={onSelectionChange}
+      />,
+    );
 
     act(() => {
       getGridProps().onGridReady?.(gridReady(api));
+      getGridProps().onSelectionChanged?.({
+        api,
+      } as unknown as SelectionChangedEvent<Transaction>);
     });
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Preview selection payload' }),
-    );
-
-    expect(readPreview('selection-payload-preview')).toEqual({
+    expect(onSelectionChange).toHaveBeenLastCalledWith({
       mode: 'include',
       ids: ['txn-a', 'txn-b'],
     });
     expect(api.getState).toHaveBeenCalled();
   });
 
-  it('reads the applied filter directly from GridApi when filtered Select All payload is built', () => {
-    vi.useFakeTimers();
-    const api = createApi({
-      filterModel: {
-        status: {
-          filterType: 'text',
-          type: 'equals',
-          filter: 'Completed',
-        },
-      },
-    });
+  it('publishes dataset Select All as logical exclude state without a dev-preview bridge', async () => {
+    const onSelectionChange = vi.fn();
 
-    render(<TransactionsInfiniteGrid selectionScope="filtered" />);
+    render(
+      <TransactionsInfiniteGrid
+        selectionScope="filtered"
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    const headerParams = getGridProps().selectionColumnDef
+      ?.headerComponentParams as
+      | { onChange?: (checked: boolean) => void }
+      | undefined;
 
     act(() => {
-      getGridProps().onGridReady?.(gridReady(api));
-      const headerParams = getGridProps().selectionColumnDef
-        ?.headerComponentParams as { onChange?: (checked: boolean) => void } | undefined;
       headerParams?.onChange?.(true);
     });
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Preview selection payload' }),
-    );
-
-    expect(readPreview('selection-payload-preview')).toEqual({
-      mode: 'exclude',
-      ids: [],
-      filters: [
-        {
-          field: 'status',
-          operator: 'equals',
-          value: 'Completed',
-        },
-      ],
+    await waitFor(() => {
+      expect(onSelectionChange).toHaveBeenLastCalledWith({
+        mode: 'exclude',
+        ids: [],
+      });
     });
-    expect(api.getFilterModel).toHaveBeenCalled();
   });
 
-  it('builds selected-edit preview from accumulated edits and native GridApi selection', () => {
-    vi.useFakeTimers();
-    const api = createApi({ rowSelection: ['txn-b'] });
-
+  it('tracks a direct cell edit through the shared edit engine without dev payload state', () => {
     render(<TransactionsInfiniteGrid selectionScope="page" />);
 
     act(() => {
-      getGridProps().onGridReady?.(gridReady(api));
       getGridProps().onCellValueChanged?.({
         data: {
           id: 'txn-b',
@@ -145,17 +131,9 @@ describe('TransactionsInfiniteGrid root GridApi ownership', () => {
       } as unknown as CellValueChangedEvent<Transaction>);
     });
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Preview selected edit payload' }),
-    );
-
-    expect(readPreview('selected-edit-payload-preview')).toEqual({
-      updates: [
-        {
-          id: 'txn-b',
-          changes: { status: 'Completed' },
-        },
-      ],
-    });
+    expect(screen.getByText('1 row currently edited')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /preview/i }),
+    ).not.toBeInTheDocument();
   });
 });
