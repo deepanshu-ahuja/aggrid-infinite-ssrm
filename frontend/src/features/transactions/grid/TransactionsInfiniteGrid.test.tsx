@@ -12,6 +12,7 @@ import type {
   SelectionColumnDef,
 } from 'ag-grid-community';
 import type { Transaction } from '../api/transactions.contracts';
+import type { TransactionRowEditActionsContext } from './TransactionRowEditActions';
 import { TransactionsInfiniteGrid } from './TransactionsInfiniteGrid';
 
 const gridCapture = vi.hoisted(() => ({ props: undefined as unknown }));
@@ -31,6 +32,7 @@ vi.mock('ag-grid-react', () => ({
 vi.mock('../api/transactions.api', () => transactionApi);
 
 interface CapturedGridProps {
+  context?: TransactionRowEditActionsContext;
   selectionColumnDef?: SelectionColumnDef;
   onGridReady?: (event: GridReadyEvent<Transaction>) => void;
   onModelUpdated?: () => void;
@@ -89,6 +91,7 @@ function createApi(options?: {
       options?.rows?.forEach(callback);
     }),
     refreshHeader: vi.fn(),
+    refreshCells: vi.fn(),
     refreshInfiniteCache: vi.fn(),
   } as unknown as GridApi<Transaction>;
 }
@@ -142,10 +145,12 @@ describe('TransactionsInfiniteGrid production wiring', () => {
     });
   });
 
-  it('tracks a direct cell edit and exposes row/all persistence actions', () => {
+  it('tracks a direct cell edit in the row Actions context', () => {
+    const api = createApi();
     renderGrid(<TransactionsInfiniteGrid selectionScope="page" />);
 
     act(() => {
+      getGridProps().onGridReady?.(gridReady(api));
       getGridProps().onCellValueChanged?.({
         data: createTransaction('txn-b'),
         colDef: { field: 'status' },
@@ -154,10 +159,8 @@ describe('TransactionsInfiniteGrid production wiring', () => {
       } as unknown as CellValueChangedEvent<Transaction>);
     });
 
-    expect(screen.getByText('1 row currently edited')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save row' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Discard row' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save all' })).toBeInTheDocument();
+    expect(screen.getByText(/1 row edited total; 0 selected/i)).toBeInTheDocument();
+    expect(getGridProps().context?.isRowDirty('txn-b')).toBe(true);
   });
 
   it('restores a tracked edit when an Infinite row is recreated and the model updates', () => {
@@ -200,7 +203,7 @@ describe('TransactionsInfiniteGrid production wiring', () => {
     expect(node.setDataValue).toHaveBeenCalledWith('status', 'Completed', 'data');
   });
 
-  it('saves one row through the single API and refreshes the Infinite cache', async () => {
+  it('saves one dirty row through its row action regardless of checkbox selection', async () => {
     const api = createApi();
     transactionApi.updateTransaction.mockResolvedValue({
       row: createTransaction('txn-a', 'Completed'),
@@ -217,14 +220,52 @@ describe('TransactionsInfiniteGrid production wiring', () => {
       } as unknown as CellValueChangedEvent<Transaction>);
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save row' }));
+    act(() => getGridProps().context?.onSaveRow('txn-a'));
 
     await waitFor(() => {
       expect(transactionApi.updateTransaction).toHaveBeenCalledWith('txn-a', {
         status: 'Completed',
       });
       expect(api.refreshInfiniteCache).toHaveBeenCalledTimes(1);
-      expect(screen.getByText('0 rows currently edited')).toBeInTheDocument();
+      expect(getGridProps().context?.isRowDirty('txn-a')).toBe(false);
+    });
+  });
+
+  it('bulk-saves only rows that are both dirty and selected', async () => {
+    const api = createApi({ rowSelection: ['txn-b'] });
+    transactionApi.bulkUpdateTransactions.mockResolvedValue({
+      rows: [createTransaction('txn-b', 'Failed')],
+      updatedCount: 1,
+    });
+
+    renderGrid(<TransactionsInfiniteGrid selectionScope="page" />);
+    act(() => {
+      getGridProps().onGridReady?.(gridReady(api));
+      getGridProps().onCellValueChanged?.({
+        data: createTransaction('txn-a'),
+        colDef: { field: 'status' },
+        oldValue: 'Completed',
+        newValue: 'Failed',
+      } as unknown as CellValueChangedEvent<Transaction>);
+      getGridProps().onCellValueChanged?.({
+        data: createTransaction('txn-b'),
+        colDef: { field: 'status' },
+        oldValue: 'Completed',
+        newValue: 'Failed',
+      } as unknown as CellValueChangedEvent<Transaction>);
+    });
+
+    expect(screen.getByText(/2 rows edited total; 1 selected/i)).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save selected edits (1)' }),
+    );
+
+    await waitFor(() => {
+      expect(transactionApi.bulkUpdateTransactions).toHaveBeenCalledWith({
+        updates: [{ id: 'txn-b', changes: { status: 'Failed' } }],
+      });
+      expect(getGridProps().context?.isRowDirty('txn-a')).toBe(true);
+      expect(getGridProps().context?.isRowDirty('txn-b')).toBe(false);
     });
   });
 });
