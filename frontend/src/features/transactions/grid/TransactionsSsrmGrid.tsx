@@ -8,21 +8,23 @@ import type {
   ViewportChangedEvent,
 } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
+import type { GridRowsLoader } from '@/shared/grid/data/gridData.types';
 import { useServerSideRowLoading } from '@/shared/grid/data/server-side/useServerSideRowLoading';
 import { useCurrentPageEditActions } from '@/shared/grid/editing/useCurrentPageEditActions';
 import { useTrackedGridEditing } from '@/shared/grid/editing/useTrackedGridEditing';
 import { GridErrorOverlay } from '@/shared/grid/overlays/GridErrorOverlay';
 import { useSsrmSelectionController } from '@/shared/grid/selection/server-side/useSsrmSelectionController';
 import { useGridStatePersistence } from '@/shared/grid/state/useGridStatePersistence';
+import { listTransactions } from '../api/transactions.api';
 import type { Transaction } from '../api/transactions.contracts';
 import {
   transactionsGridConfig,
   type TransactionsSsrmGridOptions,
 } from '../transactionsGrid.config';
-import { loadTransactionGridRows } from './loadTransactionGridRows';
 import { TransactionEditingControls } from './TransactionEditingControls';
 import { transactionEditingConfig } from './transactionEditing';
 import { transactionColumns } from './transactionColumns';
+import { mapTransactionGridRequest } from './transactionRequest.mapper';
 
 /** SSRM persists its native Grid State independently from the Infinite instance. */
 const SSRM_STATE_KEY = 'transactions:ssrm';
@@ -30,6 +32,18 @@ const SSRM_STATE_KEY = 'transactions:ssrm';
 /** One stable feature identity function is shared by AG Grid and reusable capabilities. */
 const getTransactionId = (row: Transaction) => row.id;
 const getRowId = ({ data }: GetRowIdParams<Transaction>) => getTransactionId(data);
+
+/**
+ * Concrete feature composition: translate the generic flat-grid request and call the Transactions API.
+ *
+ * This intentionally remains local to the root. Repeating these few lines in Infinite and SSRM is
+ * clearer than introducing a feature loader module that adds no validation, policy or lifecycle.
+ */
+const loadTransactionRows: GridRowsLoader<Transaction> = (request, context) =>
+  listTransactions(
+    mapTransactionGridRequest(request),
+    context.signal,
+  );
 
 export interface TransactionsSsrmGridProps {
   /** Optional native GridOptions override for tests/embedding. */
@@ -71,7 +85,7 @@ export function TransactionsSsrmGrid({
     clearError: clearLoadError,
   } = useServerSideRowLoading({
     gridApi,
-    loadRows: loadTransactionGridRows,
+    loadRows: loadTransactionRows,
     defaultBlockSize: gridOptions.cacheBlockSize ?? 100,
   });
 
