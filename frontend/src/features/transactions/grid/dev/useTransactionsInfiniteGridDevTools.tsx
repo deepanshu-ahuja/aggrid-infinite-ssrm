@@ -12,7 +12,7 @@ import {
 } from '../transactionBulkSelection';
 import {
   buildSelectedTransactionUpdatePayload,
-  type TransactionEditState,
+  type TransactionEditingState,
   type TransactionUpdatePayload,
 } from '../transactionEditing';
 
@@ -32,7 +32,7 @@ interface UseTransactionsInfiniteGridDevToolsOptions {
   readLogicalSelection: () => ServerSelectionIntent<string>;
 
   /** Current accumulated edit state used by the selected-edit preview. */
-  editState: TransactionEditState;
+  editState: TransactionEditingState;
 
   /** Current accumulated backend-ready edit payload used by the all-edits preview. */
   editPayload: TransactionUpdatePayload;
