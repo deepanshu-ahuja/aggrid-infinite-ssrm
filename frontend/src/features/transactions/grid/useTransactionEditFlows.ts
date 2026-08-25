@@ -5,6 +5,7 @@ import type {
   IRowNode,
   ViewportChangedEvent,
 } from 'ag-grid-community';
+import { getCurrentPageNodes } from '@/shared/grid/pagination/getCurrentPageNodes';
 import type { Transaction } from '../api/transactions.contracts';
 import type {
   TransactionChanges,
@@ -19,37 +20,6 @@ interface TransactionEditEngine {
     changes: TransactionChanges,
   ) => void;
   restoreTrackedEdits: (api: GridApi<Transaction>) => void;
-}
-
-/**
- * Resolves exactly the RowNodes belonging to AG Grid's CURRENT pagination page.
- *
- * This helper deliberately does not use `forEachNode()` or cache/block boundaries. A server-backed
- * grid can have more rows loaded than the user can currently see; Flow 1 and Flow 2 are current-page
- * UI operations, so cache residency must never widen their business scope.
- */
-function getCurrentPageNodes(
-  api: GridApi<Transaction>,
-): IRowNode<Transaction>[] | undefined {
-  const pageSize = api.paginationGetPageSize();
-  const currentPage = api.paginationGetCurrentPage();
-  const rowCount = api.paginationGetRowCount();
-  const startIndex = currentPage * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, rowCount);
-  const nodes: IRowNode<Transaction>[] = [];
-
-  for (let rowIndex = startIndex; rowIndex < endIndex; rowIndex += 1) {
-    const node = api.getDisplayedRowAtIndex(rowIndex);
-
-    /**
-     * Infinite/SSRM can expose an unresolved row while a page request is still completing. Never
-     * perform a partial Flow 1/2 application merely because some rows arrived first.
-     */
-    if (!node?.data) return undefined;
-    nodes.push(node);
-  }
-
-  return nodes;
 }
 
 /**
@@ -78,6 +48,12 @@ function getCurrentPageNodes(
  *
  * Selection never expands Flow 1/2 beyond the current page, even when the underlying logical
  * selection represents All Filtered or All Records.
+ *
+ * NATIVE-FIRST BOUNDARY
+ * ---------------------
+ * This hook reads native AG Grid pagination and RowNode selection at action time. It does not keep
+ * a second React copy of the current page or selected rows. The only React state here is our own
+ * user-facing validation error, which AG Grid does not own.
  */
 export function useTransactionEditFlows(editing: TransactionEditEngine) {
   const gridApi = useRef<GridApi<Transaction> | null>(null);
@@ -115,6 +91,10 @@ export function useTransactionEditFlows(editing: TransactionEditEngine) {
       return undefined;
     }
 
+    /**
+     * Shared pagination helper deliberately distinguishes the visible page from loaded/cache blocks.
+     * Infinite and SSRM can have more rows loaded than the user currently sees.
+     */
     const pageNodes = getCurrentPageNodes(api);
 
     if (!pageNodes) {
@@ -122,6 +102,11 @@ export function useTransactionEditFlows(editing: TransactionEditEngine) {
       return undefined;
     }
 
+    /**
+     * IMPORTANT: selection is read from AG Grid's RowNodes here; this hook does not duplicate row
+     * checkbox state. The concrete row model remains responsible for making those RowNodes reflect
+     * its native/custom logical selection rules.
+     */
     const nodes =
       target === 'page'
         ? pageNodes
