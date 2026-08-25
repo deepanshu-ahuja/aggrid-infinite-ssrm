@@ -7,15 +7,16 @@ import {
 import { formatCurrency } from '@/shared/grid/formatters/formatCurrency';
 import { formatDate } from '@/shared/grid/formatters/formatDate';
 import type { Transaction } from '../api/transactions.contracts';
+import { TransactionRowEditActions } from './TransactionRowEditActions';
 import { TransactionStatusCell } from './TransactionStatusCell';
 import { TransactionStatusEditor } from './TransactionStatusEditor';
 
 /**
  * Column definitions for the Transactions feature.
  *
- * Editing is deliberately feature-owned. This prototype keeps reference/date read-only while
- * allowing several representative editable fields so we can exercise normal AG Grid editors plus
- * one custom MUI editor without inventing a generic editing wrapper.
+ * Editing is feature-owned. Reference/date remain read-only; account/amount/currency/status are
+ * editable. Single-row Save/Discard lives in the Actions column beside the row rather than in an
+ * external dirty-row list.
  */
 export const transactionColumns: ColDef<Transaction>[] = [
   {
@@ -70,5 +71,15 @@ export const transactionColumns: ColDef<Transaction>[] = [
     filter: 'agDateColumnFilter',
     filterParams: serverDateFilterParams,
     valueFormatter: ({ value }) => (typeof value === 'string' ? formatDate(value) : ''),
+  },
+  {
+    colId: 'editActions',
+    headerName: 'Actions',
+    minWidth: 160,
+    maxWidth: 180,
+    sortable: false,
+    filter: false,
+    editable: false,
+    cellRenderer: TransactionRowEditActions,
   },
 ];

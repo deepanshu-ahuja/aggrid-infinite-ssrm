@@ -1,10 +1,12 @@
 import type { PropsWithChildren } from 'react';
 import { CssBaseline, ThemeProvider } from '@mui/material';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { provideGlobalGridOptions } from 'ag-grid-community';
 import { AgGridProvider } from 'ag-grid-react';
 import { baseDefaultColDef } from '@/shared/grid/config/defaultColDef';
 import { configureAgGridEnterpriseLicense } from '@/shared/grid/enterpriseLicense';
 import { gridModules } from '@/shared/grid/gridModules';
+import { queryClient } from '@/shared/query/queryClient';
 import { appAgGridTheme } from '@/theme/ag-grid/agGridTheme';
 import { muiTheme } from '@/theme/mui/muiTheme';
 
@@ -21,17 +23,8 @@ configureAgGridEnterpriseLicense();
  * - `theme`: the shared application AG Grid theme;
  * - `defaultColDef`: boring column defaults that every grid should inherit.
  *
- * If more behaviour later becomes genuinely application-wide, other native GridOptions can also be
- * configured here. Examples could include shared `localeText`, tooltip timing such as
- * `tooltipShowDelay`, or a consistent context-menu policy such as `suppressContextMenu`.
- *
- * Do not move an option here merely because two grids currently share it. Row-model and feature
- * behaviour such as `rowModelType`, datasource/serverSideDatasource, pagination/cache tuning,
- * selection configuration, `getRowId`, and lifecycle/event callbacks should stay visible on the
- * owning feature grid unless we establish a real application-wide rule.
- *
- * Keeping this next to module/license setup gives the application one visible AG Grid bootstrap
- * boundary without hiding the native `AgGridReact` component from feature code.
+ * Row-model behavior, datasources, pagination/cache tuning, selection, getRowId and lifecycle events
+ * remain visible on the owning feature grid.
  */
 provideGlobalGridOptions(
   {
@@ -43,9 +36,11 @@ provideGlobalGridOptions(
 
 export function AppProviders({ children }: PropsWithChildren) {
   return (
-    <ThemeProvider theme={muiTheme}>
-      <CssBaseline />
-      <AgGridProvider modules={gridModules}>{children}</AgGridProvider>
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider theme={muiTheme}>
+        <CssBaseline />
+        <AgGridProvider modules={gridModules}>{children}</AgGridProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }

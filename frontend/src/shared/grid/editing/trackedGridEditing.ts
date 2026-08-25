@@ -116,6 +116,79 @@ export function recordTrackedGridCellChange<TField extends string, TValue>(
   };
 }
 
+/**
+ * Forget one row's local draft after the caller has restored its original values in any loaded RowNode.
+ *
+ * Discard is intentionally a local editing-state operation; there is no backend request because the
+ * server never received the unsaved values.
+ */
+export function discardTrackedGridRow<TField extends string, TValue>(
+  state: TrackedGridEditingState<TField, TValue>,
+  rowId: string,
+): TrackedGridEditingState<TField, TValue> {
+  if (!state.changesById[rowId]) return state;
+
+  const changesById = { ...state.changesById };
+  const originalsById = { ...state.originalsById };
+  delete changesById[rowId];
+  delete originalsById[rowId];
+
+  return { changesById, originalsById };
+}
+
+/**
+ * Remove only values that were actually included in a successful save request.
+ *
+ * A user can edit the same row again while a network request is in flight. Clearing the whole row on
+ * success would lose that newer local change. A field is therefore acknowledged only when the current
+ * tracked value still equals the submitted value; newer values remain dirty for the next save.
+ */
+export function acknowledgeTrackedGridChanges<TField extends string, TValue>(
+  state: TrackedGridEditingState<TField, TValue>,
+  updates: TrackedGridUpdatePayload<TField, TValue>['updates'],
+): TrackedGridEditingState<TField, TValue> {
+  let nextState = state;
+
+  for (const update of updates) {
+    const currentChanges = nextState.changesById[update.id];
+    if (!currentChanges) continue;
+
+    const remainingChanges: TrackedGridChanges<TField, TValue> = {
+      ...currentChanges,
+    };
+    const remainingOriginals: TrackedGridChanges<TField, TValue> = {
+      ...(nextState.originalsById[update.id] ?? {}),
+    };
+
+    for (const [field, submittedValue] of Object.entries(update.changes) as Array<
+      [TField, TValue]
+    >) {
+      if (
+        hasTrackedGridField(currentChanges, field) &&
+        Object.is(currentChanges[field], submittedValue)
+      ) {
+        delete remainingChanges[field];
+        delete remainingOriginals[field];
+      }
+    }
+
+    const changesById = { ...nextState.changesById };
+    const originalsById = { ...nextState.originalsById };
+
+    if (Object.keys(remainingChanges).length === 0) {
+      delete changesById[update.id];
+      delete originalsById[update.id];
+    } else {
+      changesById[update.id] = remainingChanges;
+      originalsById[update.id] = remainingOriginals;
+    }
+
+    nextState = { changesById, originalsById };
+  }
+
+  return nextState;
+}
+
 /** Every row that currently contains at least one real local change. */
 export function buildTrackedGridUpdatePayload<TField extends string, TValue>(
   state: TrackedGridEditingState<TField, TValue>,

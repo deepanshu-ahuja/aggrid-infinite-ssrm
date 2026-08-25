@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Checkbox,
@@ -18,37 +19,42 @@ import type {
 } from './transactionEditing';
 
 interface TransactionEditingControlsProps {
+  /** All real drafts, whether currently selected or not. */
   editedRowCount: number;
+  /** Only drafts whose row is currently included by the logical checkbox selection. */
+  selectedEditedRowCount: number;
   lastEdit?: TransactionLastEdit;
+  isSaving: boolean;
+  saveError?: string;
   onApplyLastEdit: (target: TransactionEditTarget) => void;
   onApplyBulkEdit: (
     target: TransactionEditTarget,
     changes: TransactionChanges,
   ) => void;
+  onSaveSelected: () => void;
+  onDiscardSelected: () => void;
 }
 
 const STATUSES: readonly TransactionStatus[] = ['Completed', 'Pending', 'Failed'];
 
 /**
- * Temporary Transactions presentation for the two editing behaviors being validated.
+ * Transactions editing presentation for multi-row actions.
  *
- * This component owns only feature UI/form state. The reusable mechanics are outside it:
- * - `useTrackedGridEditing` tracks edits by stable row ID and restores them after cache churn;
- * - `useCurrentPageEditActions` resolves page/selected-page targets and applies changes.
- *
- * Developer payload previews deliberately do NOT live here. A temporary diagnostic must not force
- * the real editing UI or grid roots to carry preview callbacks/state as part of their production API.
+ * Single-row Save/Discard lives in the grid Actions column. Aggregate persistence is explicitly
+ * selection-scoped: only rows that are both dirty and checked are saved/discarded here.
  */
 export function TransactionEditingControls({
   editedRowCount,
+  selectedEditedRowCount,
   lastEdit,
+  isSaving,
+  saveError,
   onApplyLastEdit,
   onApplyBulkEdit,
+  onSaveSelected,
+  onDiscardSelected,
 }: TransactionEditingControlsProps) {
-  /** Shared target choice for today's prototype UI; the underlying target semantics are reusable. */
   const [target, setTarget] = useState<TransactionEditTarget>('page');
-
-  /** Flow 2 form state is feature-specific because another table may expose completely different fields. */
   const [useAccount, setUseAccount] = useState(false);
   const [account, setAccount] = useState('');
   const [useAmount, setUseAmount] = useState(false);
@@ -58,18 +64,12 @@ export function TransactionEditingControls({
   const [useStatus, setUseStatus] = useState(false);
   const [status, setStatus] = useState<TransactionStatus>('Pending');
 
-  /**
-   * Unchecked fields are omitted completely so "leave unchanged" stays distinct from explicitly
-   * setting a value. The edit engine therefore receives only fields the user opted into.
-   */
   const bulkChanges = useMemo<TransactionChanges>(() => {
     const changes: TransactionChanges = {};
-
     if (useAccount) changes.account = account;
     if (useAmount && amount !== '') changes.amount = Number(amount);
     if (useCurrency) changes.currency = currency;
     if (useStatus) changes.status = status;
-
     return changes;
   }, [
     account,
@@ -83,6 +83,7 @@ export function TransactionEditingControls({
   ]);
 
   const hasBulkChanges = Object.keys(bulkChanges).length > 0;
+  const hasSelectedEdits = selectedEditedRowCount > 0;
 
   return (
     <Stack spacing={1.5}>
@@ -104,11 +105,11 @@ export function TransactionEditingControls({
           <MenuItem value="selected">Selected rows on current page</MenuItem>
         </Select>
         <Typography variant="caption" color="text.secondary">
-          {editedRowCount} row{editedRowCount === 1 ? '' : 's'} currently edited
+          {editedRowCount} row{editedRowCount === 1 ? '' : 's'} edited total;{' '}
+          {selectedEditedRowCount} selected
         </Typography>
       </Stack>
 
-      {/* Flow 1 presentation: repeat the latest direct cell edit across the chosen page target. */}
       <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
         <Stack spacing={1}>
           <Typography variant="subtitle2">
@@ -123,7 +124,7 @@ export function TransactionEditingControls({
             <Button
               size="small"
               variant="outlined"
-              disabled={!lastEdit}
+              disabled={!lastEdit || isSaving}
               onClick={() => onApplyLastEdit(target)}
             >
               Apply last edit
@@ -132,7 +133,6 @@ export function TransactionEditingControls({
         </Stack>
       </Box>
 
-      {/* Flow 2 presentation: build an explicit Transaction field patch for the chosen page target. */}
       <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
         <Stack spacing={1}>
           <Typography variant="subtitle2">
@@ -161,7 +161,7 @@ export function TransactionEditingControls({
               size="small"
               value={account}
               onChange={(event) => setAccount(event.target.value)}
-              disabled={!useAccount}
+              disabled={!useAccount || isSaving}
             />
 
             <FormControlLabel
@@ -178,7 +178,7 @@ export function TransactionEditingControls({
               type="number"
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
-              disabled={!useAmount}
+              disabled={!useAmount || isSaving}
             />
 
             <FormControlLabel
@@ -194,7 +194,7 @@ export function TransactionEditingControls({
               size="small"
               value={currency}
               onChange={(event) => setCurrency(event.target.value)}
-              disabled={!useCurrency}
+              disabled={!useCurrency || isSaving}
             />
 
             <FormControlLabel
@@ -212,7 +212,7 @@ export function TransactionEditingControls({
               onChange={(event) =>
                 setStatus(event.target.value as TransactionStatus)
               }
-              disabled={!useStatus}
+              disabled={!useStatus || isSaving}
               sx={{ minWidth: 140 }}
             >
               {STATUSES.map((option) => (
@@ -227,7 +227,7 @@ export function TransactionEditingControls({
             <Button
               size="small"
               variant="outlined"
-              disabled={!hasBulkChanges}
+              disabled={!hasBulkChanges || isSaving}
               onClick={() => onApplyBulkEdit(target, bulkChanges)}
             >
               Apply bulk edit
@@ -235,6 +235,33 @@ export function TransactionEditingControls({
           </div>
         </Stack>
       </Box>
+
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={1}
+        alignItems={{ sm: 'center' }}
+      >
+        <Button
+          size="small"
+          variant="contained"
+          disabled={!hasSelectedEdits || isSaving}
+          onClick={onSaveSelected}
+        >
+          {isSaving
+            ? 'Saving…'
+            : `Save selected edits (${selectedEditedRowCount})`}
+        </Button>
+        <Button
+          size="small"
+          variant="outlined"
+          disabled={!hasSelectedEdits || isSaving}
+          onClick={onDiscardSelected}
+        >
+          Discard selected edits
+        </Button>
+      </Stack>
+
+      {saveError ? <Alert severity="error">{saveError}</Alert> : null}
     </Stack>
   );
 }

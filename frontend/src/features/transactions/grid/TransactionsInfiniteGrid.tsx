@@ -1,13 +1,15 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 import type {
   GetRowIdParams,
   GridApi,
   GridReadyEvent,
+  SelectionChangedEvent,
 } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
 import type { GridRowsLoader } from '@/shared/grid/data/gridData.types';
 import { useInfiniteRowLoading } from '@/shared/grid/data/infinite/useInfiniteRowLoading';
+import { buildSelectedTrackedGridUpdatePayload } from '@/shared/grid/editing/trackedGridEditing';
 import { useCurrentPageEditActions } from '@/shared/grid/editing/useCurrentPageEditActions';
 import { useTrackedGridEditing } from '@/shared/grid/editing/useTrackedGridEditing';
 import { GridErrorOverlay } from '@/shared/grid/overlays/GridErrorOverlay';
@@ -24,43 +26,27 @@ import {
   type TransactionsInfiniteGridOptions,
 } from '../transactionsGrid.config';
 import { TransactionEditingControls } from './TransactionEditingControls';
+import type { TransactionRowEditActionsContext } from './TransactionRowEditActions';
 import { transactionEditingConfig } from './transactionEditing';
 import { transactionColumns } from './transactionColumns';
 import { mapTransactionGridRequest } from './transactionRequest.mapper';
+import { useTransactionEditPersistence } from './useTransactionEditPersistence';
 
-/** Infinite and SSRM persist independent native AG Grid state for the same Transaction feature. */
 const INFINITE_STATE_KEY = 'transactions:infinite';
-
-/** One stable feature identity function is shared by AG Grid and reusable selection/edit capabilities. */
 const getTransactionId = (row: Transaction) => row.id;
 const getRowId = ({ data }: GetRowIdParams<Transaction>) => getTransactionId(data);
 
-/**
- * AG Grid asks for rows later, when Infinite needs another block/page. The shared loading hook needs a
- * callable it can invoke at that time; there is no requested row range available during React render.
- *
- * This stable local function performs only the required boundary conversion:
- * AG Grid flat request -> Transactions backend request -> Transactions API.
- */
+/** AG Grid requests row blocks later; this stable feature boundary maps each request to the API contract. */
 const loadTransactionRows: GridRowsLoader<Transaction> = (request, context) =>
-  listTransactions(
-    mapTransactionGridRequest(request),
-    context.signal,
-  );
+  listTransactions(mapTransactionGridRequest(request), context.signal);
 
 export interface TransactionsInfiniteGridProps {
-  /** Optional selection strategy override used by embedding/tests. */
   selectionScope?: InfiniteSelectionMode;
-  /** Optional native GridOptions override; no application wrapper option surface is introduced. */
   gridOptions?: TransactionsInfiniteGridOptions;
-  /** Publishes the current logical selection without exposing row-model-specific internals. */
   onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
 }
 
-/**
- * Transactions Infinite root. Native AG Grid configuration stays visible here while focused shared
- * hooks own loading, selection, editing and Grid State behavior that genuinely has its own lifecycle.
- */
+/** Transactions Infinite root. Native row-model lifecycle stays visible at the concrete grid owner. */
 export function TransactionsInfiniteGrid({
   selectionScope: selectionScopeOverride,
   gridOptions: gridOptionsOverride,
@@ -70,9 +56,10 @@ export function TransactionsInfiniteGrid({
     selectionScopeOverride ?? transactionsGridConfig.infinite.selectionScope;
   const gridOptions =
     gridOptionsOverride ?? transactionsGridConfig.infinite.gridOptions;
-
-  /** Keep the one AG Grid API instance here because this root renders and owns this grid. */
   const gridApi = useRef<GridApi<Transaction> | null>(null);
+
+  /** Native page selection does not itself change React state, so this revision refreshes bulk-action counts. */
+  const [selectionRevision, setSelectionRevision] = useState(0);
 
   const {
     datasource,
@@ -80,13 +67,11 @@ export function TransactionsInfiniteGrid({
     totalCount,
     retry: retryLoad,
     clearError: clearLoadError,
-  } = useInfiniteRowLoading({
-    gridApi,
-    loadRows: loadTransactionRows,
-  });
+  } = useInfiniteRowLoading({ gridApi, loadRows: loadTransactionRows });
 
   const {
     selectionColumnDef,
+    readSelectionIntent,
     onRowsChanged: syncSelectionAfterRowsChange,
     onRowSelected,
     onSelectionChanged,
@@ -100,31 +85,106 @@ export function TransactionsInfiniteGrid({
   });
 
   const {
+    state,
+    payload,
     editedRowCount,
     lastEdit,
     applyChangesToNodes,
     restoreTrackedEdits,
     handleCellValueChanged,
+    acknowledgeChanges,
+    discardRow,
+    discardRows,
   } = useTrackedGridEditing(transactionEditingConfig);
 
   const {
     error: editActionError,
     applyLastEdit,
     applyBulkChanges,
-  } = useCurrentPageEditActions(
-    { lastEdit, applyChangesToNodes },
-    gridApi,
-  );
-
-  const { initialState, onStateUpdated } =
-    useGridStatePersistence<Transaction>({
-      key: INFINITE_STATE_KEY,
-    });
+  } = useCurrentPageEditActions({ lastEdit, applyChangesToNodes }, gridApi);
 
   /**
-   * AG Grid gives us its API once the grid has initialised. Selection then performs one deferred read
-   * because the API can be ready slightly before the initial Infinite rows have been materialised.
+   * Infinite owns its post-save cache behavior. Editable values can affect server-side sort/filter,
+   * so after the backend accepts a save we reload cached blocks instead of pretending their positions
+   * remain correct. AG Grid keeps old rows visible until refreshed block data arrives.
    */
+  const handlePersistedRows = useCallback(() => {
+    gridApi.current?.refreshInfiniteCache();
+  }, []);
+
+  const { saveRow, saveBulk, isSaving, saveError } =
+    useTransactionEditPersistence({
+      updates: payload.updates,
+      acknowledgeChanges,
+      onPersistedRows: handlePersistedRows,
+    });
+
+  const handleDiscardRow = useCallback(
+    (rowId: string) => {
+      const api = gridApi.current;
+      if (api) discardRow(api, rowId);
+    },
+    [discardRow],
+  );
+
+  /**
+   * Aggregate persistence is the intersection of dirty drafts and logical checkbox selection.
+   * A row can be dirty because it was edited directly or via "Entire current page"; if it is not
+   * currently selected, it remains available for row-level Save/Discard but is excluded from bulk.
+   */
+  const selectedDirtyUpdates = useMemo(
+    () =>
+      buildSelectedTrackedGridUpdatePayload(
+        state,
+        readSelectionIntent(),
+      ).updates,
+    [readSelectionIntent, selectionRevision, state],
+  );
+
+  const handleSaveSelected = useCallback(() => {
+    const updates = buildSelectedTrackedGridUpdatePayload(
+      state,
+      readSelectionIntent(),
+    ).updates;
+    saveBulk(updates);
+  }, [readSelectionIntent, saveBulk, state]);
+
+  const handleDiscardSelected = useCallback(() => {
+    const api = gridApi.current;
+    if (!api) return;
+
+    const updates = buildSelectedTrackedGridUpdatePayload(
+      state,
+      readSelectionIntent(),
+    ).updates;
+    discardRows(
+      api,
+      updates.map((update) => update.id),
+    );
+  }, [discardRows, readSelectionIntent, state]);
+
+  /**
+   * The Actions column reads the SAME draft state that builds aggregate persistence. It does not own a
+   * second dirty-row list, so reverting the last changed field removes both row actions and bulk work.
+   */
+  const rowEditActionsContext = useMemo<TransactionRowEditActionsContext>(
+    () => ({
+      isRowDirty: (rowId) => Boolean(state.changesById[rowId]),
+      isSaving,
+      onSaveRow: saveRow,
+      onDiscardRow: handleDiscardRow,
+    }),
+    [handleDiscardRow, isSaving, saveRow, state.changesById],
+  );
+
+  /** Refresh only Actions cells when draft/pending state changes; data columns keep their native lifecycle. */
+  useEffect(() => {
+    gridApi.current?.refreshCells?.({ columns: ['editActions'], force: true });
+  }, [rowEditActionsContext]);
+
+  const { initialState, onStateUpdated } =
+    useGridStatePersistence<Transaction>({ key: INFINITE_STATE_KEY });
+
   const handleGridReady = useCallback(
     (event: GridReadyEvent<Transaction>) => {
       gridApi.current = event.api;
@@ -134,44 +194,23 @@ export function TransactionsInfiniteGrid({
   );
 
   /**
-   * Reconcile our application-owned state after AG Grid may have loaded/replaced Infinite rows.
-   *
-   * IMPORTANT: this same handler is intentionally wired to BOTH `onModelUpdated` and
-   * `onPaginationChanged` below. Those events overlap, but they are not interchangeable:
-   *
-   * - `modelUpdated` tells us the displayed row model changed. This covers row/model changes caused by
-   *   loading, filtering, sorting and other model work.
-   * - `paginationChanged` specifically tells us paging state changed. AG Grid fires it when the user
-   *   changes page/page size and also when new data changes pagination state.
-   *
-   * A transaction edited on page 1 may be loaded again with its old backend value after navigating to
-   * page 2 and then back to page 1. We therefore restore tracked local edits whenever either relevant
-   * row/paging lifecycle fires. Custom Infinite dataset selection is reconciled at the same time.
-   *
-   * Both events can fire for the same update. That is safe: selection/edit restoration only changes a
-   * RowNode when its current value differs from the application-owned value. Do not remove either event
-   * as "duplicate" without re-checking the Infinite row/pagination lifecycle.
-   *
-   * We deliberately do NOT use `viewportChanged`: ordinary scrolling can change which DOM rows are
-   * visible without meaning that server rows were replaced. `firstDataRendered` is also unnecessary for
-   * edit restoration because no user edit can exist before the first data render in this grid instance.
+   * Intentionally wired to BOTH modelUpdated and paginationChanged. Infinite may recreate/reload rows
+   * through either lifecycle. Selection and still-unsaved edits are idempotently reconciled afterward.
    */
   const handleRowsChanged = useCallback(() => {
     syncSelectionAfterRowsChange();
-
     const api = gridApi.current;
-    if (api) {
-      restoreTrackedEdits(api);
-    }
+    if (api) restoreTrackedEdits(api);
   }, [restoreTrackedEdits, syncSelectionAfterRowsChange]);
 
-  /**
-   * Runs after the user changes a grid filter.
-   *
-   * A new filter starts a different server query, so an error from the previous query should disappear.
-   * Also clear selection state whose meaning depended on the previous filtered result. All Records and
-   * ordinary explicit IDs remain valid because they do not depend on the visible filter.
-   */
+  const handleSelectionChanged = useCallback(
+    (event: SelectionChangedEvent<Transaction>) => {
+      onSelectionChanged(event);
+      setSelectionRevision((revision) => revision + 1);
+    },
+    [onSelectionChanged],
+  );
+
   const handleFilterChanged = useCallback(() => {
     clearLoadError();
     resetFilterDependentSelection();
@@ -181,9 +220,14 @@ export function TransactionsInfiniteGrid({
     <Stack spacing={2}>
       <TransactionEditingControls
         editedRowCount={editedRowCount}
+        selectedEditedRowCount={selectedDirtyUpdates.length}
         lastEdit={lastEdit}
+        isSaving={isSaving}
+        saveError={saveError}
         onApplyLastEdit={applyLastEdit}
         onApplyBulkEdit={applyBulkChanges}
+        onSaveSelected={handleSaveSelected}
+        onDiscardSelected={handleDiscardSelected}
       />
 
       {editActionError ? (
@@ -193,21 +237,12 @@ export function TransactionsInfiniteGrid({
       ) : null}
 
       <Box sx={{ height: 620, width: '100%' }}>
-        {/*
-         * Important native event wiring:
-         * - onGridReady stores the one GridApi used by all capabilities.
-         * - onModelUpdated + onPaginationChanged intentionally share handleRowsChanged; see the detailed
-         *   lifecycle comment above. Do not remove one merely because the callback is the same.
-         * - onFilterChanged does NOT perform filtering. AG Grid owns filtering; our handler only clears
-         *   application state that belonged to the previous server query/filter.
-         * - onCellValueChanged records unsaved edits outside temporary RowNodes so they can be restored.
-         * - onStateUpdated persists the native Grid State sections this application chose to remember.
-         */}
         <AgGridReact<Transaction>
           {...gridOptions}
           rowModelType="infinite"
           datasource={datasource}
           columnDefs={transactionColumns}
+          context={rowEditActionsContext}
           getRowId={getRowId}
           initialState={initialState}
           rowSelection={{
@@ -219,17 +254,14 @@ export function TransactionsInfiniteGrid({
           activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={
             loadError
-              ? {
-                  message: loadError,
-                  onRetry: retryLoad,
-                }
+              ? { message: loadError, onRetry: retryLoad }
               : undefined
           }
           onGridReady={handleGridReady}
           onModelUpdated={handleRowsChanged}
           onPaginationChanged={handleRowsChanged}
           onRowSelected={onRowSelected}
-          onSelectionChanged={onSelectionChanged}
+          onSelectionChanged={handleSelectionChanged}
           onFilterChanged={handleFilterChanged}
           onCellValueChanged={handleCellValueChanged}
           onStateUpdated={onStateUpdated}
