@@ -7,6 +7,10 @@ ACCOUNTS = ("Operating", "Treasury", "Payroll", "Settlement")
 CURRENCIES = ("INR", "USD", "EUR")
 
 
+class TransactionNotFoundError(LookupError):
+    """Raised when an update targets a Transaction id that is not in the current data source."""
+
+
 def _build_transactions(count: int = 750) -> List[Dict[str, Any]]:
     today = date.today()
     rows: List[Dict[str, Any]] = []
@@ -88,6 +92,48 @@ def _apply_sort(
         )
 
     return sorted_rows
+
+
+def _find_transaction(transaction_id: str) -> Dict[str, Any]:
+    for row in TRANSACTIONS:
+        if row["id"] == transaction_id:
+            return row
+
+    raise TransactionNotFoundError(transaction_id)
+
+
+def update_transaction(
+    transaction_id: str,
+    changes: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Apply one already-validated patch and return the authoritative updated row."""
+
+    row = _find_transaction(transaction_id)
+    row.update(changes)
+    return row
+
+
+def bulk_update_transactions(
+    updates: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Apply an already-validated group of row patches as one logical operation.
+
+    Resolve every id before mutating anything. With the current in-memory source this gives the API
+    atomic not-found behavior: if any requested Transaction is missing, none of the valid rows are
+    changed. A future database/repository implementation should preserve that contract with a real
+    transaction boundary.
+    """
+
+    resolved = [
+        (_find_transaction(item["id"]), item["changes"])
+        for item in updates
+    ]
+
+    for row, changes in resolved:
+        row.update(changes)
+
+    return [row for row, _changes in resolved]
 
 
 def query_transactions(query: Dict[str, Any]) -> Dict[str, Any]:
