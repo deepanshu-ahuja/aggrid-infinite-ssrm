@@ -177,9 +177,18 @@ export function TransactionsInfiniteGrid({
     [handleDiscardRow, isSaving, saveRow, state.changesById],
   );
 
-  /** Refresh only Actions cells when draft/pending state changes; data columns keep their native lifecycle. */
+  /**
+   * AG Grid treats `context` as an Initial option. Updating the React prop alone does not replace the
+   * context held by existing cell renderers, so publish the new context through the native GridApi
+   * before refreshing Actions cells. Otherwise Discard/Save can clear React draft state while the
+   * renderer still evaluates an older `isRowDirty` closure and keeps stale actions visible.
+   */
   useEffect(() => {
-    gridApi.current?.refreshCells?.({ columns: ['editActions'], force: true });
+    const api = gridApi.current;
+    if (!api) return;
+
+    api.setGridOption('context', rowEditActionsContext);
+    api.refreshCells({ columns: ['editActions'], force: true });
   }, [rowEditActionsContext]);
 
   const { initialState, onStateUpdated } =
