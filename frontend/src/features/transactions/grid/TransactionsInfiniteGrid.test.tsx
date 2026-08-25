@@ -1,193 +1,161 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FilterModel } from 'ag-grid-community';
-import type { ServerSelectionIntent } from '@/shared/grid/selection/serverSelection';
-import { serverBackedGridDefaults } from '@/shared/grid/config/serverBackedGridDefaults';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type {
+  CellValueChangedEvent,
+  GridApi,
+  GridReadyEvent,
+  SelectionColumnDef,
+} from 'ag-grid-community';
+import type { Transaction } from '../api/transactions.contracts';
 import { TransactionsInfiniteGrid } from './TransactionsInfiniteGrid';
 
-/**
- * These tests validate the composition layer only.
- *
- * The child page/dataset grids already have their own selection/lifecycle tests. Here we replace them
- * with tiny captures so we can prove:
- *
- * selection + AG Grid filter context
- *              ↓
- * "Preview bulk payload"
- *              ↓
- * Transactions backend-ready selection JSON
- */
-interface CapturedChildProps {
-  onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
-  onFilterModelChange?: (filterModel: FilterModel) => void;
-}
-
-const childCapture = vi.hoisted(() => ({
-  page: undefined as CapturedChildProps | undefined,
-  dataset: undefined as CapturedChildProps | undefined,
+const gridCapture = vi.hoisted(() => ({
+  props: undefined as unknown,
 }));
 
-vi.mock('./TransactionsInfinitePageGrid', () => ({
-  TransactionsInfinitePageGrid: (props: CapturedChildProps) => {
-    childCapture.page = props;
-    return <div data-testid="page-grid" />;
+vi.mock('ag-grid-react', () => ({
+  AgGridReact: (props: unknown) => {
+    gridCapture.props = props;
+    return <div data-testid="mock-ag-grid" />;
   },
 }));
 
-vi.mock('./TransactionsInfiniteDatasetGrid', () => ({
-  TransactionsInfiniteDatasetGrid: (props: CapturedChildProps) => {
-    childCapture.dataset = props;
-    return <div data-testid="dataset-grid" />;
-  },
-}));
-
-function readPreview() {
-  return JSON.parse(
-    screen.getByTestId('selection-payload-preview').textContent ?? '{}',
-  ) as unknown;
+interface CapturedGridProps {
+  selectionColumnDef?: SelectionColumnDef;
+  onGridReady?: (event: GridReadyEvent<Transaction>) => void;
+  onCellValueChanged?: (event: CellValueChangedEvent<Transaction>) => void;
 }
 
-beforeEach(() => {
-  childCapture.page = undefined;
-  childCapture.dataset = undefined;
+function getGridProps() {
+  return gridCapture.props as CapturedGridProps;
+}
+
+function createApi(options?: {
+  rowSelection?: string[];
+  filterModel?: Record<string, unknown>;
+}): GridApi<Transaction> {
+  return {
+    getState: vi.fn(() => ({
+      rowSelection: options?.rowSelection ?? [],
+    })),
+    getFilterModel: vi.fn(() => options?.filterModel ?? {}),
+    isLastRowIndexKnown: vi.fn(() => false),
+    getDisplayedRowCount: vi.fn(() => 0),
+    forEachNode: vi.fn(),
+    refreshHeader: vi.fn(),
+  } as unknown as GridApi<Transaction>;
+}
+
+function gridReady(api: GridApi<Transaction>): GridReadyEvent<Transaction> {
+  return { api } as unknown as GridReadyEvent<Transaction>;
+}
+
+function readPreview(testId: string) {
+  return JSON.parse(screen.getByTestId(testId).textContent ?? '{}') as unknown;
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+  gridCapture.props = undefined;
+  window.localStorage.clear();
 });
 
-describe('TransactionsInfiniteGrid bulk payload preview wiring', () => {
-  it('previews current-page/manual selection as exact include IDs', () => {
-    render(
-      <TransactionsInfiniteGrid
-        selectionScope="page"
-        gridOptions={serverBackedGridDefaults}
-      />,
-    );
+describe('TransactionsInfiniteGrid root GridApi ownership', () => {
+  it('reads native page/manual selection directly from the root GridApi at action time', () => {
+    vi.useFakeTimers();
+    const api = createApi({ rowSelection: ['txn-a', 'txn-b'] });
+
+    render(<TransactionsInfiniteGrid selectionScope="page" />);
 
     act(() => {
-      childCapture.page?.onSelectionChange?.({
-        mode: 'include',
-        ids: ['txn-a', 'txn-b'],
-      });
+      getGridProps().onGridReady?.(gridReady(api));
     });
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'Preview bulk payload' }),
+      screen.getByRole('button', { name: 'Preview selection payload' }),
     );
 
-    expect(readPreview()).toEqual({
+    expect(readPreview('selection-payload-preview')).toEqual({
       mode: 'include',
       ids: ['txn-a', 'txn-b'],
     });
+    expect(api.getState).toHaveBeenCalled();
   });
 
-  it('previews Select All Filtered using the applied AG Grid filter model', () => {
-    render(
-      <TransactionsInfiniteGrid
-        selectionScope="filtered"
-        gridOptions={serverBackedGridDefaults}
-      />,
-    );
-
-    act(() => {
-      childCapture.dataset?.onFilterModelChange?.({
+  it('reads the applied filter directly from GridApi when filtered Select All payload is built', () => {
+    vi.useFakeTimers();
+    const api = createApi({
+      filterModel: {
         status: {
           filterType: 'text',
           type: 'equals',
           filter: 'Completed',
         },
-        amount: {
-          filterType: 'number',
-          type: 'greaterThan',
-          filter: 5_000,
-        },
-      });
+      },
+    });
 
-      childCapture.dataset?.onSelectionChange?.({
-        mode: 'exclude',
-        ids: ['txn-excluded'],
-      });
+    render(<TransactionsInfiniteGrid selectionScope="filtered" />);
+
+    act(() => {
+      getGridProps().onGridReady?.(gridReady(api));
+      const headerParams = getGridProps().selectionColumnDef
+        ?.headerComponentParams as { onChange?: (checked: boolean) => void } | undefined;
+      headerParams?.onChange?.(true);
     });
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'Preview bulk payload' }),
+      screen.getByRole('button', { name: 'Preview selection payload' }),
     );
 
-    expect(readPreview()).toEqual({
+    expect(readPreview('selection-payload-preview')).toEqual({
       mode: 'exclude',
-      ids: ['txn-excluded'],
+      ids: [],
       filters: [
         {
           field: 'status',
           operator: 'equals',
           value: 'Completed',
         },
+      ],
+    });
+    expect(api.getFilterModel).toHaveBeenCalled();
+  });
+
+  it('builds selected-edit preview from accumulated edits and native GridApi selection', () => {
+    vi.useFakeTimers();
+    const api = createApi({ rowSelection: ['txn-b'] });
+
+    render(<TransactionsInfiniteGrid selectionScope="page" />);
+
+    act(() => {
+      getGridProps().onGridReady?.(gridReady(api));
+      getGridProps().onCellValueChanged?.({
+        data: {
+          id: 'txn-b',
+          reference: 'REF-txn-b',
+          account: 'Account',
+          amount: 100,
+          currency: 'USD',
+          status: 'Completed',
+          transactionDate: '2026-08-24',
+        },
+        colDef: { field: 'status' },
+        oldValue: 'Pending',
+        newValue: 'Completed',
+      } as unknown as CellValueChangedEvent<Transaction>);
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Preview selected edit payload' }),
+    );
+
+    expect(readPreview('selected-edit-payload-preview')).toEqual({
+      updates: [
         {
-          field: 'amount',
-          operator: 'greaterThan',
-          value: 5_000,
+          id: 'txn-b',
+          changes: { status: 'Completed' },
         },
       ],
     });
   });
-
-  it('previews Select All Records with an explicit empty filter list', () => {
-    render(
-      <TransactionsInfiniteGrid
-        selectionScope="all"
-        gridOptions={serverBackedGridDefaults}
-      />,
-    );
-
-    act(() => {
-      childCapture.dataset?.onSelectionChange?.({
-        mode: 'exclude',
-        ids: ['txn-a'],
-      });
-    });
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Preview bulk payload' }),
-    );
-
-    expect(readPreview()).toEqual({
-      mode: 'exclude',
-      ids: ['txn-a'],
-      filters: [],
-    });
-  });
-
-  it('clears a stale preview after selection changes', () => {
-    render(
-      <TransactionsInfiniteGrid
-        selectionScope="page"
-        gridOptions={serverBackedGridDefaults}
-      />,
-    );
-
-    act(() => {
-      childCapture.page?.onSelectionChange?.({
-        mode: 'include',
-        ids: ['txn-a'],
-      });
-    });
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Preview bulk payload' }),
-    );
-
-    expect(screen.getByTestId('selection-payload-preview')).toBeInTheDocument();
-
-    /**
-     * A preview is a snapshot from the last explicit button click, not live selection state.
-     * Remove it as soon as selection changes so the UI cannot show stale JSON.
-     */
-    act(() => {
-      childCapture.page?.onSelectionChange?.({
-        mode: 'include',
-        ids: ['txn-a', 'txn-b'],
-      });
-    });
-
-    expect(
-      screen.queryByTestId('selection-payload-preview'),
-    ).not.toBeInTheDocument();
-  });
-})
+});
