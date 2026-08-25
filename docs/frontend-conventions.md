@@ -16,10 +16,28 @@ For AG Grid code, distinguish reusable capability mechanics from feature semanti
 
 A useful test for ownership is: if replacing `Transaction` with another row type only requires supplying row identity, editable fields, a loader or a mapper, the underlying mechanic is probably reusable grid infrastructure. If the actual business semantics or backend contract change, keep it feature-owned.
 
+### Abstraction threshold
+
+Do not extract a file, hook, helper or feature wrapper merely because two callers repeat a few lines. Duplication is preferable when the extracted layer would only forward arguments or compose existing functions without adding a meaningful responsibility.
+
+An abstraction should normally earn its existence by owning at least one real concern such as:
+
+- state or lifecycle;
+- validation or normalization;
+- business/domain policy;
+- third-party API adaptation;
+- error/retry/cancellation behavior;
+- a non-trivial algorithm or behavioral contract;
+- a stable boundary that deliberately hides an implementation detail from several consumers.
+
+Avoid pass-through patterns such as `useFeatureX()` calling `useSharedX()` unchanged, a `loadFeatureRows.ts` file that only calls an existing mapper and API function, or a component that merely renames/forwards third-party props. Re-evaluate small duplication before introducing another named concept, import path, test surface or lifecycle boundary.
+
+Shared mechanics and concrete feature composition are different things: a reusable datasource/loading hook may own AG Grid request lifecycle, cancellation and retry behavior, while a concrete feature root can still directly compose `mapFeatureRequest(...)` with `listFeatureRecords(...)` when that composition adds no behavior of its own.
+
 ## React and TypeScript
 
 - Prefer props, ordinary functions and local state before creating a custom hook.
-- Keep server communication outside render components. Components compose a datasource with a feature API loader.
+- Keep server communication outside render components. Components may compose a datasource/loading capability with feature API and request-mapping functions; do not create an otherwise empty feature loader module solely to avoid a few repeated lines.
 - Render and type `AgGridReact<TData>` directly; do not introduce a wrapper merely to forward native AG Grid props, refs or defaults.
 - Prefer native AG Grid state/APIs over parallel React state when AG Grid already owns the behavior.
 - Keep environment access at integration points such as the Enterprise license initializer.

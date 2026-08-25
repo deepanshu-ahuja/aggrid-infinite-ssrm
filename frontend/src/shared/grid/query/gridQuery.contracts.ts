@@ -145,11 +145,20 @@ export interface GridListRequest<
  *
  * `rows` contains only the requested block/page of data.
  *
- * `totalCount` is the total number of records matching the current server query, NOT simply
- * `rows.length`. AG Grid uses the total to understand the size of a dataset that may be much larger
- * than the records currently loaded in the browser.
+ * `totalCount` is the size of the COMPLETE dataset before applying the current query filters. This
+ * value is application metadata: for example, Infinite "Select All Records" can use it without a
+ * second count-only request.
+ *
+ * `filteredCount` is the number of records matching the CURRENT server query. AG Grid's Infinite and
+ * Server-Side row models must use this count for pagination/cache sizing because it describes the
+ * dataset the user can currently navigate.
+ *
+ * Returning both values in the normal page response keeps count ownership at the backend/data-loading
+ * boundary and prevents selection code from issuing its own network request merely to discover a
+ * dataset size.
  */
 export interface GridListResponse<TData> {
   rows: TData[];
   totalCount: number;
+  filteredCount: number;
 }

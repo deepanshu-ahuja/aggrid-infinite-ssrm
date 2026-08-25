@@ -4,8 +4,8 @@ import type {
   TrackedGridLastEdit,
   TrackedGridUpdatePayload,
 } from '@/shared/grid/editing/trackedGridEditing';
-import type { CurrentPageEditTarget } from '@/shared/grid/editing/useCurrentPageEditTarget';
 import type { UseTrackedGridEditingOptions } from '@/shared/grid/editing/useTrackedGridEditing';
+import type { CurrentPageRowTarget } from '@/shared/grid/pagination/useCurrentPageRowTarget';
 import type { Transaction } from '../api/transactions.contracts';
 
 /** Transactions chooses WHICH fields are editable; shared/grid owns HOW edits are tracked. */
@@ -35,7 +35,9 @@ export type TransactionEditingState = TrackedGridEditingState<
   TransactionEditableField,
   TransactionEditableValue
 >;
-export type TransactionEditTarget = CurrentPageEditTarget;
+
+/** Feature UI currently offers the two generic current-page row targets. */
+export type TransactionEditTarget = CurrentPageRowTarget;
 
 export function isTransactionEditableField(
   field: string | undefined,
