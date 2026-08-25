@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import type { FilterModel } from 'ag-grid-community';
 import type {
@@ -10,6 +10,11 @@ import {
   buildTransactionBulkSelection,
   type TransactionBulkSelection,
 } from './transactionBulkSelection';
+import {
+  buildSelectedTransactionUpdatePayload,
+  type TransactionEditingState,
+  type TransactionUpdatePayload,
+} from './transactionEditing';
 import { TransactionsInfiniteDatasetGrid } from './TransactionsInfiniteDatasetGrid';
 import { TransactionsInfinitePageGrid } from './TransactionsInfinitePageGrid';
 
@@ -20,11 +25,6 @@ export interface TransactionsInfiniteGridProps {
    * - `page`: add/remove IDs on the current pagination page;
    * - `filtered`: Select All represents every backend row matching the active filter;
    * - `all`: Select All represents every backend row in the complete dataset.
-   *
-   * IMPORTANT:
-   * This is UI/lifecycle configuration only.
-   *
-   * It is intentionally NOT copied into the emitted logical selection.
    */
   selectionScope: InfiniteSelectionMode;
 
@@ -32,58 +32,62 @@ export interface TransactionsInfiniteGridProps {
   gridOptions: TransactionsInfiniteGridOptions;
 
   /**
-   * Receives the current logical selection in JSON-safe form:
+   * Accumulated local edits are supplied only so this row-model owner can combine them with its
+   * logical selection for the DEVELOPMENT bulk-edit preview.
    *
-   *     { mode: 'include' | 'exclude', ids: [...] }
-   *
-   * There is deliberately no `scope` property.
-   *
-   * This callback still does NOT perform a backend bulk action.
+   * The editing engine itself remains outside the Infinite grid; this component does not mutate or
+   * own those edits.
    */
+  editingState?: TransactionEditingState;
+
+  /** Emits the current logical selection when another feature consumer needs it. */
   onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
 }
 
-/**
- * Initial logical selection before the user checks any row.
- *
- * Keeping this as a module constant makes the "nothing selected" state explicit:
- *
- *     include + [] = select no exact IDs
- */
+/** include + [] = no explicitly selected IDs. */
 const EMPTY_SELECTION: ServerSelectionIntent<string> = {
   mode: 'include',
   ids: [],
 };
 
 /**
- * Chooses the appropriate Infinite selection composition and keeps a development-only payload
- * preview available for debugging the backend-facing selection contract.
+ * Chooses the appropriate Infinite selection composition and owns development previews that require
+ * knowledge of Infinite's logical include/exclude selection.
  *
- * The preview is intentionally guarded by `import.meta.env.DEV`: production builds must not expose
- * internal validation controls, while developers can still inspect the exact payload until real
- * bulk actions such as Export/Delete/Approve provide their own network request to inspect.
+ * TWO DIFFERENT PREVIEWS
+ * ----------------------
+ * `Preview selection payload`
+ *     validates a future generic selection-based backend action such as Export/Delete/Approve.
+ *
+ * `Preview selected edit payload`
+ *     validates a future Bulk Update API. It intersects accumulated concrete edits with the current
+ *     logical selection, so selection by itself never manufactures row updates.
  */
 export function TransactionsInfiniteGrid({
   selectionScope,
   gridOptions,
+  editingState,
   onSelectionChange,
 }: TransactionsInfiniteGridProps) {
-  /** Latest logical selection emitted by whichever Infinite strategy is active. */
   const [selectionIntent, setSelectionIntent] =
     useState<ServerSelectionIntent<string>>(EMPTY_SELECTION);
-
-  /** Latest APPLIED AG Grid column-filter model, needed for filtered bulk-selection context. */
   const [filterModel, setFilterModel] = useState<FilterModel>({});
 
-  /** Development-only validation snapshot. */
-  const [preview, setPreview] = useState<TransactionBulkSelection>();
-  const [previewError, setPreviewError] = useState<string>();
+  /** Generic selection-action preview. */
+  const [selectionPreview, setSelectionPreview] =
+    useState<TransactionBulkSelection>();
+  const [selectionPreviewError, setSelectionPreviewError] = useState<string>();
+
+  /** Future Bulk Update preview: edited rows ∩ current logical selection. */
+  const [selectedEditPreview, setSelectedEditPreview] =
+    useState<TransactionUpdatePayload>();
 
   const handleSelectionChange = useCallback(
     (nextSelection: ServerSelectionIntent<string>) => {
       setSelectionIntent(nextSelection);
-      setPreview(undefined);
-      setPreviewError(undefined);
+      setSelectionPreview(undefined);
+      setSelectionPreviewError(undefined);
+      setSelectedEditPreview(undefined);
       onSelectionChange?.(nextSelection);
     },
     [onSelectionChange],
@@ -91,12 +95,15 @@ export function TransactionsInfiniteGrid({
 
   const handleFilterModelChange = useCallback((nextFilterModel: FilterModel) => {
     setFilterModel(nextFilterModel);
-    setPreview(undefined);
-    setPreviewError(undefined);
+    setSelectionPreview(undefined);
+    setSelectionPreviewError(undefined);
   }, []);
 
-  /** Builds the same backend-facing selection/query payload a future explicit bulk action will use. */
-  const handlePreviewPayload = useCallback(() => {
+  /**
+   * Existing generic selection preview. This answers "what logical rows are selected?" and is NOT
+   * the same contract as backend editing.
+   */
+  const handlePreviewSelectionPayload = useCallback(() => {
     try {
       const nextPreview =
         selectionScope === 'filtered'
@@ -108,17 +115,34 @@ export function TransactionsInfiniteGrid({
               selectionScope,
             });
 
-      setPreview(nextPreview);
-      setPreviewError(undefined);
+      setSelectionPreview(nextPreview);
+      setSelectionPreviewError(undefined);
     } catch (error) {
-      setPreview(undefined);
-      setPreviewError(
+      setSelectionPreview(undefined);
+      setSelectionPreviewError(
         error instanceof Error
           ? error.message
           : 'The selection payload could not be built.',
       );
     }
   }, [filterModel, selectionIntent, selectionScope]);
+
+  /**
+   * Future BACKEND BULK-EDIT preview.
+   *
+   * Examples:
+   * - selected row, never edited -> omitted;
+   * - edited row, not selected -> omitted;
+   * - row edited on Page 5 and still logically selected -> included even after leaving Page 5;
+   * - exclude selection -> every edited ID is tested against the exception list.
+   */
+  const handlePreviewSelectedEdits = useCallback(() => {
+    if (!editingState) return;
+
+    setSelectedEditPreview(
+      buildSelectedTransactionUpdatePayload(editingState, selectionIntent),
+    );
+  }, [editingState, selectionIntent]);
 
   const grid =
     selectionScope === 'page' ? (
@@ -140,29 +164,38 @@ export function TransactionsInfiniteGrid({
     <Stack spacing={1.5}>
       {import.meta.env.DEV ? (
         <>
-          {/*
-           * DEVELOPMENT-ONLY VALIDATION CONTROL
-           * -----------------------------------
-           * Vite replaces `import.meta.env.DEV` at build time, so this block is excluded from the
-           * production user experience while remaining available during local development.
-           */}
           <Stack
             direction={{ xs: 'column', sm: 'row' }}
             spacing={1}
             alignItems={{ xs: 'stretch', sm: 'center' }}
           >
-            <Button variant="outlined" size="small" onClick={handlePreviewPayload}>
-              Preview bulk payload
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={handlePreviewSelectionPayload}
+            >
+              Preview selection payload
+            </Button>
+
+            <Button
+              variant="outlined"
+              size="small"
+              disabled={!editingState}
+              onClick={handlePreviewSelectedEdits}
+            >
+              Preview selected edit payload
             </Button>
 
             <Typography variant="caption" color="text.secondary">
-              Development validation only — no bulk backend endpoint is called.
+              Development validation only — no backend action is called.
             </Typography>
           </Stack>
 
-          {previewError ? <Alert severity="error">{previewError}</Alert> : null}
+          {selectionPreviewError ? (
+            <Alert severity="error">{selectionPreviewError}</Alert>
+          ) : null}
 
-          {preview ? (
+          {selectionPreview ? (
             <Box
               component="pre"
               data-testid="selection-payload-preview"
@@ -177,7 +210,26 @@ export function TransactionsInfiniteGrid({
                 fontSize: '0.75rem',
               }}
             >
-              {JSON.stringify(preview, null, 2)}
+              {JSON.stringify(selectionPreview, null, 2)}
+            </Box>
+          ) : null}
+
+          {selectedEditPreview ? (
+            <Box
+              component="pre"
+              data-testid="selected-edit-payload-preview"
+              sx={{
+                m: 0,
+                p: 1.5,
+                overflowX: 'auto',
+                border: 1,
+                borderColor: 'divider',
+                borderRadius: 1,
+                bgcolor: 'background.default',
+                fontSize: '0.75rem',
+              }}
+            >
+              {JSON.stringify(selectedEditPreview, null, 2)}
             </Box>
           ) : null}
         </>
