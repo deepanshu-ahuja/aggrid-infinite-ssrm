@@ -31,10 +31,29 @@ interface TransactionEditingControlsProps {
 const STATUSES: readonly TransactionStatus[] = ['Completed', 'Pending', 'Failed'];
 
 /**
- * Prototype UI for the two current-page editing flows we discussed.
+ * TEMPORARY PROTOTYPE PRESENTATION ONLY.
  *
- * This component deliberately knows nothing about Infinite vs SSRM. The host grid resolves
- * "current page" and "selected on current page" into concrete RowNodes before applying changes.
+ * This component is deliberately NOT the reusable editing architecture. Its job is only to expose
+ * the two behaviors in one screen while we validate them. The reusable behavior lives in:
+ *
+ * - `useTransactionEditing`      -> accumulated row/field changes;
+ * - `useTransactionEditFlows`    -> current-page target resolution + Flow 1 / Flow 2 operations;
+ * - pure payload builders        -> all-local-edits vs selected-and-edited backend payloads.
+ *
+ * The real client UI may put Flow 1 inline beside a cell and Flow 2 in a modal/drawer. Those UIs can
+ * call the same behavior without importing this component.
+ *
+ * FLOW 1 UI IN THIS PROTOTYPE
+ * ---------------------------
+ * Displays the latest direct cell edit and triggers propagation of that one field/value.
+ *
+ * FLOW 2 UI IN THIS PROTOTYPE
+ * ---------------------------
+ * Collects one or many opted-in fields and passes them as a `TransactionChanges` object.
+ *
+ * Both flows share the target selector only because the currently agreed target semantics are the
+ * same: entire current page or selected rows on current page. The future visual placement can still
+ * be completely different for each flow.
  */
 export function TransactionEditingControls({
   editedRowCount,
@@ -43,7 +62,10 @@ export function TransactionEditingControls({
   onApplyBulkEdit,
   onPreviewPayload,
 }: TransactionEditingControlsProps) {
+  /** Shared target semantics for the prototype; not a requirement that both future UIs share UI. */
   const [target, setTarget] = useState<TransactionEditTarget>('page');
+
+  /** FLOW 2 form state starts here. Flow 1 does not use any of these values. */
   const [useAccount, setUseAccount] = useState(false);
   const [account, setAccount] = useState('');
   const [useAmount, setUseAmount] = useState(false);
@@ -53,6 +75,10 @@ export function TransactionEditingControls({
   const [useStatus, setUseStatus] = useState(false);
   const [status, setStatus] = useState<TransactionStatus>('Pending');
 
+  /**
+   * FLOW 2 only: unchecked fields are omitted completely so "unchanged" remains different from an
+   * explicitly supplied value. The future API therefore receives only fields the user opted into.
+   */
   const bulkChanges = useMemo<TransactionChanges>(() => {
     const changes: TransactionChanges = {};
 
@@ -84,6 +110,7 @@ export function TransactionEditingControls({
         </Typography>
       </Stack>
 
+      {/* FLOW 1 prototype UI. */}
       <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
         <Stack spacing={1}>
           <Typography variant="subtitle2">Flow 1 — apply the last cell edit</Typography>
@@ -105,6 +132,7 @@ export function TransactionEditingControls({
         </Stack>
       </Box>
 
+      {/* FLOW 2 prototype UI. */}
       <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
         <Stack spacing={1}>
           <Typography variant="subtitle2">Flow 2 — bulk edit current page</Typography>
@@ -170,7 +198,7 @@ export function TransactionEditingControls({
       {import.meta.env.DEV ? (
         <div>
           <Button size="small" variant="contained" onClick={onPreviewPayload}>
-            Preview edited payload
+            Preview all local edits
           </Button>
         </div>
       ) : null}
