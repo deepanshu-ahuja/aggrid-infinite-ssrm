@@ -136,44 +136,19 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     [],
   );
 
-  /**
-   * Discard one row locally. Loaded RowNodes are restored immediately from the first captured originals;
-   * unloaded rows need no grid mutation because the next server load already contains persisted values.
-   */
-  const discardRow = useCallback(
-    (api: GridApi<TData>, rowId: string) => {
-      const originals = state.originalsById[rowId];
-      if (!originals) return;
-
-      applyingProgrammaticChange.current = true;
-      try {
-        api.forEachNode((node) => {
-          if (!node.data || getRowId(node.data) !== rowId) return;
-          for (const field of editableFields) {
-            if (!hasTrackedGridField(originals, field)) continue;
-            const originalValue = originals[field] as TValue;
-            if (!Object.is(getFieldValue(node.data, field), originalValue)) {
-              node.setDataValue(field, originalValue, 'data');
-            }
-          }
-        });
-      } finally {
-        applyingProgrammaticChange.current = false;
-      }
-
-      setState((current) => discardTrackedGridRow(current, rowId));
-    },
-    [editableFields, getFieldValue, getRowId, state.originalsById],
-  );
-
-  const discardAll = useCallback(
-    (api: GridApi<TData>) => {
+  const restoreOriginalsForRows = useCallback(
+    (api: GridApi<TData>, rowIds: ReadonlySet<string>) => {
       applyingProgrammaticChange.current = true;
       try {
         api.forEachNode((node) => {
           if (!node.data) return;
-          const originals = state.originalsById[getRowId(node.data)];
+
+          const rowId = getRowId(node.data);
+          if (!rowIds.has(rowId)) return;
+
+          const originals = state.originalsById[rowId];
           if (!originals) return;
+
           for (const field of editableFields) {
             if (!hasTrackedGridField(originals, field)) continue;
             const originalValue = originals[field] as TValue;
@@ -185,11 +160,41 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
       } finally {
         applyingProgrammaticChange.current = false;
       }
-
-      setState(createEmptyTrackedGridEditingState<TField, TValue>());
-      setLastEdit(undefined);
     },
     [editableFields, getFieldValue, getRowId, state.originalsById],
+  );
+
+  /** Discard exactly one row; single-row actions do not depend on checkbox selection. */
+  const discardRow = useCallback(
+    (api: GridApi<TData>, rowId: string) => {
+      if (!state.originalsById[rowId]) return;
+
+      restoreOriginalsForRows(api, new Set([rowId]));
+      setState((current) => discardTrackedGridRow(current, rowId));
+    },
+    [restoreOriginalsForRows, state.originalsById],
+  );
+
+  /**
+   * Discard an explicit set of dirty rows, used by selection-scoped aggregate actions.
+   * Unselected drafts remain untouched and can still be saved/discarded from their own row action.
+   */
+  const discardRows = useCallback(
+    (api: GridApi<TData>, rowIds: readonly string[]) => {
+      if (rowIds.length === 0) return;
+
+      const ids = new Set(rowIds);
+      restoreOriginalsForRows(api, ids);
+
+      setState((current) => {
+        let next = current;
+        for (const rowId of ids) {
+          next = discardTrackedGridRow(next, rowId);
+        }
+        return next;
+      });
+    },
+    [restoreOriginalsForRows],
   );
 
   const payload = useMemo(() => buildTrackedGridUpdatePayload(state), [state]);
@@ -204,6 +209,6 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     restoreTrackedEdits,
     acknowledgeChanges,
     discardRow,
-    discardAll,
+    discardRows,
   };
 }
