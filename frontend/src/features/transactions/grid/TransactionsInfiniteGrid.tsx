@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import type { FilterModel } from 'ag-grid-community';
 import type {
@@ -54,6 +54,16 @@ const EMPTY_SELECTION: ServerSelectionIntent<string> = {
  * Chooses the appropriate Infinite selection composition and owns development previews that require
  * knowledge of Infinite's logical include/exclude selection.
  *
+ * NATIVE-FIRST STATE RULE
+ * -----------------------
+ * This component must not create React state merely because AG Grid exposes a value. In particular,
+ * the applied filter model remains AG Grid-owned. We keep only a ref to the latest model published
+ * by the table because the development action builder needs to read it later; changing that ref does
+ * not cause a render and therefore does not create a second UI state machine for filters.
+ *
+ * React state below is limited to application meaning AG Grid cannot represent (logical dataset-wide
+ * Infinite selection) and development preview UI that AG Grid does not own.
+ *
  * TWO DIFFERENT PREVIEWS
  * ----------------------
  * `Preview selection payload`
@@ -69,11 +79,27 @@ export function TransactionsInfiniteGrid({
   editingState,
   onSelectionChange,
 }: TransactionsInfiniteGridProps) {
+  /**
+   * Application-owned logical Infinite selection.
+   *
+   * Infinite Row Model has native per-row selection but no native Select All across unloaded rows.
+   * This logical snapshot is therefore needed while the custom Infinite selection strategies are
+   * active. A later native-selection cleanup can reduce include-mode duplication further without
+   * changing the backend `mode + ids` contract.
+   */
   const [selectionIntent, setSelectionIntent] =
     useState<ServerSelectionIntent<string>>(EMPTY_SELECTION);
-  const [filterModel, setFilterModel] = useState<FilterModel>({});
 
-  /** Generic selection-action preview. */
+  /**
+   * NOT React state: AG Grid owns filtering.
+   *
+   * The child table publishes `api.getFilterModel()` after AG Grid applies a filter. We retain only
+   * the latest value for the explicit preview/action builder. A ref is enough because no UI renders
+   * directly from this model.
+   */
+  const filterModelRef = useRef<FilterModel>({});
+
+  /** Generic selection-action preview. This is our development UI, not AG Grid state. */
   const [selectionPreview, setSelectionPreview] =
     useState<TransactionBulkSelection>();
   const [selectionPreviewError, setSelectionPreviewError] = useState<string>();
@@ -94,7 +120,11 @@ export function TransactionsInfiniteGrid({
   );
 
   const handleFilterModelChange = useCallback((nextFilterModel: FilterModel) => {
-    setFilterModel(nextFilterModel);
+    /**
+     * Do not mirror AG Grid filter state with `useState`. The model is needed only when a user later
+     * asks us to construct a filtered backend action payload.
+     */
+    filterModelRef.current = nextFilterModel;
     setSelectionPreview(undefined);
     setSelectionPreviewError(undefined);
   }, []);
@@ -109,7 +139,7 @@ export function TransactionsInfiniteGrid({
         selectionScope === 'filtered'
           ? buildTransactionBulkSelection(selectionIntent, {
               selectionScope: 'filtered',
-              filterModel,
+              filterModel: filterModelRef.current,
             })
           : buildTransactionBulkSelection(selectionIntent, {
               selectionScope,
@@ -125,7 +155,7 @@ export function TransactionsInfiniteGrid({
           : 'The selection payload could not be built.',
       );
     }
-  }, [filterModel, selectionIntent, selectionScope]);
+  }, [selectionIntent, selectionScope]);
 
   /**
    * Future BACKEND BULK-EDIT preview.
