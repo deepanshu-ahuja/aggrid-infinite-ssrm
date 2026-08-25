@@ -54,37 +54,36 @@ describe('useTransactionEditPersistence', () => {
     });
   });
 
-  it('uses the bulk endpoint for Save All', async () => {
+  it('bulk-saves only the explicit dirty updates supplied by the grid selection boundary', async () => {
     const acknowledgeChanges = vi.fn();
     const onPersistedRows = vi.fn();
-    const updates = [
+    const allDrafts = [
       { id: 'txn-a', changes: { status: 'Failed' as const } },
       { id: 'txn-b', changes: { amount: 250 } },
     ];
+    const selectedDrafts = [allDrafts[1]];
+
     transactionApi.bulkUpdateTransactions.mockResolvedValue({
-      rows: [row('txn-a'), row('txn-b')],
-      updatedCount: 2,
+      rows: [row('txn-b')],
+      updatedCount: 1,
     });
 
     const { result } = renderHook(() =>
       useTransactionEditPersistence({
-        updates,
+        updates: allDrafts,
         acknowledgeChanges,
         onPersistedRows,
       }),
     );
 
-    act(() => result.current.saveAll());
+    act(() => result.current.saveBulk(selectedDrafts));
 
     await waitFor(() => {
       expect(transactionApi.bulkUpdateTransactions).toHaveBeenCalledWith({
-        updates: [
-          { id: 'txn-a', changes: { status: 'Failed' } },
-          { id: 'txn-b', changes: { amount: 250 } },
-        ],
+        updates: [{ id: 'txn-b', changes: { amount: 250 } }],
       });
-      expect(acknowledgeChanges).toHaveBeenCalledWith(updates);
-      expect(onPersistedRows).toHaveBeenCalledWith([row('txn-a'), row('txn-b')]);
+      expect(acknowledgeChanges).toHaveBeenCalledWith(selectedDrafts);
+      expect(onPersistedRows).toHaveBeenCalledWith([row('txn-b')]);
     });
   });
 });
