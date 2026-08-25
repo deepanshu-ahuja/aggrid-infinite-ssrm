@@ -10,14 +10,18 @@ import {
   type TrackedGridLastEdit,
 } from './trackedGridEditing';
 
-interface UseTrackedGridEditingOptions<TData, TField extends string, TValue> {
+export interface UseTrackedGridEditingOptions<
+  TData,
+  TField extends string,
+  TValue,
+> {
   /** Stable backend identity used to keep edits independent of RowNode/cache position. */
   getRowId: (row: TData) => string;
 
   /** Fields this grid permits the shared edit engine to track and restore. */
   editableFields: readonly TField[];
 
-  /** Runtime field guard because AG Grid's `colDef.field` is a string rather than `TField`. */
+  /** Runtime field guard because AG Grid's `colDef.field` is wider than the feature field union. */
   isEditableField: (field: string | undefined) => field is TField;
 
   /** Reads a typed field value from the feature row model. */
@@ -57,15 +61,29 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
 
   const handleCellValueChanged = useCallback(
     (event: CellValueChangedEvent<TData>) => {
-      if (!event.data || !isEditableField(event.colDef.field)) return;
+      if (!event.data) return;
 
-      const field = event.colDef.field;
+      /**
+       * AG Grid exposes a conditional `ColDefField<TData>` type. Normalize that external type to the
+       * runtime string boundary first; after the feature guard succeeds, the shared engine works only
+       * with its own `TField` union and does not leak AG Grid's conditional field type into state.
+       */
+      const candidateField = event.colDef.field as string | undefined;
+      if (!isEditableField(candidateField)) return;
+
+      const field: TField = candidateField;
       const oldValue = event.oldValue as TValue;
       const newValue = event.newValue as TValue;
       const rowId = getRowId(event.data);
 
       setState((current) =>
-        recordTrackedGridCellChange(current, rowId, field, oldValue, newValue),
+        recordTrackedGridCellChange<TField, TValue>(
+          current,
+          rowId,
+          field,
+          oldValue,
+          newValue,
+        ),
       );
 
       if (!applyingProgrammaticChange.current) {
@@ -77,9 +95,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
 
   /**
    * Shared mutation primitive used after some caller resolves the target RowNodes.
-   *
-   * The hook records changes before mutating RowNodes, so local edit state survives even if the grid
-   * immediately recreates/evicts those nodes afterward.
+   * The hook records changes before mutating RowNodes so edit state survives immediate cache churn.
    */
   const applyChangesToNodes = useCallback(
     (nodes: readonly IRowNode<TData>[], changes: TrackedGridChanges<TField, TValue>) => {
@@ -94,7 +110,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
           for (const field of editableFields) {
             if (!hasTrackedGridField(changes, field)) continue;
 
-            next = recordTrackedGridCellChange(
+            next = recordTrackedGridCellChange<TField, TValue>(
               next,
               rowId,
               field,
@@ -129,11 +145,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     [editableFields, getFieldValue, getRowId],
   );
 
-  /**
-   * Re-applies unsaved tracked edits to newly materialised RowNodes after cache/page changes.
-   * Until a real save endpoint persists the values, backend reloads can otherwise visually revert
-   * local edits even though application edit state still contains them.
-   */
+  /** Re-applies unsaved tracked edits to RowNodes materialised after cache/page changes. */
   const restoreTrackedEdits = useCallback(
     (api: GridApi<TData>) => {
       applyingProgrammaticChange.current = true;
