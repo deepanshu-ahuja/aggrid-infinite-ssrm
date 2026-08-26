@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { CellValueChangedEvent, GridApi, IRowNode } from 'ag-grid-community';
 import {
   acknowledgeTrackedGridChanges,
@@ -12,6 +12,8 @@ import {
   type TrackedGridLastEdit,
   type TrackedGridUpdatePayload,
 } from './trackedGridEditing';
+
+const TRACKED_GRID_WRITE_SOURCE = 'trackedGridEditing';
 
 export interface UseTrackedGridEditingOptions<TData, TField extends string, TValue> {
   getRowId: (row: TData) => string;
@@ -35,16 +37,14 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
   );
   const [lastEdit, setLastEdit] = useState<TrackedGridLastEdit<TField, TValue>>();
 
-  /**
-   * `setDataValue` can fire AG Grid's `cellValueChanged` event too. When our own code is restoring,
-   * discarding, or applying a bulk edit, that change is already handled explicitly below. Ignoring the
-   * matching grid event prevents a Discard from immediately creating the same row draft again.
-   */
-  const applyingProgrammaticChange = useRef(false);
-
   const handleCellValueChanged = useCallback(
     (event: CellValueChangedEvent<TData>) => {
-      if (applyingProgrammaticChange.current || !event.data) return;
+      /**
+       * A user edit reaches us after AG Grid commits the cell value. Our own calls to setDataValue can
+       * also produce this event, so they carry a source marker and must not be recorded as another edit.
+       * Checking the event source works even if AG Grid delivers the event after setDataValue returns.
+       */
+      if (event.source === TRACKED_GRID_WRITE_SOURCE || !event.data) return;
 
       const candidateField = event.colDef.field as string | undefined;
       if (!isEditableField(candidateField)) return;
@@ -62,7 +62,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
 
   const applyChangesToNodes = useCallback(
     (nodes: readonly IRowNode<TData>[], changes: TrackedGridChanges<TField, TValue>) => {
-      // Record the draft first. We then ignore the AG Grid event caused by setDataValue below.
+      // Bulk actions are real drafts, so record them before writing their values into loaded RowNodes.
       setState((current) => {
         let next = current;
         for (const node of nodes) {
@@ -82,20 +82,15 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
         return next;
       });
 
-      applyingProgrammaticChange.current = true;
-      try {
-        for (const node of nodes) {
-          if (!node.data) continue;
-          for (const field of editableFields) {
-            if (!hasTrackedGridField(changes, field)) continue;
-            const nextValue = changes[field] as TValue;
-            if (!Object.is(getFieldValue(node.data, field), nextValue)) {
-              node.setDataValue(field, nextValue, 'data');
-            }
+      for (const node of nodes) {
+        if (!node.data) continue;
+        for (const field of editableFields) {
+          if (!hasTrackedGridField(changes, field)) continue;
+          const nextValue = changes[field] as TValue;
+          if (!Object.is(getFieldValue(node.data, field), nextValue)) {
+            node.setDataValue(field, nextValue, TRACKED_GRID_WRITE_SOURCE);
           }
         }
-      } finally {
-        applyingProgrammaticChange.current = false;
       }
     },
     [editableFields, getFieldValue, getRowId],
@@ -104,23 +99,18 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
   const restoreTrackedEdits = useCallback(
     (api: GridApi<TData>) => {
       // A newly loaded RowNode starts with backend data. Put any still-unsaved local values back into it.
-      applyingProgrammaticChange.current = true;
-      try {
-        api.forEachNode((node) => {
-          if (!node.data) return;
-          const rowChanges = state.changesById[getRowId(node.data)];
-          if (!rowChanges) return;
-          for (const field of editableFields) {
-            if (!hasTrackedGridField(rowChanges, field)) continue;
-            const trackedValue = rowChanges[field] as TValue;
-            if (!Object.is(getFieldValue(node.data, field), trackedValue)) {
-              node.setDataValue(field, trackedValue, 'data');
-            }
+      api.forEachNode((node) => {
+        if (!node.data) return;
+        const rowChanges = state.changesById[getRowId(node.data)];
+        if (!rowChanges) return;
+        for (const field of editableFields) {
+          if (!hasTrackedGridField(rowChanges, field)) continue;
+          const trackedValue = rowChanges[field] as TValue;
+          if (!Object.is(getFieldValue(node.data, field), trackedValue)) {
+            node.setDataValue(field, trackedValue, TRACKED_GRID_WRITE_SOURCE);
           }
-        });
-      } finally {
-        applyingProgrammaticChange.current = false;
-      }
+        }
+      });
     },
     [editableFields, getFieldValue, getRowId, state.changesById],
   );
@@ -138,28 +128,24 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
 
   const restoreOriginalsForRows = useCallback(
     (api: GridApi<TData>, rowIds: ReadonlySet<string>) => {
-      applyingProgrammaticChange.current = true;
-      try {
-        api.forEachNode((node) => {
-          if (!node.data) return;
+      api.forEachNode((node) => {
+        if (!node.data) return;
 
-          const rowId = getRowId(node.data);
-          if (!rowIds.has(rowId)) return;
+        const rowId = getRowId(node.data);
+        if (!rowIds.has(rowId)) return;
 
-          const originals = state.originalsById[rowId];
-          if (!originals) return;
+        const originals = state.originalsById[rowId];
+        if (!originals) return;
 
-          for (const field of editableFields) {
-            if (!hasTrackedGridField(originals, field)) continue;
-            const originalValue = originals[field] as TValue;
-            if (!Object.is(getFieldValue(node.data, field), originalValue)) {
-              node.setDataValue(field, originalValue, 'data');
-            }
+        for (const field of editableFields) {
+          if (!hasTrackedGridField(originals, field)) continue;
+          const originalValue = originals[field] as TValue;
+          if (!Object.is(getFieldValue(node.data, field), originalValue)) {
+            // Source marks this as our restore, not a new edit made by the user.
+            node.setDataValue(field, originalValue, TRACKED_GRID_WRITE_SOURCE);
           }
-        });
-      } finally {
-        applyingProgrammaticChange.current = false;
-      }
+        }
+      });
     },
     [editableFields, getFieldValue, getRowId, state.originalsById],
   );
