@@ -18,7 +18,7 @@ function transaction(status: Transaction['status']): Transaction {
 }
 
 describe('useTrackedGridEditing', () => {
-  it('does not recreate a draft when Discard restores the original value through setDataValue', () => {
+  it('does not recreate a draft if the setDataValue event arrives after Discard finishes', () => {
     const row = transaction('Completed');
     const { result } = renderHook(() => useTrackedGridEditing(transactionEditingConfig));
 
@@ -35,21 +35,26 @@ describe('useTrackedGridEditing', () => {
       status: 'Completed',
     });
 
+    let restoredValueEvent: CellValueChangedEvent<Transaction> | undefined;
     const node = {
       data: row,
-      setDataValue: vi.fn((field: keyof Transaction, value: unknown) => {
-        const oldValue = row[field];
-        (row as unknown as Record<string, unknown>)[field] = value;
+      setDataValue: vi.fn(
+        (field: keyof Transaction, value: unknown, source?: string) => {
+          const oldValue = row[field];
+          (row as unknown as Record<string, unknown>)[field] = value;
 
-        // AG Grid can emit cellValueChanged when application code writes through setDataValue.
-        result.current.handleCellValueChanged({
-          data: row,
-          colDef: { field },
-          oldValue,
-          newValue: value,
-        } as unknown as CellValueChangedEvent<Transaction>);
-        return true;
-      }),
+          // Keep the event until after Discard returns. This reproduces the timing that caused
+          // a restored value to be recorded as a brand-new edit and made Discard toggle values.
+          restoredValueEvent = {
+            data: row,
+            colDef: { field },
+            oldValue,
+            newValue: value,
+            source,
+          } as unknown as CellValueChangedEvent<Transaction>;
+          return true;
+        },
+      ),
     } as unknown as RowNode<Transaction>;
 
     const api = {
@@ -63,6 +68,14 @@ describe('useTrackedGridEditing', () => {
     });
 
     expect(row.status).toBe('Pending');
+    expect(result.current.state.changesById).toEqual({});
+    expect(result.current.state.originalsById).toEqual({});
+
+    act(() => {
+      if (!restoredValueEvent) throw new Error('Expected setDataValue to produce an event.');
+      result.current.handleCellValueChanged(restoredValueEvent);
+    });
+
     expect(result.current.state.changesById).toEqual({});
     expect(result.current.state.originalsById).toEqual({});
   });
