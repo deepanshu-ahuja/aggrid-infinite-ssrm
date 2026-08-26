@@ -91,6 +91,7 @@ function createApi(options?: {
       options?.rows?.forEach(callback);
     }),
     refreshHeader: vi.fn(),
+    setGridOption: vi.fn(),
     refreshCells: vi.fn(),
     refreshInfiniteCache: vi.fn(),
   } as unknown as GridApi<Transaction>;
@@ -201,6 +202,38 @@ describe('TransactionsInfiniteGrid production wiring', () => {
     });
 
     expect(node.setDataValue).toHaveBeenCalledWith('status', 'Completed', 'data');
+  });
+
+  it('publishes cleared dirty state to AG Grid after row discard', async () => {
+    const row = createTransaction('txn-a', 'Completed');
+    const node = createRowNode(row);
+    const api = createApi({ rows: [node] });
+
+    renderGrid(<TransactionsInfiniteGrid selectionScope="page" />);
+    act(() => {
+      getGridProps().onGridReady?.(gridReady(api));
+      getGridProps().onCellValueChanged?.({
+        data: row,
+        colDef: { field: 'status' },
+        oldValue: 'Pending',
+        newValue: 'Completed',
+      } as unknown as CellValueChangedEvent<Transaction>);
+    });
+
+    act(() => getGridProps().context?.onDiscardRow('txn-a'));
+
+    await waitFor(() => {
+      expect(row.status).toBe('Pending');
+      expect(getGridProps().context?.isRowDirty('txn-a')).toBe(false);
+      const latestContext = vi.mocked(api.setGridOption).mock.calls.at(-1)?.[1] as
+        | TransactionRowEditActionsContext
+        | undefined;
+      expect(latestContext?.isRowDirty('txn-a')).toBe(false);
+      expect(api.refreshCells).toHaveBeenLastCalledWith({
+        columns: ['editActions'],
+        force: true,
+      });
+    });
   });
 
   it('saves one dirty row through its row action regardless of checkbox selection', async () => {
