@@ -164,8 +164,17 @@ export function TransactionsSsrmGrid({
     [handleDiscardRow, isSaving, saveRow, state.changesById],
   );
 
+  /**
+   * AG Grid context is consumed by the Actions cell renderer. Publish the latest context through the
+   * native API before refreshing that column; otherwise Save/Discard can render from an older dirty-state
+   * closure after a row has already been saved, discarded, or reverted to its original value.
+   */
   useEffect(() => {
-    gridApi.current?.refreshCells?.({ columns: ['editActions'], force: true });
+    const api = gridApi.current;
+    if (!api) return;
+
+    api.setGridOption('context', rowEditActionsContext);
+    api.refreshCells({ columns: ['editActions'], force: true });
   }, [rowEditActionsContext]);
 
   const { initialState, onStateUpdated } =
