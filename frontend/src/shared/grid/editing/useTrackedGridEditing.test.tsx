@@ -20,9 +20,7 @@ function transaction(status: Transaction['status']): Transaction {
 describe('useTrackedGridEditing', () => {
   it('does not recreate a draft when Discard restores the original value through setDataValue', () => {
     const row = transaction('Completed');
-    const { result } = renderHook(() =>
-      useTrackedGridEditing(transactionEditingConfig),
-    );
+    const { result } = renderHook(() => useTrackedGridEditing(transactionEditingConfig));
 
     act(() => {
       result.current.handleCellValueChanged({
@@ -71,9 +69,7 @@ describe('useTrackedGridEditing', () => {
 
   it('still clears a draft when the user manually edits a field back to its original value', () => {
     const row = transaction('Completed');
-    const { result } = renderHook(() =>
-      useTrackedGridEditing(transactionEditingConfig),
-    );
+    const { result } = renderHook(() => useTrackedGridEditing(transactionEditingConfig));
 
     act(() => {
       result.current.handleCellValueChanged({

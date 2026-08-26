@@ -19,20 +19,12 @@ export interface TransactionRowEditActionsContext {
 export function TransactionRowEditActions({
   data,
   context,
-}: CustomCellRendererProps<
-  Transaction,
-  unknown,
-  TransactionRowEditActionsContext
->) {
+}: CustomCellRendererProps<Transaction, unknown, TransactionRowEditActionsContext>) {
   if (!data || !context?.isRowDirty(data.id)) return null;
 
   return (
     <Stack direction="row" spacing={0.5} alignItems="center" height="100%">
-      <Button
-        size="small"
-        disabled={context.isSaving}
-        onClick={() => context.onSaveRow(data.id)}
-      >
+      <Button size="small" disabled={context.isSaving} onClick={() => context.onSaveRow(data.id)}>
         Save
       </Button>
       <Button

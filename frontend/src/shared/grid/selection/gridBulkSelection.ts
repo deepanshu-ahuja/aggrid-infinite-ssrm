@@ -1,7 +1,4 @@
-import type {
-  GridSelectionId,
-  ServerSelectionIntent,
-} from './serverSelection';
+import type { GridSelectionId, ServerSelectionIntent } from './serverSelection';
 
 /**
  * Backend-facing selection payload produced when the user eventually invokes a bulk action.
@@ -57,10 +54,7 @@ import type {
  *
  * This keeps the backend contract unambiguous without carrying a redundant `scope` field.
  */
-export type GridBulkSelection<
-  TId extends GridSelectionId,
-  TFilter,
-> =
+export type GridBulkSelection<TId extends GridSelectionId, TFilter> =
   | {
       mode: 'include';
       ids: TId[];
@@ -132,10 +126,7 @@ export type GridBulkSelection<
  * Transactions. Feature code supplies already-mapped backend filters when an actual action is
  * eventually executed.
  */
-export function buildGridBulkSelection<
-  TId extends GridSelectionId,
-  TFilter,
->(
+export function buildGridBulkSelection<TId extends GridSelectionId, TFilter>(
   selection: ServerSelectionIntent<TId>,
   filters: readonly TFilter[],
 ): GridBulkSelection<TId, TFilter> {

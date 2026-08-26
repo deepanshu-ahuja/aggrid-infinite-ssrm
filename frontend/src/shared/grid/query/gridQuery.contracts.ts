@@ -1,4 +1,3 @@
-
 /**
  * Shared backend contract for server-backed data grids.
  *

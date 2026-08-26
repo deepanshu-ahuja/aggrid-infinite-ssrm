@@ -1,8 +1,4 @@
-import type {
-  IDateFilterParams,
-  INumberFilterParams,
-  ITextFilterParams,
-} from 'ag-grid-community';
+import type { IDateFilterParams, INumberFilterParams, ITextFilterParams } from 'ag-grid-community';
 
 /**
  * Behaviour shared by AG Grid's server-backed Simple Filters.

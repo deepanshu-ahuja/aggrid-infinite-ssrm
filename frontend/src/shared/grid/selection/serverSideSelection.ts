@@ -36,9 +36,7 @@ export function createEmptyServerSideSelectionState(): FlatServerSideSelectionSt
  *
  * Failing loudly is safer than building a bulk-action payload with the wrong meaning.
  */
-export function readFlatServerSideSelectionState(
-  state: unknown,
-): FlatServerSideSelectionState {
+export function readFlatServerSideSelectionState(state: unknown): FlatServerSideSelectionState {
   if (!state || typeof state !== 'object') {
     throw new Error('AG Grid did not provide a valid SSRM selection state.');
   }

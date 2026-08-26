@@ -1,10 +1,7 @@
 import { useCallback } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { queryClient } from '@/shared/query/queryClient';
-import {
-  bulkUpdateTransactions,
-  updateTransaction,
-} from '../api/transactions.api';
+import { bulkUpdateTransactions, updateTransaction } from '../api/transactions.api';
 import type { Transaction } from '../api/transactions.contracts';
 import type { TransactionUpdatePayload } from './transactionEditing';
 import {
@@ -15,8 +12,7 @@ import {
 type TransactionUpdate = TransactionUpdatePayload['updates'][number];
 
 type SaveCommand =
-  | { kind: 'row'; updates: [TransactionUpdate] }
-  | { kind: 'bulk'; updates: TransactionUpdate[] };
+  { kind: 'row'; updates: [TransactionUpdate] } | { kind: 'bulk'; updates: TransactionUpdate[] };
 
 interface UseTransactionEditPersistenceOptions {
   /** All current drafts are needed for single-row Save lookup. */

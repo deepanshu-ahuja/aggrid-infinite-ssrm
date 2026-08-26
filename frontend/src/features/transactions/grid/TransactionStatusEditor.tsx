@@ -2,11 +2,7 @@ import { MenuItem, Select } from '@mui/material';
 import type { CustomCellEditorProps } from 'ag-grid-react';
 import type { Transaction, TransactionStatus } from '../api/transactions.contracts';
 
-const TRANSACTION_STATUSES: readonly TransactionStatus[] = [
-  'Completed',
-  'Pending',
-  'Failed',
-];
+const TRANSACTION_STATUSES: readonly TransactionStatus[] = ['Completed', 'Pending', 'Failed'];
 
 /**
  * Example custom application editor built with MUI rather than AG Grid's provided editors.

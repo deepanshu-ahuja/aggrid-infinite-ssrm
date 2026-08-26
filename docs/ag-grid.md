@@ -165,15 +165,15 @@ See `frontend/src/ssrm-selection-contract.md` for scenario details.
 
 Current defaults:
 
-| Native AG Grid option | Current default | Purpose |
-|---|---:|---|
-| `pagination` | `true` | Enable AG Grid pagination. |
-| `paginationPageSize` | `25` | Rows shown per default page. |
-| `paginationPageSizeSelector` | `[10, 25, 50]` | User page-size choices. |
-| `cacheBlockSize` | `50` | Rows requested per backend block. |
-| `maxBlocksInCache` | `5` | Bound retained server blocks. |
-| `blockLoadDebounceMillis` | `120` | Avoid unnecessary rapid block requests. |
-| `maxConcurrentDatasourceRequests` | `1` | Conservative backend request concurrency. |
+| Native AG Grid option             | Current default | Purpose                                   |
+| --------------------------------- | --------------: | ----------------------------------------- |
+| `pagination`                      |          `true` | Enable AG Grid pagination.                |
+| `paginationPageSize`              |            `25` | Rows shown per default page.              |
+| `paginationPageSizeSelector`      |  `[10, 25, 50]` | User page-size choices.                   |
+| `cacheBlockSize`                  |            `50` | Rows requested per backend block.         |
+| `maxBlocksInCache`                |             `5` | Bound retained server blocks.             |
+| `blockLoadDebounceMillis`         |           `120` | Avoid unnecessary rapid block requests.   |
+| `maxConcurrentDatasourceRequests` |             `1` | Conservative backend request concurrency. |
 
 These are defaults, not immutable rules. A row-model/feature root may override a value when its UX/backend characteristics justify it.
 

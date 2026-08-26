@@ -44,8 +44,7 @@ export interface TransactionsSsrmGridProps {
 export function TransactionsSsrmGrid({
   gridOptions: gridOptionsOverride,
 }: TransactionsSsrmGridProps) {
-  const gridOptions =
-    gridOptionsOverride ?? transactionsGridConfig.ssrm.gridOptions;
+  const gridOptions = gridOptionsOverride ?? transactionsGridConfig.ssrm.gridOptions;
   const gridApi = useRef<GridApi<Transaction> | null>(null);
   const [isGridReady, setIsGridReady] = useState(false);
 
@@ -102,12 +101,11 @@ export function TransactionsSsrmGrid({
     gridApi.current?.refreshServerSide();
   }, []);
 
-  const { saveRow, saveBulk, isSaving, saveError } =
-    useTransactionEditPersistence({
-      updates: payload.updates,
-      acknowledgeChanges,
-      onPersistedRows: handlePersistedRows,
-    });
+  const { saveRow, saveBulk, isSaving, saveError } = useTransactionEditPersistence({
+    updates: payload.updates,
+    acknowledgeChanges,
+    onPersistedRows: handlePersistedRows,
+  });
 
   const handleDiscardRow = useCallback(
     (rowId: string) => {
@@ -125,10 +123,7 @@ export function TransactionsSsrmGrid({
   const handleSaveSelected = useCallback(() => {
     if (!gridApi.current) return;
 
-    const updates = buildSelectedTrackedGridUpdatePayload(
-      state,
-      readSelectionIntent(),
-    ).updates;
+    const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
     saveBulk(updates);
   }, [readSelectionIntent, saveBulk, state]);
 
@@ -136,10 +131,7 @@ export function TransactionsSsrmGrid({
     const api = gridApi.current;
     if (!api) return;
 
-    const updates = buildSelectedTrackedGridUpdatePayload(
-      state,
-      readSelectionIntent(),
-    ).updates;
+    const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
     discardRows(
       api,
       updates.map((update) => update.id),
@@ -166,16 +158,14 @@ export function TransactionsSsrmGrid({
     api.refreshCells?.({ columns: ['editActions'], force: true });
   }, [rowEditActionsContext]);
 
-  const { initialState, onStateUpdated } =
-    useGridStatePersistence<Transaction>({ key: SSRM_STATE_KEY });
+  const { initialState, onStateUpdated } = useGridStatePersistence<Transaction>({
+    key: SSRM_STATE_KEY,
+  });
 
-  const handleGridReady = useCallback(
-    (event: GridReadyEvent<Transaction>) => {
-      gridApi.current = event.api;
-      setIsGridReady(true);
-    },
-    [],
-  );
+  const handleGridReady = useCallback((event: GridReadyEvent<Transaction>) => {
+    gridApi.current = event.api;
+    setIsGridReady(true);
+  }, []);
 
   /** When SSRM loads/replaces rows, restore checkbox state and any still-unsaved cell values. */
   const handleModelUpdated = useCallback(() => {
@@ -234,8 +224,8 @@ export function TransactionsSsrmGrid({
       </Stack>
 
       <Typography variant="caption" color="text.secondary">
-        SSRM header checkbox selects all records. Current Page and All Filtered are explicit controls
-        because SSRM does not support those native Select-All modes.
+        SSRM header checkbox selects all records. Current Page and All Filtered are explicit
+        controls because SSRM does not support those native Select-All modes.
       </Typography>
 
       {selectionError ? <Alert severity="warning">{selectionError}</Alert> : null}
@@ -256,9 +246,7 @@ export function TransactionsSsrmGrid({
             groupSelects: 'self',
           }}
           activeOverlay={loadError ? GridErrorOverlay : undefined}
-          activeOverlayParams={
-            loadError ? { message: loadError, onRetry: retryLoad } : undefined
-          }
+          activeOverlayParams={loadError ? { message: loadError, onRetry: retryLoad } : undefined}
           onGridReady={handleGridReady}
           onModelUpdated={handleModelUpdated}
           onRowSelected={onRowSelected}

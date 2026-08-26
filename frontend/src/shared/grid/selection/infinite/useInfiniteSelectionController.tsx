@@ -9,10 +9,7 @@ import type {
 import { InfiniteCurrentPageSelectionHeader } from './InfiniteCurrentPageSelectionHeader';
 import { useDatasetSelection } from './useDatasetSelection';
 import { SelectionHeaderCheckbox } from '../SelectionHeaderCheckbox';
-import type {
-  InfiniteSelectionMode,
-  ServerSelectionIntent,
-} from '../serverSelection';
+import type { InfiniteSelectionMode, ServerSelectionIntent } from '../serverSelection';
 
 interface UseInfiniteSelectionControllerOptions<TData> {
   /** Root-owned GridApi; the controller reads it but never owns/replaces it. */
@@ -52,8 +49,7 @@ export function useInfiniteSelectionController<TData>({
    */
   const [filteredTotal, setFilteredTotal] = useState(0);
 
-  const datasetTotal =
-    scope === 'all' ? totalCount : scope === 'filtered' ? filteredTotal : 0;
+  const datasetTotal = scope === 'all' ? totalCount : scope === 'filtered' ? filteredTotal : 0;
 
   const {
     intent: datasetIntent,

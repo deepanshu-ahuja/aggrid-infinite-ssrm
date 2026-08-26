@@ -5,16 +5,10 @@ import {
   createEmptyTrackedGridEditingState,
   recordTrackedGridCellChange,
 } from '@/shared/grid/editing/trackedGridEditing';
-import type {
-  TransactionEditableField,
-  TransactionEditableValue,
-} from './transactionEditing';
+import type { TransactionEditableField, TransactionEditableValue } from './transactionEditing';
 
 function createState() {
-  return createEmptyTrackedGridEditingState<
-    TransactionEditableField,
-    TransactionEditableValue
-  >();
+  return createEmptyTrackedGridEditingState<TransactionEditableField, TransactionEditableValue>();
 }
 
 describe('tracked grid editing state with transaction fields', () => {
@@ -62,10 +56,12 @@ describe('tracked grid editing state with transaction fields', () => {
     state = recordTrackedGridCellChange(state, 'page-5-row', 'status', 'Pending', 'Completed');
     state = recordTrackedGridCellChange(state, 'edited-unselected', 'currency', 'USD', 'EUR');
 
-    expect(buildSelectedTrackedGridUpdatePayload(state, {
-      mode: 'include',
-      ids: ['page-1-row', 'page-5-row', 'selected-but-not-edited'],
-    })).toEqual({
+    expect(
+      buildSelectedTrackedGridUpdatePayload(state, {
+        mode: 'include',
+        ids: ['page-1-row', 'page-5-row', 'selected-but-not-edited'],
+      }),
+    ).toEqual({
       updates: [
         { id: 'page-1-row', changes: { amount: 50 } },
         { id: 'page-5-row', changes: { status: 'Completed' } },
@@ -79,10 +75,12 @@ describe('tracked grid editing state with transaction fields', () => {
     state = recordTrackedGridCellChange(state, 'row-b', 'amount', 10, 30);
     state = recordTrackedGridCellChange(state, 'row-c', 'status', 'Pending', 'Failed');
 
-    expect(buildSelectedTrackedGridUpdatePayload(state, {
-      mode: 'exclude',
-      ids: ['row-b'],
-    })).toEqual({
+    expect(
+      buildSelectedTrackedGridUpdatePayload(state, {
+        mode: 'exclude',
+        ids: ['row-b'],
+      }),
+    ).toEqual({
       updates: [
         { id: 'row-a', changes: { amount: 20 } },
         { id: 'row-c', changes: { status: 'Failed' } },

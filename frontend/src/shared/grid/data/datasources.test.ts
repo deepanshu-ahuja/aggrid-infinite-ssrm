@@ -28,9 +28,7 @@ describe('grid datasources', () => {
     } as unknown as IGetRowsParams);
 
     /** Infinite pagination must describe the current query, not the unfiltered complete dataset. */
-    await vi.waitFor(() =>
-      expect(successCallback).toHaveBeenCalledWith([{ id: 'row-1' }], 125),
-    );
+    await vi.waitFor(() => expect(successCallback).toHaveBeenCalledWith([{ id: 'row-1' }], 125));
     expect(loadRows).toHaveBeenCalledWith(
       {
         startRow: 0,

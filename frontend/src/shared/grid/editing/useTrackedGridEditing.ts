@@ -30,8 +30,8 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
   isEditableField,
   getFieldValue,
 }: UseTrackedGridEditingOptions<TData, TField, TValue>) {
-  const [state, setState] = useState<TrackedGridEditingState<TField, TValue>>(
-    () => createEmptyTrackedGridEditingState<TField, TValue>(),
+  const [state, setState] = useState<TrackedGridEditingState<TField, TValue>>(() =>
+    createEmptyTrackedGridEditingState<TField, TValue>(),
   );
   const [lastEdit, setLastEdit] = useState<TrackedGridLastEdit<TField, TValue>>();
 
@@ -54,9 +54,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
       const newValue = event.newValue as TValue;
       const rowId = getRowId(event.data);
 
-      setState((current) =>
-        recordTrackedGridCellChange(current, rowId, field, oldValue, newValue),
-      );
+      setState((current) => recordTrackedGridCellChange(current, rowId, field, oldValue, newValue));
       setLastEdit({ field, value: newValue });
     },
     [getRowId, isEditableField],

@@ -1,9 +1,7 @@
 import type { ServerSelectionIntent } from '@/shared/grid/selection/serverSelection';
 
 /** Changed values keyed by an editable field name. */
-export type TrackedGridChanges<TField extends string, TValue> = Partial<
-  Record<TField, TValue>
->;
+export type TrackedGridChanges<TField extends string, TValue> = Partial<Record<TField, TValue>>;
 
 /**
  * Row-ID keyed edit state that survives AG Grid RowNode/cache recreation.
@@ -65,15 +63,10 @@ export function recordTrackedGridCellChange<TField extends string, TValue>(
   if (Object.is(oldValue, newValue)) return state;
 
   /** Keep the mapped generic type when a row has no prior edits; raw `{}` loses indexed access. */
-  const currentChanges: TrackedGridChanges<TField, TValue> =
-    state.changesById[rowId] ?? {};
-  const currentOriginals: TrackedGridChanges<TField, TValue> =
-    state.originalsById[rowId] ?? {};
+  const currentChanges: TrackedGridChanges<TField, TValue> = state.changesById[rowId] ?? {};
+  const currentOriginals: TrackedGridChanges<TField, TValue> = state.originalsById[rowId] ?? {};
 
-  if (
-    hasTrackedGridField(currentChanges, field) &&
-    Object.is(currentChanges[field], newValue)
-  ) {
+  if (hasTrackedGridField(currentChanges, field) && Object.is(currentChanges[field], newValue)) {
     return state;
   }
 
@@ -202,10 +195,7 @@ export function buildTrackedGridUpdatePayload<TField extends string, TValue>(
 }
 
 /** Tests membership without materialising rows that are not already represented by an ID. */
-export function isGridRowIdSelected(
-  selection: ServerSelectionIntent<string>,
-  id: string,
-) {
+export function isGridRowIdSelected(selection: ServerSelectionIntent<string>, id: string) {
   const ids = new Set(selection.ids);
   return selection.mode === 'include' ? ids.has(id) : !ids.has(id);
 }
@@ -216,10 +206,7 @@ export function isGridRowIdSelected(
  * This is production-capable behavior, not a developer-preview concern. A real Save/Bulk Update UI
  * can use the same helper and then let its feature map the selected edits into its backend contract.
  */
-export function buildSelectedTrackedGridUpdatePayload<
-  TField extends string,
-  TValue,
->(
+export function buildSelectedTrackedGridUpdatePayload<TField extends string, TValue>(
   state: TrackedGridEditingState<TField, TValue>,
   selection: ServerSelectionIntent<string>,
 ): TrackedGridUpdatePayload<TField, TValue> {

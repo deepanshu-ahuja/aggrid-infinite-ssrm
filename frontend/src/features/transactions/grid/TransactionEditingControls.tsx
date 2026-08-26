@@ -27,10 +27,7 @@ interface TransactionEditingControlsProps {
   isSaving: boolean;
   saveError?: string;
   onApplyLastEdit: (target: TransactionEditTarget) => void;
-  onApplyBulkEdit: (
-    target: TransactionEditTarget,
-    changes: TransactionChanges,
-  ) => void;
+  onApplyBulkEdit: (target: TransactionEditTarget, changes: TransactionChanges) => void;
   onSaveSelected: () => void;
   onDiscardSelected: () => void;
 }
@@ -71,33 +68,18 @@ export function TransactionEditingControls({
     if (useCurrency) changes.currency = currency;
     if (useStatus) changes.status = status;
     return changes;
-  }, [
-    account,
-    amount,
-    currency,
-    status,
-    useAccount,
-    useAmount,
-    useCurrency,
-    useStatus,
-  ]);
+  }, [account, amount, currency, status, useAccount, useAmount, useCurrency, useStatus]);
 
   const hasBulkChanges = Object.keys(bulkChanges).length > 0;
   const hasSelectedEdits = selectedEditedRowCount > 0;
 
   return (
     <Stack spacing={1.5}>
-      <Stack
-        direction={{ xs: 'column', md: 'row' }}
-        spacing={1}
-        alignItems={{ md: 'center' }}
-      >
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }}>
         <Typography variant="subtitle2">Edit target</Typography>
         <Select<TransactionEditTarget>
           value={target}
-          onChange={(event) =>
-            setTarget(event.target.value as TransactionEditTarget)
-          }
+          onChange={(event) => setTarget(event.target.value as TransactionEditTarget)}
           size="small"
           sx={{ minWidth: 220 }}
         >
@@ -112,9 +94,7 @@ export function TransactionEditingControls({
 
       <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
         <Stack spacing={1}>
-          <Typography variant="subtitle2">
-            Flow 1 — apply the last cell edit
-          </Typography>
+          <Typography variant="subtitle2">Flow 1 — apply the last cell edit</Typography>
           <Typography variant="body2" color="text.secondary">
             {lastEdit
               ? `Last edit: ${lastEdit.field} = ${String(lastEdit.value)}`
@@ -135,19 +115,12 @@ export function TransactionEditingControls({
 
       <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
         <Stack spacing={1}>
-          <Typography variant="subtitle2">
-            Flow 2 — bulk edit current page
-          </Typography>
+          <Typography variant="subtitle2">Flow 2 — bulk edit current page</Typography>
           <Typography variant="body2" color="text.secondary">
             Only checked fields are changed; unchecked fields remain untouched.
           </Typography>
 
-          <Stack
-            direction={{ xs: 'column', lg: 'row' }}
-            spacing={1}
-            useFlexGap
-            flexWrap="wrap"
-          >
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} useFlexGap flexWrap="wrap">
             <FormControlLabel
               control={
                 <Checkbox
@@ -209,9 +182,7 @@ export function TransactionEditingControls({
             <Select<TransactionStatus>
               size="small"
               value={status}
-              onChange={(event) =>
-                setStatus(event.target.value as TransactionStatus)
-              }
+              onChange={(event) => setStatus(event.target.value as TransactionStatus)}
               disabled={!useStatus || isSaving}
               sx={{ minWidth: 140 }}
             >
@@ -236,20 +207,14 @@ export function TransactionEditingControls({
         </Stack>
       </Box>
 
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        spacing={1}
-        alignItems={{ sm: 'center' }}
-      >
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
         <Button
           size="small"
           variant="contained"
           disabled={!hasSelectedEdits || isSaving}
           onClick={onSaveSelected}
         >
-          {isSaving
-            ? 'Saving…'
-            : `Save selected edits (${selectedEditedRowCount})`}
+          {isSaving ? 'Saving…' : `Save selected edits (${selectedEditedRowCount})`}
         </Button>
         <Button
           size="small"

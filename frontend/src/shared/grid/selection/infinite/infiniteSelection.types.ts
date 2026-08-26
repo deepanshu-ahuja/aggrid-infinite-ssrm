@@ -1,7 +1,4 @@
-import type {
-  SelectionHeaderState,
-  ServerSelectionIntent,
-} from '../serverSelection';
+import type { SelectionHeaderState, ServerSelectionIntent } from '../serverSelection';
 
 /**
  * Small contract for Infinite Row Model behavior AG Grid cannot fully own: dataset-wide Select All

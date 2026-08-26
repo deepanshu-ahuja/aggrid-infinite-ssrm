@@ -267,9 +267,7 @@ export function mapTransactionFilterModel(filterModel: object): TransactionFilte
  * @throws When AG Grid asks to sort/filter by a field or operator not supported by the Transactions
  * API contract.
  */
-export function mapTransactionGridRequest(
-  request: FlatGridBlockRequest,
-): TransactionListRequest {
+export function mapTransactionGridRequest(request: FlatGridBlockRequest): TransactionListRequest {
   return {
     /**
      * AG Grid's `startRow` is already the zero-based first requested row, which maps directly to our

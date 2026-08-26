@@ -52,10 +52,8 @@ export function TransactionsInfiniteGrid({
   gridOptions: gridOptionsOverride,
   onSelectionChange,
 }: TransactionsInfiniteGridProps) {
-  const selectionScope =
-    selectionScopeOverride ?? transactionsGridConfig.infinite.selectionScope;
-  const gridOptions =
-    gridOptionsOverride ?? transactionsGridConfig.infinite.gridOptions;
+  const selectionScope = selectionScopeOverride ?? transactionsGridConfig.infinite.selectionScope;
+  const gridOptions = gridOptionsOverride ?? transactionsGridConfig.infinite.gridOptions;
   const gridApi = useRef<GridApi<Transaction> | null>(null);
 
   /** Checkbox changes live inside AG Grid, so this state is only used to make React recalculate external controls. */
@@ -108,12 +106,11 @@ export function TransactionsInfiniteGrid({
     gridApi.current?.refreshInfiniteCache();
   }, []);
 
-  const { saveRow, saveBulk, isSaving, saveError } =
-    useTransactionEditPersistence({
-      updates: payload.updates,
-      acknowledgeChanges,
-      onPersistedRows: handlePersistedRows,
-    });
+  const { saveRow, saveBulk, isSaving, saveError } = useTransactionEditPersistence({
+    updates: payload.updates,
+    acknowledgeChanges,
+    onPersistedRows: handlePersistedRows,
+  });
 
   const handleDiscardRow = useCallback(
     (rowId: string) => {
@@ -130,10 +127,7 @@ export function TransactionsInfiniteGrid({
   ).updates;
 
   const handleSaveSelected = useCallback(() => {
-    const updates = buildSelectedTrackedGridUpdatePayload(
-      state,
-      readSelectionIntent(),
-    ).updates;
+    const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
     saveBulk(updates);
   }, [readSelectionIntent, saveBulk, state]);
 
@@ -141,10 +135,7 @@ export function TransactionsInfiniteGrid({
     const api = gridApi.current;
     if (!api) return;
 
-    const updates = buildSelectedTrackedGridUpdatePayload(
-      state,
-      readSelectionIntent(),
-    ).updates;
+    const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
     discardRows(
       api,
       updates.map((update) => update.id),
@@ -171,8 +162,9 @@ export function TransactionsInfiniteGrid({
     api.refreshCells({ columns: ['editActions'], force: true });
   }, [rowEditActionsContext]);
 
-  const { initialState, onStateUpdated } =
-    useGridStatePersistence<Transaction>({ key: INFINITE_STATE_KEY });
+  const { initialState, onStateUpdated } = useGridStatePersistence<Transaction>({
+    key: INFINITE_STATE_KEY,
+  });
 
   const handleGridReady = useCallback(
     (event: GridReadyEvent<Transaction>) => {
@@ -238,11 +230,7 @@ export function TransactionsInfiniteGrid({
           }}
           selectionColumnDef={selectionColumnDef}
           activeOverlay={loadError ? GridErrorOverlay : undefined}
-          activeOverlayParams={
-            loadError
-              ? { message: loadError, onRetry: retryLoad }
-              : undefined
-          }
+          activeOverlayParams={loadError ? { message: loadError, onRetry: retryLoad } : undefined}
           onGridReady={handleGridReady}
           onModelUpdated={handleRowsChanged}
           onPaginationChanged={handleRowsChanged}

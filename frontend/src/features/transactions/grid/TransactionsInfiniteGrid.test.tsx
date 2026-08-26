@@ -45,9 +45,7 @@ function renderGrid(element: ReactElement) {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
   });
-  return render(
-    <QueryClientProvider client={client}>{element}</QueryClientProvider>,
-  );
+  return render(<QueryClientProvider client={client}>{element}</QueryClientProvider>);
 }
 
 function getGridProps() {
@@ -136,8 +134,7 @@ describe('TransactionsInfiniteGrid production wiring', () => {
     );
 
     const headerParams = getGridProps().selectionColumnDef?.headerComponentParams as
-      | { onChange?: (checked: boolean) => void }
-      | undefined;
+      { onChange?: (checked: boolean) => void } | undefined;
 
     act(() => headerParams?.onChange?.(true));
 
@@ -252,8 +249,7 @@ describe('TransactionsInfiniteGrid production wiring', () => {
       expect(row.status).toBe('Pending');
       expect(getGridProps().context?.isRowDirty('txn-a')).toBe(false);
       const latestContext = vi.mocked(api.setGridOption).mock.calls.at(-1)?.[1] as
-        | TransactionRowEditActionsContext
-        | undefined;
+        TransactionRowEditActionsContext | undefined;
       expect(latestContext?.isRowDirty('txn-a')).toBe(false);
       expect(api.refreshCells).toHaveBeenLastCalledWith({
         columns: ['editActions'],
@@ -315,9 +311,7 @@ describe('TransactionsInfiniteGrid production wiring', () => {
     });
 
     expect(screen.getByText(/2 rows edited total; 1 selected/i)).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save selected edits (1)' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save selected edits (1)' }));
 
     await waitFor(() => {
       expect(transactionApi.bulkUpdateTransactions).toHaveBeenCalledWith({
