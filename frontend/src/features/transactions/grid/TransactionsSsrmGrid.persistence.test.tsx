@@ -139,6 +139,8 @@ describe('TransactionsSsrmGrid edit persistence', () => {
     await waitFor(() => {
       expect(transaction.status).toBe('Pending');
       expect(props().context?.isRowDirty('txn-a')).toBe(false);
+
+      // The Actions renderer receives this context before its cells are redrawn.
       const latestContext = vi.mocked(api.setGridOption).mock.calls.at(-1)?.[1] as
         | TransactionRowEditActionsContext
         | undefined;
