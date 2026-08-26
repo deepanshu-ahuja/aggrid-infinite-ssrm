@@ -51,19 +51,6 @@ function row(id: string, status: Transaction['status'] = 'Completed'): Transacti
   };
 }
 
-function createRowNode(data: Transaction): RowNode<Transaction> {
-  const node = {
-    data,
-    setDataValue: vi.fn((field: keyof Transaction, value: unknown) => {
-      if (node.data) {
-        (node.data as unknown as Record<string, unknown>)[field] = value;
-      }
-      return true;
-    }),
-  } as unknown as RowNode<Transaction>;
-  return node;
-}
-
 function createApi(
   selectedIds: string[] = [],
   rows: RowNode<Transaction>[] = [],
@@ -119,9 +106,7 @@ describe('TransactionsSsrmGrid edit persistence', () => {
 
   it('keeps the row clean when Discard restores a value through AG Grid', async () => {
     const transaction = row('txn-a', 'Completed');
-    let node: RowNode<Transaction>;
-
-    node = {
+    const node = {
       data: transaction,
       setDataValue: vi.fn((field: keyof Transaction, value: unknown) => {
         const oldValue = transaction[field];

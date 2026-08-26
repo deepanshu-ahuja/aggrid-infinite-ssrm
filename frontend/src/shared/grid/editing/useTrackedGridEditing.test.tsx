@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CellValueChangedEvent, GridApi, RowNode } from 'ag-grid-community';
 import type { Transaction } from '@/features/transactions/api/transactions.contracts';
 import { transactionEditingConfig } from '@/features/transactions/grid/transactionEditing';
+import { buildSelectedTrackedGridUpdatePayload } from './trackedGridEditing';
 import { useTrackedGridEditing } from './useTrackedGridEditing';
 
 function transaction(status: Transaction['status']): Transaction {
@@ -18,7 +19,7 @@ function transaction(status: Transaction['status']): Transaction {
 }
 
 describe('useTrackedGridEditing', () => {
-  it('does not recreate a draft when Discard restores the original value through setDataValue', () => {
+  it('keeps Discard clean and idempotent even if AG Grid reports the restore later', () => {
     const row = transaction('Completed');
     const { result } = renderHook(() => useTrackedGridEditing(transactionEditingConfig));
 
@@ -35,21 +36,26 @@ describe('useTrackedGridEditing', () => {
       status: 'Completed',
     });
 
+    let restoredValueEvent: CellValueChangedEvent<Transaction> | undefined;
     const node = {
       data: row,
-      setDataValue: vi.fn((field: keyof Transaction, value: unknown) => {
-        const oldValue = row[field];
-        (row as unknown as Record<string, unknown>)[field] = value;
+      setDataValue: vi.fn(
+        (field: keyof Transaction, value: unknown, source?: string) => {
+          const oldValue = row[field];
+          (row as unknown as Record<string, unknown>)[field] = value;
 
-        // AG Grid can emit cellValueChanged when application code writes through setDataValue.
-        result.current.handleCellValueChanged({
-          data: row,
-          colDef: { field },
-          oldValue,
-          newValue: value,
-        } as unknown as CellValueChangedEvent<Transaction>);
-        return true;
-      }),
+          // Keep the event until after Discard returns. This reproduces the timing that previously
+          // turned the restored value into a new draft and made repeated Discard clicks toggle values.
+          restoredValueEvent = {
+            data: row,
+            colDef: { field },
+            oldValue,
+            newValue: value,
+            source,
+          } as unknown as CellValueChangedEvent<Transaction>;
+          return true;
+        },
+      ),
     } as unknown as RowNode<Transaction>;
 
     const api = {
@@ -63,6 +69,29 @@ describe('useTrackedGridEditing', () => {
     });
 
     expect(row.status).toBe('Pending');
+    expect(result.current.state.changesById).toEqual({});
+    expect(result.current.state.originalsById).toEqual({});
+
+    act(() => {
+      if (!restoredValueEvent) throw new Error('Expected setDataValue to produce an event.');
+      result.current.handleCellValueChanged(restoredValueEvent);
+    });
+
+    // A selected clean row must not remain eligible for "Save selected edits".
+    expect(
+      buildSelectedTrackedGridUpdatePayload(result.current.state, {
+        mode: 'include',
+        ids: ['txn-a'],
+      }).updates,
+    ).toEqual([]);
+
+    // Once the first Discard clears the row, another Discard is a no-op rather than a value toggle.
+    act(() => {
+      result.current.discardRow(api, 'txn-a');
+    });
+
+    expect(row.status).toBe('Pending');
+    expect(node.setDataValue).toHaveBeenCalledTimes(1);
     expect(result.current.state.changesById).toEqual({});
     expect(result.current.state.originalsById).toEqual({});
   });

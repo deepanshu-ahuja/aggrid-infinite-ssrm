@@ -211,9 +211,7 @@ describe('TransactionsInfiniteGrid production wiring', () => {
 
   it('keeps the row clean when Discard restores a value through AG Grid', async () => {
     const row = createTransaction('txn-a', 'Completed');
-    let node: RowNode<Transaction>;
-
-    node = {
+    const node = {
       data: row,
       setDataValue: vi.fn((field: keyof Transaction, value: unknown) => {
         const oldValue = row[field];

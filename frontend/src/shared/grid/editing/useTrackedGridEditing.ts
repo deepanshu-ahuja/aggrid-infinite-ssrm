@@ -13,6 +13,9 @@ import {
   type TrackedGridUpdatePayload,
 } from './trackedGridEditing';
 
+/** All writes made by this hook already have their draft state handled explicitly. */
+const TRACKED_GRID_WRITE_SOURCE = 'data';
+
 export interface UseTrackedGridEditingOptions<TData, TField extends string, TValue> {
   getRowId: (row: TData) => string;
   editableFields: readonly TField[];
@@ -34,17 +37,22 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     createEmptyTrackedGridEditingState<TField, TValue>(),
   );
   const [lastEdit, setLastEdit] = useState<TrackedGridLastEdit<TField, TValue>>();
-
-  /**
-   * `setDataValue` can fire AG Grid's `cellValueChanged` event too. When our own code is restoring,
-   * discarding, or applying a bulk edit, that change is already handled explicitly below. Ignoring the
-   * matching grid event prevents a Discard from immediately creating the same row draft again.
-   */
   const applyingProgrammaticChange = useRef(false);
 
   const handleCellValueChanged = useCallback(
     (event: CellValueChangedEvent<TData>) => {
-      if (applyingProgrammaticChange.current || !event.data) return;
+      /**
+       * User typing becomes a draft only after AG Grid commits the edit and fires cellValueChanged.
+       * Our own setDataValue calls can fire the same event. Ignore them by source as well as by the
+       * synchronous guard, so a delayed restore event cannot recreate a draft after Discard finished.
+       */
+      if (
+        applyingProgrammaticChange.current ||
+        event.source === TRACKED_GRID_WRITE_SOURCE ||
+        !event.data
+      ) {
+        return;
+      }
 
       const candidateField = event.colDef.field as string | undefined;
       if (!isEditableField(candidateField)) return;
@@ -62,7 +70,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
 
   const applyChangesToNodes = useCallback(
     (nodes: readonly IRowNode<TData>[], changes: TrackedGridChanges<TField, TValue>) => {
-      // Record the draft first. We then ignore the AG Grid event caused by setDataValue below.
+      // Bulk actions are real drafts, so record them before writing their values into loaded RowNodes.
       setState((current) => {
         let next = current;
         for (const node of nodes) {
@@ -90,7 +98,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
             if (!hasTrackedGridField(changes, field)) continue;
             const nextValue = changes[field] as TValue;
             if (!Object.is(getFieldValue(node.data, field), nextValue)) {
-              node.setDataValue(field, nextValue, 'data');
+              node.setDataValue(field, nextValue, TRACKED_GRID_WRITE_SOURCE);
             }
           }
         }
@@ -114,7 +122,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
             if (!hasTrackedGridField(rowChanges, field)) continue;
             const trackedValue = rowChanges[field] as TValue;
             if (!Object.is(getFieldValue(node.data, field), trackedValue)) {
-              node.setDataValue(field, trackedValue, 'data');
+              node.setDataValue(field, trackedValue, TRACKED_GRID_WRITE_SOURCE);
             }
           }
         });
@@ -153,7 +161,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
             if (!hasTrackedGridField(originals, field)) continue;
             const originalValue = originals[field] as TValue;
             if (!Object.is(getFieldValue(node.data, field), originalValue)) {
-              node.setDataValue(field, originalValue, 'data');
+              node.setDataValue(field, originalValue, TRACKED_GRID_WRITE_SOURCE);
             }
           }
         });
