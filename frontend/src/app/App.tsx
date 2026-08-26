@@ -1,12 +1,13 @@
-import { Box, Container, Stack, Typography } from '@mui/material';
+import { Box, Button, Container, Stack, Typography } from '@mui/material';
+import { NavLink, Navigate, Route, Routes } from 'react-router';
 import { TransactionsInfiniteGrid } from '@/features/transactions/grid/TransactionsInfiniteGrid';
+import { TransactionsSsrmGrid } from '@/features/transactions/grid/TransactionsSsrmGrid';
 
 /**
- * Application shell only.
+ * Small application shell for comparing the two AG Grid row models.
  *
- * The row-model root is intentionally imported directly. To evaluate SSRM instead, replace this
- * import/render with `TransactionsSsrmGrid`; there is no common Transactions page that owns grid
- * lifecycle or GridApi state.
+ * Each URL renders one real grid root. This keeps Infinite and SSRM lifecycle code separate while
+ * making it easy to open, refresh, and test each implementation directly in the browser.
  */
 export function App() {
   return (
@@ -18,11 +19,25 @@ export function App() {
               Transactions
             </Typography>
             <Typography color="text.secondary">
-              Server-backed transaction activity with consistent application theming.
+              Open each row model on its own URL so its behavior can be tested independently.
             </Typography>
           </Box>
 
-          <TransactionsInfiniteGrid />
+          <Stack direction="row" spacing={1}>
+            <Button component={NavLink} to="/infinite" variant="outlined">
+              Infinite Row Model
+            </Button>
+            <Button component={NavLink} to="/ssrm" variant="outlined">
+              Server-Side Row Model
+            </Button>
+          </Stack>
+
+          <Routes>
+            <Route path="/" element={<Navigate to="/infinite" replace />} />
+            <Route path="/infinite" element={<TransactionsInfiniteGrid />} />
+            <Route path="/ssrm" element={<TransactionsSsrmGrid />} />
+            <Route path="*" element={<Navigate to="/infinite" replace />} />
+          </Routes>
         </Stack>
       </Container>
     </Box>
