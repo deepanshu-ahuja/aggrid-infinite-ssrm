@@ -42,10 +42,7 @@ export function useDatasetSelection({
     createEmptyServerSelection(),
   );
 
-  const intent = useMemo(
-    () => toServerSelectionIntent(selectionState),
-    [selectionState],
-  );
+  const intent = useMemo(() => toServerSelectionIntent(selectionState), [selectionState]);
 
   const isRowSelected = useCallback(
     (rowId: string) => isServerRowSelected(selectionState, rowId),

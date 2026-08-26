@@ -13,20 +13,8 @@ describe('tracked grid edit persistence state', () => {
   it('removes a row from pending changes when its last field returns to the original value', () => {
     let state = createEmptyTrackedGridEditingState<Field, Value>();
 
-    state = recordTrackedGridCellChange(
-      state,
-      'txn-a',
-      'status',
-      'Pending',
-      'Completed',
-    );
-    state = recordTrackedGridCellChange(
-      state,
-      'txn-a',
-      'status',
-      'Completed',
-      'Pending',
-    );
+    state = recordTrackedGridCellChange(state, 'txn-a', 'status', 'Pending', 'Completed');
+    state = recordTrackedGridCellChange(state, 'txn-a', 'status', 'Completed', 'Pending');
 
     expect(state.changesById).toEqual({});
     expect(state.originalsById).toEqual({});
@@ -34,23 +22,11 @@ describe('tracked grid edit persistence state', () => {
 
   it('acknowledges a submitted value without clearing a newer in-flight edit', () => {
     let state = createEmptyTrackedGridEditingState<Field, Value>();
-    state = recordTrackedGridCellChange(
-      state,
-      'txn-a',
-      'status',
-      'Pending',
-      'Completed',
-    );
+    state = recordTrackedGridCellChange(state, 'txn-a', 'status', 'Pending', 'Completed');
 
     const submitted = [{ id: 'txn-a', changes: { status: 'Completed' } }];
 
-    state = recordTrackedGridCellChange(
-      state,
-      'txn-a',
-      'status',
-      'Completed',
-      'Failed',
-    );
+    state = recordTrackedGridCellChange(state, 'txn-a', 'status', 'Completed', 'Failed');
     state = acknowledgeTrackedGridChanges(state, submitted);
 
     expect(state.changesById['txn-a']).toEqual({ status: 'Failed' });
@@ -59,13 +35,7 @@ describe('tracked grid edit persistence state', () => {
 
   it('removes a saved value when it still matches the submitted request', () => {
     let state = createEmptyTrackedGridEditingState<Field, Value>();
-    state = recordTrackedGridCellChange(
-      state,
-      'txn-a',
-      'status',
-      'Pending',
-      'Completed',
-    );
+    state = recordTrackedGridCellChange(state, 'txn-a', 'status', 'Pending', 'Completed');
 
     state = acknowledgeTrackedGridChanges(state, [
       { id: 'txn-a', changes: { status: 'Completed' } },
@@ -77,20 +47,8 @@ describe('tracked grid edit persistence state', () => {
 
   it('discards only the requested row draft', () => {
     let state = createEmptyTrackedGridEditingState<Field, Value>();
-    state = recordTrackedGridCellChange(
-      state,
-      'txn-a',
-      'status',
-      'Pending',
-      'Completed',
-    );
-    state = recordTrackedGridCellChange(
-      state,
-      'txn-b',
-      'amount',
-      100,
-      200,
-    );
+    state = recordTrackedGridCellChange(state, 'txn-a', 'status', 'Pending', 'Completed');
+    state = recordTrackedGridCellChange(state, 'txn-b', 'amount', 100, 200);
 
     state = discardTrackedGridRow(state, 'txn-a');
 

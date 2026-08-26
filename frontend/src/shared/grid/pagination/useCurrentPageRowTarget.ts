@@ -15,9 +15,7 @@ export type CurrentPageRowTarget = 'page' | 'selected';
  * This hook owns only pagination/loading/selected-row resolution and its user-facing resolution error.
  * Callers remain responsible for the operation applied to the returned RowNodes.
  */
-export function useCurrentPageRowTarget<TData>(
-  gridApi: RefObject<GridApi<TData> | null>,
-) {
+export function useCurrentPageRowTarget<TData>(gridApi: RefObject<GridApi<TData> | null>) {
   /** Resolution failure is renderable state because actions may need to explain why nothing ran. */
   const [error, setError] = useState<string>();
 
@@ -33,16 +31,12 @@ export function useCurrentPageRowTarget<TData>(
       const pageNodes = getCurrentPageNodes(api);
 
       if (!pageNodes) {
-        setError(
-          'The current page is still loading. Try again when its rows are visible.',
-        );
+        setError('The current page is still loading. Try again when its rows are visible.');
         return undefined;
       }
 
       const nodes =
-        target === 'page'
-          ? pageNodes
-          : pageNodes.filter((node) => node.isSelected() === true);
+        target === 'page' ? pageNodes : pageNodes.filter((node) => node.isSelected() === true);
 
       if (target === 'selected' && nodes.length === 0) {
         setError('No rows are selected on the current page.');

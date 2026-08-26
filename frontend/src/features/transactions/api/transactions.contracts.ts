@@ -81,12 +81,7 @@ export interface TransactionBulkUpdateResponse {
  * 5. mapper/API tests.
  */
 export type TransactionField =
-  | 'reference'
-  | 'account'
-  | 'amount'
-  | 'currency'
-  | 'status'
-  | 'transactionDate';
+  'reference' | 'account' | 'amount' | 'currency' | 'status' | 'transactionDate';
 
 /**
  * Transaction-facing alias for the shared backend filter operators.

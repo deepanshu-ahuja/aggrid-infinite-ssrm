@@ -20,11 +20,7 @@ async function requestJson<TResponse, TRequest>(
   const payload: unknown = await response.json().catch(() => undefined);
 
   if (!response.ok) {
-    throw new ApiError(
-      `Request failed with status ${response.status}.`,
-      response.status,
-      payload,
-    );
+    throw new ApiError(`Request failed with status ${response.status}.`, response.status, payload);
   }
 
   return payload as TResponse;

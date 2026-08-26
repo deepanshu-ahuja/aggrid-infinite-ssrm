@@ -1,12 +1,5 @@
-import {
-  AllCommunityModule,
-  enableDevValidations,
-  type Module,
-} from 'ag-grid-community';
-import {
-  ServerSideRowModelApiModule,
-  ServerSideRowModelModule,
-} from 'ag-grid-enterprise';
+import { AllCommunityModule, enableDevValidations, type Module } from 'ag-grid-community';
+import { ServerSideRowModelApiModule, ServerSideRowModelModule } from 'ag-grid-enterprise';
 
 if (import.meta.env.DEV) {
   enableDevValidations();

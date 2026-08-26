@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { GridState } from 'ag-grid-community';
-import {
-  browserGridStateStore,
-  pickPersistedGridState,
-} from './gridStatePersistence';
+import { browserGridStateStore, pickPersistedGridState } from './gridStatePersistence';
 
 const KEY = 'test-grid';
 

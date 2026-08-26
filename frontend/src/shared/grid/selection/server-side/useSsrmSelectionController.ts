@@ -1,10 +1,6 @@
 import { useCallback, useState } from 'react';
 import type { RefObject } from 'react';
-import type {
-  GridApi,
-  RowSelectedEvent,
-  SelectionChangedEvent,
-} from 'ag-grid-community';
+import type { GridApi, RowSelectedEvent, SelectionChangedEvent } from 'ag-grid-community';
 import { getCurrentPageNodes } from '@/shared/grid/pagination/getCurrentPageNodes';
 import {
   isServerRowSelected,
@@ -50,8 +46,7 @@ export function useSsrmSelectionController<TData>({
    * Defined only while custom Select All Filtered owns the semantics. `undefined` means native SSRM
    * selection is authoritative again. `exclude + []` means all rows in the current filtered dataset.
    */
-  const [filteredSelection, setFilteredSelection] =
-    useState<ServerSelection<string>>();
+  const [filteredSelection, setFilteredSelection] = useState<ServerSelection<string>>();
 
   const createFilteredSelectAllState = useCallback(
     (): ServerSelection<string> => ({
@@ -87,10 +82,7 @@ export function useSsrmSelectionController<TData>({
       api.forEachNode((node) => {
         if (!node.data) return;
 
-        const shouldBeSelected = isServerRowSelected(
-          selection,
-          getRowId(node.data),
-        );
+        const shouldBeSelected = isServerRowSelected(selection, getRowId(node.data));
 
         if (node.isSelected() !== shouldBeSelected) {
           node.setSelected(shouldBeSelected, false, 'api');
@@ -138,8 +130,7 @@ export function useSsrmSelectionController<TData>({
 
       try {
         const nativeState = readFlatServerSideSelectionState(
-          event.serverSideState ??
-            gridApi.current?.getServerSideSelectionState(),
+          event.serverSideState ?? gridApi.current?.getServerSideSelectionState(),
         );
 
         if (nativeState.selectAll) {
@@ -162,15 +153,11 @@ export function useSsrmSelectionController<TData>({
     if (!api) return false;
 
     try {
-      const nativeState = readFlatServerSideSelectionState(
-        api.getServerSideSelectionState(),
-      );
+      const nativeState = readFlatServerSideSelectionState(api.getServerSideSelectionState());
       const pageNodes = getCurrentPageNodes(api);
 
       if (!pageNodes) {
-        setError(
-          'The current page is still loading. Select it again after the rows are visible.',
-        );
+        setError('The current page is still loading. Select it again after the rows are visible.');
         return false;
       }
 
@@ -178,9 +165,7 @@ export function useSsrmSelectionController<TData>({
       setFilteredSelection(undefined);
 
       if (nativeState.selectAll || wasFilteredSelectAll) {
-        api.setServerSideSelectionState(
-          createEmptyServerSideSelectionState(),
-        );
+        api.setServerSideSelectionState(createEmptyServerSideSelectionState());
       }
 
       if (pageNodes.length > 0) {
@@ -210,9 +195,7 @@ export function useSsrmSelectionController<TData>({
     const nextSelection = createFilteredSelectAllState();
 
     setFilteredSelection(undefined);
-    api.setServerSideSelectionState(
-      createEmptyServerSideSelectionState(),
-    );
+    api.setServerSideSelectionState(createEmptyServerSideSelectionState());
     setFilteredSelection(nextSelection);
     syncLoadedFilteredSelection(nextSelection, api);
     setError(undefined);
@@ -231,18 +214,14 @@ export function useSsrmSelectionController<TData>({
     if (!filteredSelection) return;
 
     setFilteredSelection(undefined);
-    gridApi.current?.setServerSideSelectionState(
-      createEmptyServerSideSelectionState(),
-    );
+    gridApi.current?.setServerSideSelectionState(createEmptyServerSideSelectionState());
     setError(undefined);
   }, [filteredSelection, gridApi]);
 
   /** Explicit user action clears both custom filtered state and native SSRM selection. */
   const clearSelection = useCallback(() => {
     setFilteredSelection(undefined);
-    gridApi.current?.setServerSideSelectionState(
-      createEmptyServerSideSelectionState(),
-    );
+    gridApi.current?.setServerSideSelectionState(createEmptyServerSideSelectionState());
     setError(undefined);
   }, [gridApi]);
 

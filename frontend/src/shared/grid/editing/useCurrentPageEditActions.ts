@@ -5,10 +5,7 @@ import {
   useCurrentPageRowTarget,
   type CurrentPageRowTarget,
 } from '@/shared/grid/pagination/useCurrentPageRowTarget';
-import type {
-  TrackedGridChanges,
-  TrackedGridLastEdit,
-} from './trackedGridEditing';
+import type { TrackedGridChanges, TrackedGridLastEdit } from './trackedGridEditing';
 
 /**
  * Minimal edit-engine surface consumed by current-page actions.
@@ -35,11 +32,7 @@ interface CurrentPageEditEngine<TData, TField extends string, TValue> {
  * future Delete/Export/Approve action can reuse the same page/loading/selected-row rules directly.
  * This hook adds only editing behavior: repeat the latest direct edit or apply an explicit change set.
  */
-export function useCurrentPageEditActions<
-  TData,
-  TField extends string,
-  TValue,
->(
+export function useCurrentPageEditActions<TData, TField extends string, TValue>(
   editing: CurrentPageEditEngine<TData, TField, TValue>,
   gridApi: RefObject<GridApi<TData> | null>,
 ) {
@@ -68,10 +61,7 @@ export function useCurrentPageEditActions<
 
   /** Apply a caller-supplied partial field set to the same current-page row-target semantics. */
   const applyBulkChanges = useCallback(
-    (
-      target: CurrentPageRowTarget,
-      changes: TrackedGridChanges<TField, TValue>,
-    ) => {
+    (target: CurrentPageRowTarget, changes: TrackedGridChanges<TField, TValue>) => {
       const nodes = resolveTarget(target);
       if (!nodes) return false;
 

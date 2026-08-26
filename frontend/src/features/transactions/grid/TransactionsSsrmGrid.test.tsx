@@ -46,10 +46,7 @@ function getGridProps(): CapturedGridProps {
   return gridCapture.props as CapturedGridProps;
 }
 
-function createTransaction(
-  id: string,
-  status: Transaction['status'] = 'Completed',
-): Transaction {
+function createTransaction(id: string, status: Transaction['status'] = 'Completed'): Transaction {
   return {
     id,
     reference: `REF-${id}`,
@@ -139,17 +136,9 @@ function createGridApiFixture(
       });
     }),
     setNodesSelected: vi.fn(
-      ({
-        nodes,
-        newValue,
-      }: {
-        nodes: RowNode<Transaction>[];
-        newValue: boolean;
-      }) => {
+      ({ nodes, newValue }: { nodes: RowNode<Transaction>[]; newValue: boolean }) => {
         const selectedIds = new Set(
-          nativeSelectionState.selectAll
-            ? []
-            : nativeSelectionState.toggledNodes,
+          nativeSelectionState.selectAll ? [] : nativeSelectionState.toggledNodes,
         );
 
         nodes.forEach((node) => {
@@ -207,9 +196,7 @@ function rowSelectedEvent(
   } as unknown as RowSelectedEvent<Transaction>;
 }
 
-function selectionChangedEvent(
-  serverSideState: unknown,
-): SelectionChangedEvent<Transaction> {
+function selectionChangedEvent(serverSideState: unknown): SelectionChangedEvent<Transaction> {
   return { serverSideState } as unknown as SelectionChangedEvent<Transaction>;
 }
 
@@ -243,9 +230,7 @@ describe('TransactionsSsrmGrid selection and editing', () => {
     render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
     ready(fixture.api);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Select current page' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Select current page' }));
 
     expect(fixture.getNativeSelectionState()).toEqual({
       selectAll: false,
@@ -267,9 +252,7 @@ describe('TransactionsSsrmGrid selection and editing', () => {
     render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
     ready(fixture.api);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Select current page' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Select current page' }));
 
     expect(fixture.getNativeSelectionState()).toEqual({
       selectAll: false,
@@ -284,13 +267,9 @@ describe('TransactionsSsrmGrid selection and editing', () => {
     render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
     ready(fixture.api);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Select current page' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Select current page' }));
 
-    expect(
-      screen.getByText(/current page is still loading/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/current page is still loading/i)).toBeInTheDocument();
     expect(fixture.api.setNodesSelected).not.toHaveBeenCalled();
   });
 
@@ -302,9 +281,7 @@ describe('TransactionsSsrmGrid selection and editing', () => {
     render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
     ready(fixture.api);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Select all filtered' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Select all filtered' }));
 
     expect(rowA.node.setSelected).toHaveBeenCalledWith(true, false, 'api');
     expect(rowB.node.setSelected).toHaveBeenCalledWith(true, false, 'api');
@@ -322,22 +299,16 @@ describe('TransactionsSsrmGrid selection and editing', () => {
     render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
     ready(fixture.api);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Select all filtered' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Select all filtered' }));
 
     rowA.setUserSelected(false);
     act(() => {
-      getGridProps().onRowSelected?.(
-        rowSelectedEvent(rowA.node, 'checkboxSelected'),
-      );
+      getGridProps().onRowSelected?.(rowSelectedEvent(rowA.node, 'checkboxSelected'));
     });
 
     clearSetSelectedMock(rowA.node);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Select all filtered' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Select all filtered' }));
 
     expect(rowA.node.setSelected).toHaveBeenCalledWith(true, false, 'api');
   });
@@ -349,9 +320,7 @@ describe('TransactionsSsrmGrid selection and editing', () => {
 
     render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
     ready(fixture.api);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Select all filtered' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Select all filtered' }));
 
     clearSetSelectedMock(rowB.node);
     fixture.setRows([rowA.node, rowB.node]);
@@ -386,11 +355,7 @@ describe('TransactionsSsrmGrid selection and editing', () => {
       getGridProps().onModelUpdated?.();
     });
 
-    expect(reloadedRow.node.setDataValue).toHaveBeenCalledWith(
-      'status',
-      'Completed',
-      'data',
-    );
+    expect(reloadedRow.node.setDataValue).toHaveBeenCalledWith('status', 'Completed', 'data');
     expect(reloadedRow.node.data?.status).toBe('Completed');
   });
 
@@ -401,9 +366,7 @@ describe('TransactionsSsrmGrid selection and editing', () => {
 
     render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
     ready(fixture.api);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Select all filtered' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Select all filtered' }));
 
     act(() => {
       getGridProps().onFilterChanged?.();
@@ -420,9 +383,7 @@ describe('TransactionsSsrmGrid selection and editing', () => {
       selectAll: true,
       toggledNodes: ['txn-a'],
     });
-    const setNativeState = vi.mocked(
-      fixture.api.setServerSideSelectionState,
-    );
+    const setNativeState = vi.mocked(fixture.api.setServerSideSelectionState);
     setNativeState.mockClear();
 
     act(() => {
@@ -443,12 +404,8 @@ describe('TransactionsSsrmGrid selection and editing', () => {
 
     render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
     ready(fixture.api);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Select all filtered' }),
-    );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Clear selection' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Select all filtered' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
 
     expect(fixture.getNativeSelectionState()).toEqual({
       selectAll: false,
@@ -470,9 +427,7 @@ describe('TransactionsSsrmGrid selection and editing', () => {
 
     render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
     ready(fixture.api);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Select all filtered' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Select all filtered' }));
 
     fixture.setNativeSelectionState({
       selectAll: true,
@@ -503,8 +458,6 @@ describe('TransactionsSsrmGrid selection and editing', () => {
   it('does not render temporary preview controls in the production-shaped SSRM root', () => {
     render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
 
-    expect(
-      screen.queryByRole('button', { name: /preview/i }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /preview/i })).not.toBeInTheDocument();
   });
 });

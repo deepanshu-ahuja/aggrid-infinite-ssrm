@@ -22,9 +22,9 @@ describe('transaction update mapper', () => {
   });
 
   it('rejects an invalid generic tracked value before the API call', () => {
-    expect(() =>
-      mapTransactionUpdateChanges({ amount: 'not-a-number' }),
-    ).toThrow('Transaction amount must be a finite number.');
+    expect(() => mapTransactionUpdateChanges({ amount: 'not-a-number' })).toThrow(
+      'Transaction amount must be a finite number.',
+    );
   });
 
   it('maps every bulk row independently without changing ids', () => {

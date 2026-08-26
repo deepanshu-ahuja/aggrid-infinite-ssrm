@@ -528,7 +528,7 @@ Grid row-loading failure uses AG Grid's grid-level error presentation.
 For Infinite Row Model retry, the application calls:
 
 ```ts
-api.refreshInfiniteCache()
+api.refreshInfiniteCache();
 ```
 
 Expected user flow:
@@ -551,20 +551,20 @@ Supporting selection requests can fail independently from row loading. For examp
 
 # 19. Clear-selection lifecycle table
 
-| Event | Page/include | Filtered/include | Filtered/exclude | All/include | All/exclude |
-|---|---|---|---|---|---|
-| Individual row click | update ID | update ID | update exception | update ID | update exception |
-| Current-page header | add/remove page IDs | n/a | n/a | n/a | n/a |
-| Select All Filtered | n/a | switch to exclude [] | already Select All | n/a | n/a |
-| Select All Records | n/a | n/a | n/a | switch to exclude [] | already Select All |
-| Pagination | preserve | preserve | preserve | preserve | preserve |
-| Sort change | preserve | preserve | preserve | preserve | preserve |
-| Filter change | preserve | preserve | **reset to include []** | preserve | preserve |
-| Cache eviction | preserve | preserve | preserve | preserve | preserve |
-| Block reload | preserve | preserve | preserve | preserve | preserve |
-| Data retry | preserve | preserve | preserve | preserve | preserve |
-| New block loads | sync checkbox | sync checkbox | sync checkbox | sync checkbox | sync checkbox |
-| Deliberate clear action | clear | clear | clear | clear | clear |
+| Event                   | Page/include        | Filtered/include     | Filtered/exclude        | All/include          | All/exclude        |
+| ----------------------- | ------------------- | -------------------- | ----------------------- | -------------------- | ------------------ |
+| Individual row click    | update ID           | update ID            | update exception        | update ID            | update exception   |
+| Current-page header     | add/remove page IDs | n/a                  | n/a                     | n/a                  | n/a                |
+| Select All Filtered     | n/a                 | switch to exclude [] | already Select All      | n/a                  | n/a                |
+| Select All Records      | n/a                 | n/a                  | n/a                     | switch to exclude [] | already Select All |
+| Pagination              | preserve            | preserve             | preserve                | preserve             | preserve           |
+| Sort change             | preserve            | preserve             | preserve                | preserve             | preserve           |
+| Filter change           | preserve            | preserve             | **reset to include []** | preserve             | preserve           |
+| Cache eviction          | preserve            | preserve             | preserve                | preserve             | preserve           |
+| Block reload            | preserve            | preserve             | preserve                | preserve             | preserve           |
+| Data retry              | preserve            | preserve             | preserve                | preserve             | preserve           |
+| New block loads         | sync checkbox       | sync checkbox        | sync checkbox           | sync checkbox        | sync checkbox      |
+| Deliberate clear action | clear               | clear                | clear                   | clear                | clear              |
 
 ---
 

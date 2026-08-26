@@ -8,10 +8,7 @@ import type {
   TransactionUpdateResponse,
 } from './transactions.contracts';
 
-export function listTransactions(
-  request: TransactionListRequest,
-  signal?: AbortSignal,
-) {
+export function listTransactions(request: TransactionListRequest, signal?: AbortSignal) {
   return postJson<TransactionListResponse, TransactionListRequest>(
     '/transactions/query/',
     request,

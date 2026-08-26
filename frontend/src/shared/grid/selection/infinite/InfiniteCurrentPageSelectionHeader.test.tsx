@@ -28,9 +28,7 @@ describe('InfiniteCurrentPageSelectionHeader', () => {
       paginationGetPageSize: vi.fn(() => 2),
       paginationGetCurrentPage: vi.fn(() => 0),
       paginationGetRowCount: vi.fn(() => 2),
-      getDisplayedRowAtIndex: vi.fn((index: number) =>
-        index === 0 ? rowA : rowB,
-      ),
+      getDisplayedRowAtIndex: vi.fn((index: number) => (index === 0 ? rowA : rowB)),
       setNodesSelected: vi.fn(),
       addEventListener: vi.fn((event: string, listener: () => void) => {
         listeners.set(event, listener);

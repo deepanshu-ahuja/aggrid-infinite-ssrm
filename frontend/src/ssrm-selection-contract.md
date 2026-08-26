@@ -259,7 +259,7 @@ Datasource failure continues to use SSRM-native failure bookkeeping (`params.fai
 Retry uses:
 
 ```ts
-api.retryServerSideLoads()
+api.retryServerSideLoads();
 ```
 
 Do not rebuild the datasource or maintain a second failed-block registry.
@@ -270,17 +270,17 @@ Selection is not cleared merely because a server-side load fails/retries.
 
 ## 12. Native vs custom boundary
 
-| Behaviour | Owner |
-|---|---|
-| Individual rows | Native AG Grid SSRM |
-| Explicit multi-row selection | Native AG Grid SSRM |
-| Header Select All Records | Native AG Grid SSRM |
-| Unloaded all-record selection | Native SSRM selection state |
-| Current-page button | Small command over native RowNodes |
-| All-filtered dataset intent | Application state |
-| Filtered exclusions | Application state |
-| Loaded-row sync during All Filtered | Application → AG Grid RowNodes |
-| Failed-load retry | Native SSRM |
+| Behaviour                           | Owner                              |
+| ----------------------------------- | ---------------------------------- |
+| Individual rows                     | Native AG Grid SSRM                |
+| Explicit multi-row selection        | Native AG Grid SSRM                |
+| Header Select All Records           | Native AG Grid SSRM                |
+| Unloaded all-record selection       | Native SSRM selection state        |
+| Current-page button                 | Small command over native RowNodes |
+| All-filtered dataset intent         | Application state                  |
+| Filtered exclusions                 | Application state                  |
+| Loaded-row sync during All Filtered | Application → AG Grid RowNodes     |
+| Failed-load retry                   | Native SSRM                        |
 
 ---
 

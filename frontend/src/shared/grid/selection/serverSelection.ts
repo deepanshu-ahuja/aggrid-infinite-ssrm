@@ -216,10 +216,7 @@ export function getDatasetHeaderState<TId extends GridSelectionId>(
       ? selection.ids.size
       : Math.max(0, totalRowCount - selection.ids.size);
 
-  const checked =
-    totalRowCount > 0 &&
-    selection.mode === 'exclude' &&
-    selection.ids.size === 0;
+  const checked = totalRowCount > 0 && selection.mode === 'exclude' && selection.ids.size === 0;
 
   return {
     checked,

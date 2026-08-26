@@ -16,9 +16,7 @@ import type { GridApi, IRowNode } from 'ag-grid-community';
  * case this helper returns `undefined` instead of a partial list so callers never silently operate on
  * only the rows that happened to arrive first.
  */
-export function getCurrentPageNodes<TData>(
-  api: GridApi<TData>,
-): IRowNode<TData>[] | undefined {
+export function getCurrentPageNodes<TData>(api: GridApi<TData>): IRowNode<TData>[] | undefined {
   const pageSize = api.paginationGetPageSize();
   const currentPage = api.paginationGetCurrentPage();
   const rowCount = api.paginationGetRowCount();

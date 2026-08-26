@@ -36,7 +36,7 @@ const INFINITE_STATE_KEY = 'transactions:infinite';
 const getTransactionId = (row: Transaction) => row.id;
 const getRowId = ({ data }: GetRowIdParams<Transaction>) => getTransactionId(data);
 
-/** AG Grid requests row blocks later; this stable feature boundary maps each request to the API contract. */
+/** AG Grid asks for row blocks later. This function converts that request to our Transactions API shape. */
 const loadTransactionRows: GridRowsLoader<Transaction> = (request, context) =>
   listTransactions(mapTransactionGridRequest(request), context.signal);
 
@@ -46,20 +46,18 @@ export interface TransactionsInfiniteGridProps {
   onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
 }
 
-/** Transactions Infinite root. Native row-model lifecycle stays visible at the concrete grid owner. */
+/** Transactions grid using AG Grid's Infinite Row Model. */
 export function TransactionsInfiniteGrid({
   selectionScope: selectionScopeOverride,
   gridOptions: gridOptionsOverride,
   onSelectionChange,
 }: TransactionsInfiniteGridProps) {
-  const selectionScope =
-    selectionScopeOverride ?? transactionsGridConfig.infinite.selectionScope;
-  const gridOptions =
-    gridOptionsOverride ?? transactionsGridConfig.infinite.gridOptions;
+  const selectionScope = selectionScopeOverride ?? transactionsGridConfig.infinite.selectionScope;
+  const gridOptions = gridOptionsOverride ?? transactionsGridConfig.infinite.gridOptions;
   const gridApi = useRef<GridApi<Transaction> | null>(null);
 
-  /** Native page selection does not itself change React state, so this revision refreshes bulk-action counts. */
-  const [selectionRevision, setSelectionRevision] = useState(0);
+  /** Checkbox changes live inside AG Grid, so this state is only used to make React recalculate external controls. */
+  const [, setSelectionRevision] = useState(0);
 
   const {
     datasource,
@@ -103,21 +101,16 @@ export function TransactionsInfiniteGrid({
     applyBulkChanges,
   } = useCurrentPageEditActions({ lastEdit, applyChangesToNodes }, gridApi);
 
-  /**
-   * Infinite owns its post-save cache behavior. Editable values can affect server-side sort/filter,
-   * so after the backend accepts a save we reload cached blocks instead of pretending their positions
-   * remain correct. AG Grid keeps old rows visible until refreshed block data arrives.
-   */
+  /** After Save, ask Infinite Row Model to reload cached rows from the backend. */
   const handlePersistedRows = useCallback(() => {
     gridApi.current?.refreshInfiniteCache();
   }, []);
 
-  const { saveRow, saveBulk, isSaving, saveError } =
-    useTransactionEditPersistence({
-      updates: payload.updates,
-      acknowledgeChanges,
-      onPersistedRows: handlePersistedRows,
-    });
+  const { saveRow, saveBulk, isSaving, saveError } = useTransactionEditPersistence({
+    updates: payload.updates,
+    acknowledgeChanges,
+    onPersistedRows: handlePersistedRows,
+  });
 
   const handleDiscardRow = useCallback(
     (rowId: string) => {
@@ -127,25 +120,14 @@ export function TransactionsInfiniteGrid({
     [discardRow],
   );
 
-  /**
-   * Aggregate persistence is the intersection of dirty drafts and logical checkbox selection.
-   * A row can be dirty because it was edited directly or via "Entire current page"; if it is not
-   * currently selected, it remains available for row-level Save/Discard but is excluded from bulk.
-   */
-  const selectedDirtyUpdates = useMemo(
-    () =>
-      buildSelectedTrackedGridUpdatePayload(
-        state,
-        readSelectionIntent(),
-      ).updates,
-    [readSelectionIntent, selectionRevision, state],
-  );
+  /** Bulk Save/Discard acts only on rows that are both dirty and currently selected. */
+  const selectedDirtyUpdates = buildSelectedTrackedGridUpdatePayload(
+    state,
+    readSelectionIntent(),
+  ).updates;
 
   const handleSaveSelected = useCallback(() => {
-    const updates = buildSelectedTrackedGridUpdatePayload(
-      state,
-      readSelectionIntent(),
-    ).updates;
+    const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
     saveBulk(updates);
   }, [readSelectionIntent, saveBulk, state]);
 
@@ -153,20 +135,14 @@ export function TransactionsInfiniteGrid({
     const api = gridApi.current;
     if (!api) return;
 
-    const updates = buildSelectedTrackedGridUpdatePayload(
-      state,
-      readSelectionIntent(),
-    ).updates;
+    const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
     discardRows(
       api,
       updates.map((update) => update.id),
     );
   }, [discardRows, readSelectionIntent, state]);
 
-  /**
-   * The Actions column reads the SAME draft state that builds aggregate persistence. It does not own a
-   * second dirty-row list, so reverting the last changed field removes both row actions and bulk work.
-   */
+  /** The Actions cell checks this same draft state, so a clean row should not show Save/Discard. */
   const rowEditActionsContext = useMemo<TransactionRowEditActionsContext>(
     () => ({
       isRowDirty: (rowId) => Boolean(state.changesById[rowId]),
@@ -177,11 +153,7 @@ export function TransactionsInfiniteGrid({
     [handleDiscardRow, isSaving, saveRow, state.changesById],
   );
 
-  /**
-   * AG Grid context is consumed by the Actions cell renderer. Publish the latest context through the
-   * native API before refreshing that column; otherwise Save/Discard can render from an older dirty-state
-   * closure after a row has already been saved, discarded, or reverted to its original value.
-   */
+  /** Push the latest dirty-state functions into AG Grid, then redraw only the Actions column. */
   useEffect(() => {
     const api = gridApi.current;
     if (!api) return;
@@ -190,8 +162,9 @@ export function TransactionsInfiniteGrid({
     api.refreshCells({ columns: ['editActions'], force: true });
   }, [rowEditActionsContext]);
 
-  const { initialState, onStateUpdated } =
-    useGridStatePersistence<Transaction>({ key: INFINITE_STATE_KEY });
+  const { initialState, onStateUpdated } = useGridStatePersistence<Transaction>({
+    key: INFINITE_STATE_KEY,
+  });
 
   const handleGridReady = useCallback(
     (event: GridReadyEvent<Transaction>) => {
@@ -201,10 +174,7 @@ export function TransactionsInfiniteGrid({
     [syncSelectionAfterRowsChange],
   );
 
-  /**
-   * Intentionally wired to BOTH modelUpdated and paginationChanged. Infinite may recreate/reload rows
-   * through either lifecycle. Selection and still-unsaved edits are idempotently reconciled afterward.
-   */
+  /** When Infinite reloads/recreates rows, restore checkbox state and any still-unsaved cell values. */
   const handleRowsChanged = useCallback(() => {
     syncSelectionAfterRowsChange();
     const api = gridApi.current;
@@ -260,11 +230,7 @@ export function TransactionsInfiniteGrid({
           }}
           selectionColumnDef={selectionColumnDef}
           activeOverlay={loadError ? GridErrorOverlay : undefined}
-          activeOverlayParams={
-            loadError
-              ? { message: loadError, onRetry: retryLoad }
-              : undefined
-          }
+          activeOverlayParams={loadError ? { message: loadError, onRetry: retryLoad } : undefined}
           onGridReady={handleGridReady}
           onModelUpdated={handleRowsChanged}
           onPaginationChanged={handleRowsChanged}

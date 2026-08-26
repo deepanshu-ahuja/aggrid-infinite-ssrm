@@ -1,9 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import type { StateUpdatedEvent } from 'ag-grid-community';
-import {
-  browserGridStateStore,
-  type GridStateStore,
-} from './gridStatePersistence';
+import { browserGridStateStore, type GridStateStore } from './gridStatePersistence';
 
 interface UseGridStatePersistenceOptions {
   /** Stable preference key for one concrete grid/row-model instance. */

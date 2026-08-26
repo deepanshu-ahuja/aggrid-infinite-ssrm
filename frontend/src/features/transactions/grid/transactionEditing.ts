@@ -9,15 +9,9 @@ import type { CurrentPageRowTarget } from '@/shared/grid/pagination/useCurrentPa
 import type { Transaction } from '../api/transactions.contracts';
 
 /** Transactions chooses WHICH fields are editable; shared/grid owns HOW edits are tracked. */
-export const TRANSACTION_EDITABLE_FIELDS = [
-  'account',
-  'amount',
-  'currency',
-  'status',
-] as const;
+export const TRANSACTION_EDITABLE_FIELDS = ['account', 'amount', 'currency', 'status'] as const;
 
-export type TransactionEditableField =
-  (typeof TRANSACTION_EDITABLE_FIELDS)[number];
+export type TransactionEditableField = (typeof TRANSACTION_EDITABLE_FIELDS)[number];
 export type TransactionEditableValue = Transaction[TransactionEditableField];
 export type TransactionChanges = TrackedGridChanges<
   TransactionEditableField,
@@ -42,9 +36,7 @@ export type TransactionEditTarget = CurrentPageRowTarget;
 export function isTransactionEditableField(
   field: string | undefined,
 ): field is TransactionEditableField {
-  return TRANSACTION_EDITABLE_FIELDS.includes(
-    field as TransactionEditableField,
-  );
+  return TRANSACTION_EDITABLE_FIELDS.includes(field as TransactionEditableField);
 }
 
 /**

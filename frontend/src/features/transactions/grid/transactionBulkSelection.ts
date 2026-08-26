@@ -21,10 +21,7 @@ import { mapTransactionFilterModel } from './transactionRequest.mapper';
  * This remains only the SELECTION portion of a future action request. A real endpoint may add
  * action-specific fields such as status, export format, approval reason, etc.
  */
-export type TransactionBulkSelection = GridBulkSelection<
-  string,
-  TransactionFilter
->;
+export type TransactionBulkSelection = GridBulkSelection<string, TransactionFilter>;
 
 /**
  * Context required to interpret dataset-level `exclude` selection.
@@ -150,10 +147,7 @@ export function buildTransactionBulkSelection(
   }
 
   if (context.selectionScope === 'filtered') {
-    return buildGridBulkSelection(
-      selection,
-      mapTransactionFilterModel(context.filterModel),
-    );
+    return buildGridBulkSelection(selection, mapTransactionFilterModel(context.filterModel));
   }
 
   if (context.selectionScope === 'all') {
@@ -166,7 +160,5 @@ export function buildTransactionBulkSelection(
    * Throwing protects future action handlers from accidentally interpreting corrupted/impossible
    * state as "all records".
    */
-  throw new Error(
-    'Invalid Transactions selection: page selection cannot use exclude mode.',
-  );
+  throw new Error('Invalid Transactions selection: page selection cannot use exclude mode.');
 }

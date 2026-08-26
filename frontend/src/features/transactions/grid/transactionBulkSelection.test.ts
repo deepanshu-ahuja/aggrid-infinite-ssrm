@@ -177,8 +177,6 @@ describe('buildTransactionBulkSelection', () => {
           selectionScope: 'page',
         },
       ),
-    ).toThrow(
-      'Invalid Transactions selection: page selection cannot use exclude mode.',
-    );
+    ).toThrow('Invalid Transactions selection: page selection cannot use exclude mode.');
   });
 });

@@ -5,11 +5,7 @@ import type {
 } from '../api/transactions.contracts';
 import type { TransactionUpdatePayload } from './transactionEditing';
 
-const TRANSACTION_STATUSES: readonly TransactionStatus[] = [
-  'Completed',
-  'Pending',
-  'Failed',
-];
+const TRANSACTION_STATUSES: readonly TransactionStatus[] = ['Completed', 'Pending', 'Failed'];
 
 function hasOwn<T extends object>(value: T, key: PropertyKey) {
   return Object.prototype.hasOwnProperty.call(value, key);
