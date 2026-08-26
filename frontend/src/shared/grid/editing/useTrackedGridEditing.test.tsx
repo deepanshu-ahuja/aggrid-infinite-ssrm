@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CellValueChangedEvent, GridApi, RowNode } from 'ag-grid-community';
 import type { Transaction } from '@/features/transactions/api/transactions.contracts';
 import { transactionEditingConfig } from '@/features/transactions/grid/transactionEditing';
+import { buildSelectedTrackedGridUpdatePayload } from './trackedGridEditing';
 import { useTrackedGridEditing } from './useTrackedGridEditing';
 
 function transaction(status: Transaction['status']): Transaction {
@@ -18,7 +19,7 @@ function transaction(status: Transaction['status']): Transaction {
 }
 
 describe('useTrackedGridEditing', () => {
-  it('does not recreate a draft if the setDataValue event arrives after Discard finishes', () => {
+  it('keeps Discard clean and idempotent even if AG Grid reports the restore later', () => {
     const row = transaction('Completed');
     const { result } = renderHook(() => useTrackedGridEditing(transactionEditingConfig));
 
@@ -43,8 +44,8 @@ describe('useTrackedGridEditing', () => {
           const oldValue = row[field];
           (row as unknown as Record<string, unknown>)[field] = value;
 
-          // Keep the event until after Discard returns. This reproduces the timing that caused
-          // a restored value to be recorded as a brand-new edit and made Discard toggle values.
+          // Keep the event until after Discard returns. This reproduces the timing that previously
+          // turned the restored value into a new draft and made repeated Discard clicks toggle values.
           restoredValueEvent = {
             data: row,
             colDef: { field },
@@ -76,6 +77,21 @@ describe('useTrackedGridEditing', () => {
       result.current.handleCellValueChanged(restoredValueEvent);
     });
 
+    // A selected clean row must not remain eligible for "Save selected edits".
+    expect(
+      buildSelectedTrackedGridUpdatePayload(result.current.state, {
+        mode: 'include',
+        ids: ['txn-a'],
+      }).updates,
+    ).toEqual([]);
+
+    // Once the first Discard clears the row, another Discard is a no-op rather than a value toggle.
+    act(() => {
+      result.current.discardRow(api, 'txn-a');
+    });
+
+    expect(row.status).toBe('Pending');
+    expect(node.setDataValue).toHaveBeenCalledTimes(1);
     expect(result.current.state.changesById).toEqual({});
     expect(result.current.state.originalsById).toEqual({});
   });
