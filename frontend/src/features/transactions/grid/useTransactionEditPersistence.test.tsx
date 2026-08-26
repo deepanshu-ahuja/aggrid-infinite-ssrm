@@ -61,7 +61,7 @@ describe('useTransactionEditPersistence', () => {
       { id: 'txn-a', changes: { status: 'Failed' as const } },
       { id: 'txn-b', changes: { amount: 250 } },
     ];
-    const selectedDrafts = [allDrafts[1]];
+    const selectedDrafts = allDrafts.slice(1);
 
     transactionApi.bulkUpdateTransactions.mockResolvedValue({
       rows: [row('txn-b')],
