@@ -178,6 +178,10 @@ describe('TransactionsInfiniteGrid production wiring', () => {
         oldValue: 'Pending',
         newValue: 'Completed',
       } as unknown as CellValueChangedEvent<Transaction>);
+    });
+
+    // AG Grid modelUpdated happens later, after React has stored the edit from cellValueChanged.
+    act(() => {
       getGridProps().onModelUpdated?.();
     });
 
@@ -198,6 +202,10 @@ describe('TransactionsInfiniteGrid production wiring', () => {
         oldValue: 'Pending',
         newValue: 'Completed',
       } as unknown as CellValueChangedEvent<Transaction>);
+    });
+
+    // Pagination is another later AG Grid event, not part of the same React update as the cell edit.
+    act(() => {
       getGridProps().onPaginationChanged?.({ api } as PaginationChangedEvent<Transaction>);
     });
 
