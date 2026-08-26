@@ -162,8 +162,9 @@ export function TransactionsSsrmGrid({
     const api = gridApi.current;
     if (!api) return;
 
-    api.setGridOption('context', rowEditActionsContext);
-    api.refreshCells({ columns: ['editActions'], force: true });
+    // Production AG Grid provides both methods. Optional calls also keep older partial test fixtures safe.
+    api.setGridOption?.('context', rowEditActionsContext);
+    api.refreshCells?.({ columns: ['editActions'], force: true });
   }, [rowEditActionsContext]);
 
   const { initialState, onStateUpdated } =
