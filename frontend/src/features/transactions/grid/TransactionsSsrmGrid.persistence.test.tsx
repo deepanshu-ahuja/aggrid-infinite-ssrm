@@ -117,11 +117,28 @@ describe('TransactionsSsrmGrid edit persistence', () => {
     });
   });
 
-  it('publishes cleared dirty state to AG Grid after row discard', async () => {
+  it('keeps the row clean when Discard restores a value through AG Grid', async () => {
     const transaction = row('txn-a', 'Completed');
-    const node = createRowNode(transaction);
-    const api = createApi([], [node]);
+    let node: RowNode<Transaction>;
 
+    node = {
+      data: transaction,
+      setDataValue: vi.fn((field: keyof Transaction, value: unknown) => {
+        const oldValue = transaction[field];
+        (transaction as unknown as Record<string, unknown>)[field] = value;
+
+        // AG Grid can emit this event for an application write through setDataValue.
+        props().onCellValueChanged?.({
+          data: transaction,
+          colDef: { field },
+          oldValue,
+          newValue: value,
+        } as unknown as CellValueChangedEvent<Transaction>);
+        return true;
+      }),
+    } as unknown as RowNode<Transaction>;
+
+    const api = createApi([], [node]);
     render(<TransactionsSsrmGrid />);
 
     act(() => {
@@ -140,7 +157,6 @@ describe('TransactionsSsrmGrid edit persistence', () => {
       expect(transaction.status).toBe('Pending');
       expect(props().context?.isRowDirty('txn-a')).toBe(false);
 
-      // The Actions renderer receives this context before its cells are redrawn.
       const latestContext = vi.mocked(api.setGridOption).mock.calls.at(-1)?.[1] as
         | TransactionRowEditActionsContext
         | undefined;
