@@ -21,11 +21,8 @@ export interface UseTrackedGridEditingOptions<TData, TField extends string, TVal
 }
 
 /**
- * Generic edit-state engine for server-backed grids whose RowNodes may be recreated.
- *
- * It owns application draft mechanics only: accumulated changes, originals, restore after cache churn,
- * acknowledgement after successful persistence, and local discard. Backend calls and row-model refresh
- * remain outside because those are feature/row-model responsibilities.
+ * Keeps unsaved grid edits outside AG Grid RowNodes so they survive page/cache reloads.
+ * The feature still owns which fields are editable and how saves are sent to the backend.
  */
 export function useTrackedGridEditing<TData, TField extends string, TValue>({
   getRowId,
@@ -37,11 +34,17 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     () => createEmptyTrackedGridEditingState<TField, TValue>(),
   );
   const [lastEdit, setLastEdit] = useState<TrackedGridLastEdit<TField, TValue>>();
+
+  /**
+   * `setDataValue` can fire AG Grid's `cellValueChanged` event too. When our own code is restoring,
+   * discarding, or applying a bulk edit, that change is already handled explicitly below. Ignoring the
+   * matching grid event prevents a Discard from immediately creating the same row draft again.
+   */
   const applyingProgrammaticChange = useRef(false);
 
   const handleCellValueChanged = useCallback(
     (event: CellValueChangedEvent<TData>) => {
-      if (!event.data) return;
+      if (applyingProgrammaticChange.current || !event.data) return;
 
       const candidateField = event.colDef.field as string | undefined;
       if (!isEditableField(candidateField)) return;
@@ -54,16 +57,14 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
       setState((current) =>
         recordTrackedGridCellChange(current, rowId, field, oldValue, newValue),
       );
-
-      if (!applyingProgrammaticChange.current) {
-        setLastEdit({ field, value: newValue });
-      }
+      setLastEdit({ field, value: newValue });
     },
     [getRowId, isEditableField],
   );
 
   const applyChangesToNodes = useCallback(
     (nodes: readonly IRowNode<TData>[], changes: TrackedGridChanges<TField, TValue>) => {
+      // Record the draft first. We then ignore the AG Grid event caused by setDataValue below.
       setState((current) => {
         let next = current;
         for (const node of nodes) {
@@ -104,6 +105,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
 
   const restoreTrackedEdits = useCallback(
     (api: GridApi<TData>) => {
+      // A newly loaded RowNode starts with backend data. Put any still-unsaved local values back into it.
       applyingProgrammaticChange.current = true;
       try {
         api.forEachNode((node) => {
@@ -126,8 +128,8 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
   );
 
   /**
-   * Acknowledge exactly the values submitted by a successful request. If the user changed the same
-   * field again while the request was in flight, the newer value remains dirty.
+   * Clear only the exact values that were successfully saved. If the user changed a field again while
+   * the request was running, that newer value stays dirty.
    */
   const acknowledgeChanges = useCallback(
     (updates: TrackedGridUpdatePayload<TField, TValue>['updates']) => {
@@ -164,7 +166,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     [editableFields, getFieldValue, getRowId, state.originalsById],
   );
 
-  /** Discard exactly one row; single-row actions do not depend on checkbox selection. */
+  /** Discard one row: restore its first values in the loaded grid and remove its local draft. */
   const discardRow = useCallback(
     (api: GridApi<TData>, rowId: string) => {
       if (!state.originalsById[rowId]) return;
@@ -175,10 +177,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     [restoreOriginalsForRows, state.originalsById],
   );
 
-  /**
-   * Discard an explicit set of dirty rows, used by selection-scoped aggregate actions.
-   * Unselected drafts remain untouched and can still be saved/discarded from their own row action.
-   */
+  /** Discard only the selected dirty rows. Other unsaved rows stay untouched. */
   const discardRows = useCallback(
     (api: GridApi<TData>, rowIds: readonly string[]) => {
       if (rowIds.length === 0) return;
