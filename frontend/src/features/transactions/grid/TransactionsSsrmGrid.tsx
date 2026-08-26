@@ -164,8 +164,17 @@ export function TransactionsSsrmGrid({
     [handleDiscardRow, isSaving, saveRow, state.changesById],
   );
 
+  /**
+   * `context` is an Initial AG Grid option. Publish each new row-action context through GridApi before
+   * refreshing the Actions cells; otherwise a renderer can keep the previous dirty-state closure after
+   * Save/Discard even though React state has already been cleared.
+   */
   useEffect(() => {
-    gridApi.current?.refreshCells?.({ columns: ['editActions'], force: true });
+    const api = gridApi.current;
+    if (!api) return;
+
+    api.setGridOption('context', rowEditActionsContext);
+    api.refreshCells({ columns: ['editActions'], force: true });
   }, [rowEditActionsContext]);
 
   const { initialState, onStateUpdated } =
