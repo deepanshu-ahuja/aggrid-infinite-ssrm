@@ -32,7 +32,7 @@ const SSRM_STATE_KEY = 'transactions:ssrm';
 const getTransactionId = (row: Transaction) => row.id;
 const getRowId = ({ data }: GetRowIdParams<Transaction>) => getTransactionId(data);
 
-/** AG Grid requests SSRM blocks later; this stable boundary maps each request to the Transactions API. */
+/** AG Grid asks the server for row blocks. This function converts that request to our Transactions API shape. */
 const loadTransactionRows: GridRowsLoader<Transaction> = (request, context) =>
   listTransactions(mapTransactionGridRequest(request), context.signal);
 
@@ -40,7 +40,7 @@ export interface TransactionsSsrmGridProps {
   gridOptions?: TransactionsSsrmGridOptions;
 }
 
-/** Transactions SSRM root. Native SSRM behavior stays visible at the concrete grid owner. */
+/** Transactions grid using AG Grid's Server-Side Row Model (SSRM). */
 export function TransactionsSsrmGrid({
   gridOptions: gridOptionsOverride,
 }: TransactionsSsrmGridProps) {
@@ -48,7 +48,9 @@ export function TransactionsSsrmGrid({
     gridOptionsOverride ?? transactionsGridConfig.ssrm.gridOptions;
   const gridApi = useRef<GridApi<Transaction> | null>(null);
   const [isGridReady, setIsGridReady] = useState(false);
-  const [selectionRevision, setSelectionRevision] = useState(0);
+
+  /** Checkbox changes live inside AG Grid, so this state is only used to make React recalculate external controls. */
+  const [, setSelectionRevision] = useState(0);
 
   const {
     error: selectionError,
@@ -95,11 +97,7 @@ export function TransactionsSsrmGrid({
     applyBulkChanges,
   } = useCurrentPageEditActions({ lastEdit, applyChangesToNodes }, gridApi);
 
-  /**
-   * SSRM owns its post-save refresh. Editable Transaction fields participate in server filtering/sort,
-   * so the backend remains authoritative for row membership and position. Stable row IDs let AG Grid
-   * retain row state while refreshServerSide() reloads the top-level store.
-   */
+  /** After Save, ask SSRM to reload its rows from the backend. */
   const handlePersistedRows = useCallback(() => {
     gridApi.current?.refreshServerSide();
   }, []);
@@ -119,15 +117,10 @@ export function TransactionsSsrmGrid({
     [discardRow],
   );
 
-  /** Only rows that are both dirty and logically selected participate in aggregate persistence. */
-  const selectedDirtyUpdates = useMemo(() => {
-    if (!isGridReady) return [];
-
-    return buildSelectedTrackedGridUpdatePayload(
-      state,
-      readSelectionIntent(),
-    ).updates;
-  }, [isGridReady, readSelectionIntent, selectionRevision, state]);
+  /** Bulk Save/Discard acts only on rows that are both dirty and currently selected. */
+  const selectedDirtyUpdates = isGridReady
+    ? buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates
+    : [];
 
   const handleSaveSelected = useCallback(() => {
     if (!gridApi.current) return;
@@ -153,7 +146,7 @@ export function TransactionsSsrmGrid({
     );
   }, [discardRows, readSelectionIntent, state]);
 
-  /** Row actions and aggregate actions share the same tracked draft state; no duplicate dirty list exists. */
+  /** The Actions cell checks this same draft state, so a clean row should not show Save/Discard. */
   const rowEditActionsContext = useMemo<TransactionRowEditActionsContext>(
     () => ({
       isRowDirty: (rowId) => Boolean(state.changesById[rowId]),
@@ -164,11 +157,7 @@ export function TransactionsSsrmGrid({
     [handleDiscardRow, isSaving, saveRow, state.changesById],
   );
 
-  /**
-   * AG Grid context is consumed by the Actions cell renderer. Publish the latest context through the
-   * native API before refreshing that column; otherwise Save/Discard can render from an older dirty-state
-   * closure after a row has already been saved, discarded, or reverted to its original value.
-   */
+  /** Push the latest dirty-state functions into AG Grid, then redraw only the Actions column. */
   useEffect(() => {
     const api = gridApi.current;
     if (!api) return;
@@ -188,10 +177,7 @@ export function TransactionsSsrmGrid({
     [],
   );
 
-  /**
-   * When SSRM loads/replaces rows, reconcile custom filtered selection and any drafts that are still
-   * unsaved. Saved fields are acknowledged before refresh, so they are no longer reapplied afterward.
-   */
+  /** When SSRM loads/replaces rows, restore checkbox state and any still-unsaved cell values. */
   const handleModelUpdated = useCallback(() => {
     syncSelectionAfterRowsChange();
     const api = gridApi.current;
