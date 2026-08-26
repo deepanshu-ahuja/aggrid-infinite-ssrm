@@ -180,7 +180,7 @@ describe('TransactionsInfiniteGrid production wiring', () => {
       } as unknown as CellValueChangedEvent<Transaction>);
     });
 
-    // AG Grid modelUpdated happens later, after React has stored the edit from cellValueChanged.
+    // modelUpdated happens later, after React has stored the edit from cellValueChanged.
     act(() => {
       getGridProps().onModelUpdated?.();
     });
@@ -204,7 +204,7 @@ describe('TransactionsInfiniteGrid production wiring', () => {
       } as unknown as CellValueChangedEvent<Transaction>);
     });
 
-    // Pagination is another later AG Grid event, not part of the same React update as the cell edit.
+    // paginationChanged is also a later AG Grid event, not part of the cell edit update.
     act(() => {
       getGridProps().onPaginationChanged?.({ api } as PaginationChangedEvent<Transaction>);
     });
@@ -212,12 +212,30 @@ describe('TransactionsInfiniteGrid production wiring', () => {
     expect(node.setDataValue).toHaveBeenCalledWith('status', 'Completed', 'data');
   });
 
-  it('publishes cleared dirty state to AG Grid after row discard', async () => {
+  it('keeps the row clean when Discard restores a value through AG Grid', async () => {
     const row = createTransaction('txn-a', 'Completed');
-    const node = createRowNode(row);
-    const api = createApi({ rows: [node] });
+    let node: RowNode<Transaction>;
 
+    node = {
+      data: row,
+      setDataValue: vi.fn((field: keyof Transaction, value: unknown) => {
+        const oldValue = row[field];
+        (row as unknown as Record<string, unknown>)[field] = value;
+
+        // AG Grid can emit this event for an application write through setDataValue.
+        getGridProps().onCellValueChanged?.({
+          data: row,
+          colDef: { field },
+          oldValue,
+          newValue: value,
+        } as unknown as CellValueChangedEvent<Transaction>);
+        return true;
+      }),
+    } as unknown as RowNode<Transaction>;
+
+    const api = createApi({ rows: [node] });
     renderGrid(<TransactionsInfiniteGrid selectionScope="page" />);
+
     act(() => {
       getGridProps().onGridReady?.(gridReady(api));
       getGridProps().onCellValueChanged?.({
