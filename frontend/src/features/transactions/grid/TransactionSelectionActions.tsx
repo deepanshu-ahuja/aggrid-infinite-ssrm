@@ -4,6 +4,8 @@ import type { TransactionStatus } from '../api/transactions.contracts';
 interface TransactionSelectionActionsProps {
   hasSelection: boolean;
   isApplying: boolean;
+  /** Status actions may not decide a still-unresolved LOCAL-vs-REMOTE status conflict implicitly. */
+  statusActionBlockedByConflict: boolean;
   error?: string;
   onSetStatus: (status: TransactionStatus) => void;
 }
@@ -12,10 +14,11 @@ interface TransactionSelectionActionsProps {
 export function TransactionSelectionActions({
   hasSelection,
   isApplying,
+  statusActionBlockedByConflict,
   error,
   onSetStatus,
 }: TransactionSelectionActionsProps) {
-  const disabled = !hasSelection || isApplying;
+  const disabled = !hasSelection || isApplying || statusActionBlockedByConflict;
 
   return (
     <Stack spacing={1}>
@@ -38,6 +41,11 @@ export function TransactionSelectionActions({
         </Button>
       </Stack>
 
+      {statusActionBlockedByConflict ? (
+        <Typography variant="caption" color="warning.main">
+          Resolve selected status conflicts before applying a server-side status action.
+        </Typography>
+      ) : null}
       {error ? <Alert severity="error">{error}</Alert> : null}
     </Stack>
   );
