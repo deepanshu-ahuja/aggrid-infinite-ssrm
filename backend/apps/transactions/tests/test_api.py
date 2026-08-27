@@ -23,6 +23,14 @@ class TransactionQueryApiTests(APISimpleTestCase):
             )
         )
 
+        rows_by_id = {row["id"]: row for row in response.data["rows"]}
+        self.assertEqual(rows_by_id["txn-00001"]["interactionMode"], "readOnly")
+        self.assertIn("Completed", rows_by_id["txn-00001"]["interactionReason"])
+        self.assertEqual(rows_by_id["txn-00002"]["interactionMode"], "selectionDisabled")
+        self.assertIn("Treasury", rows_by_id["txn-00002"]["interactionReason"])
+        self.assertEqual(rows_by_id["txn-00003"]["interactionMode"], "enabled")
+        self.assertIsNone(rows_by_id["txn-00003"]["interactionReason"])
+
     def test_filters_using_backend_contract_not_ag_grid_payload(self):
         response = self.client.post(
             self.endpoint,
@@ -43,6 +51,7 @@ class TransactionQueryApiTests(APISimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(all(row["status"] == "Completed" for row in response.data["rows"]))
+        self.assertTrue(all(row["interactionMode"] == "readOnly" for row in response.data["rows"]))
         self.assertEqual(response.data["totalCount"], 750)
         self.assertEqual(response.data["filteredCount"], 250)
 
@@ -64,33 +73,42 @@ class TransactionQueryApiTests(APISimpleTestCase):
 class TransactionUpdateApiTests(APISimpleTestCase):
     def test_updates_one_transaction_and_returns_authoritative_row(self):
         response = self.client.patch(
-            "/api/transactions/txn-00001/",
+            "/api/transactions/txn-00003/",
             {"account": "Updated Account", "amount": 1234.5},
             format="json",
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["row"]["id"], "txn-00001")
+        self.assertEqual(response.data["row"]["id"], "txn-00003")
         self.assertEqual(response.data["row"]["account"], "Updated Account")
         self.assertEqual(response.data["row"]["amount"], 1234.5)
+        self.assertEqual(response.data["row"]["interactionMode"], "enabled")
 
     def test_selection_disabled_row_remains_directly_editable(self):
         response = self.client.patch(
-            "/api/transactions/txn-00011/",
-            {"account": "Selection Disabled But Editable"},
+            "/api/transactions/txn-00002/",
+            {"amount": 4321.0},
             format="json",
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["row"]["interactionMode"], "selectionDisabled")
-        self.assertEqual(
-            response.data["row"]["account"],
-            "Selection Disabled But Editable",
+        self.assertEqual(response.data["row"]["amount"], 4321.0)
+
+    def test_allowed_edit_recomputes_interaction_policy(self):
+        response = self.client.patch(
+            "/api/transactions/txn-00015/",
+            {"status": "Completed"},
+            format="json",
         )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["row"]["interactionMode"], "readOnly")
+        self.assertIn("Completed", response.data["row"]["interactionReason"])
 
     def test_read_only_row_rejects_direct_edit(self):
         response = self.client.patch(
-            "/api/transactions/txn-00017/",
+            "/api/transactions/txn-00001/",
             {"account": "MUST-NOT-CHANGE"},
             format="json",
         )
@@ -99,7 +117,7 @@ class TransactionUpdateApiTests(APISimpleTestCase):
 
     def test_single_update_rejects_read_only_fields(self):
         response = self.client.patch(
-            "/api/transactions/txn-00002/",
+            "/api/transactions/txn-00005/",
             {"reference": "SHOULD-NOT-CHANGE"},
             format="json",
         )
@@ -131,11 +149,11 @@ class TransactionUpdateApiTests(APISimpleTestCase):
             {
                 "updates": [
                     {
-                        "id": "txn-00004",
+                        "id": "txn-00005",
                         "changes": {"account": "Bulk A"},
                     },
                     {
-                        "id": "txn-00005",
+                        "id": "txn-00006",
                         "changes": {"amount": 9876.5, "currency": "GBP"},
                     },
                 ]
@@ -147,7 +165,7 @@ class TransactionUpdateApiTests(APISimpleTestCase):
         self.assertEqual(response.data["updatedCount"], 2)
         self.assertEqual(
             [row["id"] for row in response.data["rows"]],
-            ["txn-00004", "txn-00005"],
+            ["txn-00005", "txn-00006"],
         )
         self.assertEqual(response.data["rows"][0]["account"], "Bulk A")
         self.assertEqual(response.data["rows"][1]["amount"], 9876.5)
@@ -158,8 +176,8 @@ class TransactionUpdateApiTests(APISimpleTestCase):
             "/api/transactions/bulk/",
             {
                 "updates": [
-                    {"id": "txn-00006", "changes": {"account": "A"}},
-                    {"id": "txn-00006", "changes": {"account": "B"}},
+                    {"id": "txn-00008", "changes": {"account": "A"}},
+                    {"id": "txn-00008", "changes": {"account": "B"}},
                 ]
             },
             format="json",
@@ -178,7 +196,7 @@ class TransactionUpdateApiTests(APISimpleTestCase):
                     {
                         "field": "reference",
                         "operator": "equals",
-                        "value": "TRX-100006",
+                        "value": "TRX-100008",
                     }
                 ],
             },
@@ -191,7 +209,7 @@ class TransactionUpdateApiTests(APISimpleTestCase):
             {
                 "updates": [
                     {
-                        "id": "txn-00007",
+                        "id": "txn-00009",
                         "changes": {"account": "MUST-NOT-BE-SAVED"},
                     },
                     {
@@ -215,7 +233,7 @@ class TransactionUpdateApiTests(APISimpleTestCase):
                     {
                         "field": "reference",
                         "operator": "equals",
-                        "value": "TRX-100006",
+                        "value": "TRX-100008",
                     }
                 ],
             },
@@ -251,7 +269,7 @@ class TransactionUpdateApiTests(APISimpleTestCase):
                         "changes": {"account": "MUST-NOT-BE-SAVED"},
                     },
                     {
-                        "id": "txn-00017",
+                        "id": "txn-00004",
                         "changes": {"account": "Read Only"},
                     },
                 ]
