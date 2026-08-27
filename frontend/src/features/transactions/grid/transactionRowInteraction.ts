@@ -1,7 +1,7 @@
 import type {
   EditableCallbackParams,
-  GetRowClassParams,
   IsRowSelectable,
+  RowClassParams,
 } from 'ag-grid-community';
 import {
   isGridRowEditable,
@@ -33,12 +33,17 @@ export function isTransactionRowReadOnly(row: Transaction): boolean {
 }
 
 /**
- * Read-only presentation is deliberately separate from selection eligibility. A selection-disabled
- * row keeps its normal appearance/interactions apart from its disabled checkbox; only the stronger
- * read-only state receives the generic muted row class.
+ * Interaction presentation is separate from enforcement. `selectionDisabled` remains editable, so it
+ * gets a lighter visual treatment than `readOnly`; native AG Grid callbacks and backend validation
+ * still own the actual selection/edit restrictions.
  */
 export function getTransactionRowClass(
-  params: GetRowClassParams<Transaction>,
+  params: RowClassParams<Transaction>,
 ): string | undefined {
-  return params.data && isTransactionRowReadOnly(params.data) ? 'grid-row--read-only' : undefined;
+  if (!params.data) return undefined;
+  if (params.data.interactionMode === 'readOnly') return 'grid-row--read-only';
+  if (params.data.interactionMode === 'selectionDisabled') {
+    return 'grid-row--selection-disabled';
+  }
+  return undefined;
 }
