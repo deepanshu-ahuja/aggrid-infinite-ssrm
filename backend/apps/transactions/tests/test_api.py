@@ -15,6 +15,13 @@ class TransactionQueryApiTests(APISimpleTestCase):
         self.assertEqual(len(response.data["rows"]), 25)
         self.assertEqual(response.data["totalCount"], 750)
         self.assertEqual(response.data["filteredCount"], 750)
+        self.assertTrue(
+            all(
+                row["interactionMode"]
+                in ("enabled", "selectionDisabled", "readOnly")
+                for row in response.data["rows"]
+            )
+        )
 
     def test_filters_using_backend_contract_not_ag_grid_payload(self):
         response = self.client.post(
@@ -66,6 +73,29 @@ class TransactionUpdateApiTests(APISimpleTestCase):
         self.assertEqual(response.data["row"]["id"], "txn-00001")
         self.assertEqual(response.data["row"]["account"], "Updated Account")
         self.assertEqual(response.data["row"]["amount"], 1234.5)
+
+    def test_selection_disabled_row_remains_directly_editable(self):
+        response = self.client.patch(
+            "/api/transactions/txn-00011/",
+            {"account": "Selection Disabled But Editable"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["row"]["interactionMode"], "selectionDisabled")
+        self.assertEqual(
+            response.data["row"]["account"],
+            "Selection Disabled But Editable",
+        )
+
+    def test_read_only_row_rejects_direct_edit(self):
+        response = self.client.patch(
+            "/api/transactions/txn-00017/",
+            {"account": "MUST-NOT-CHANGE"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 409)
 
     def test_single_update_rejects_read_only_fields(self):
         response = self.client.patch(
@@ -186,6 +216,62 @@ class TransactionUpdateApiTests(APISimpleTestCase):
                         "field": "reference",
                         "operator": "equals",
                         "value": "TRX-100006",
+                    }
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(after.data["rows"][0]["account"], original_account)
+
+    def test_bulk_update_is_atomic_when_any_row_is_read_only(self):
+        before = self.client.post(
+            "/api/transactions/query/",
+            {
+                "offset": 0,
+                "limit": 10,
+                "sort": [],
+                "filters": [
+                    {
+                        "field": "reference",
+                        "operator": "equals",
+                        "value": "TRX-100007",
+                    }
+                ],
+            },
+            format="json",
+        )
+        original_account = before.data["rows"][0]["account"]
+
+        response = self.client.patch(
+            "/api/transactions/bulk/",
+            {
+                "updates": [
+                    {
+                        "id": "txn-00008",
+                        "changes": {"account": "MUST-NOT-BE-SAVED"},
+                    },
+                    {
+                        "id": "txn-00017",
+                        "changes": {"account": "Read Only"},
+                    },
+                ]
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 409)
+
+        after = self.client.post(
+            "/api/transactions/query/",
+            {
+                "offset": 0,
+                "limit": 10,
+                "sort": [],
+                "filters": [
+                    {
+                        "field": "reference",
+                        "operator": "equals",
+                        "value": "TRX-100007",
                     }
                 ],
             },
