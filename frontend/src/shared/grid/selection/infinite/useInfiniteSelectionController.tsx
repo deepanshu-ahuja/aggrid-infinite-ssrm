@@ -80,12 +80,18 @@ export function useInfiniteSelectionController<TData>({
     [datasetIntent, readPageSelectionIntent, scope],
   );
 
-  /** Reconcile application-owned dataset selection onto Infinite rows that currently exist in memory. */
+  /**
+   * Reconcile application-owned dataset selection onto Infinite rows that currently exist in memory.
+   *
+   * `rowSelection.isRowSelectable` has already been evaluated by AG Grid and exposed as
+   * `RowNode.selectable`. A disabled row is outside the selectable universe, so our custom Select-All
+   * display sync must not call `setSelected` for it or manufacture an exclusion ID for it.
+   */
   const syncLoadedRows = useCallback(() => {
     if (scope === 'page') return;
 
     gridApi.current?.forEachNode((node) => {
-      if (!node.data) return;
+      if (!node.data || !node.selectable) return;
 
       const shouldBeSelected = isRowSelected(getRowId(node.data));
       if (node.isSelected() !== shouldBeSelected) {
@@ -153,7 +159,14 @@ export function useInfiniteSelectionController<TData>({
 
   const onRowSelected = useCallback(
     (event: RowSelectedEvent<TData>) => {
-      if (scope === 'page' || event.source === 'api' || !event.data) return;
+      if (
+        scope === 'page' ||
+        event.source === 'api' ||
+        !event.data ||
+        !event.node.selectable
+      ) {
+        return;
+      }
 
       setRowSelected(getRowId(event.data), event.node.isSelected() === true);
     },
