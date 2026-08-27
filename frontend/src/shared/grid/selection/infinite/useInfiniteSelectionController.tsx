@@ -139,7 +139,14 @@ export function useInfiniteSelectionController<TData>({
       headerComponentParams: {
         ...headerState,
         label: headerLabel,
-        onChange: setHeaderSelected,
+        onChange: (checked: boolean) => {
+          const selection: ServerSelectionIntent<string> = checked
+            ? { mode: 'exclude', ids: [] }
+            : { mode: 'include', ids: [] };
+
+          console.log('HEADER SELECTION:', selection);
+          setHeaderSelected(checked);
+        },
       },
     };
   }, [headerLabel, headerState, scope, setHeaderSelected]);
