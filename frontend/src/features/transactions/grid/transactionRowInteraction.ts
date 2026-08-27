@@ -1,8 +1,5 @@
-import type {
-  EditableCallbackParams,
-  IsRowSelectable,
-  RowClassParams,
-} from 'ag-grid-community';
+import type { EditableCallbackParams, IsRowSelectable } from 'ag-grid-community';
+import { createGridRowInteractionClassGetter } from '@/shared/grid/rows/gridRowInteractionClass';
 import {
   isGridRowEditable,
   isGridRowReadOnly,
@@ -52,34 +49,27 @@ export function isTransactionCellEditable(
  * Row-level modifying controls (Save/Discard/etc.) use the stronger read-only predicate.
  */
 export function isTransactionRowReadOnly(row: Transaction): boolean {
-  // Do NOT use `!isTransactionRowSelectable(...)` here. `selectionDisabled` is intentionally not
-  // selectable but must still allow individual editing/row actions.
+  // Do NOT derive this from "not selectable". `selectionDisabled` is intentionally non-selectable but
+  // must still allow individual editing and row-level modifying actions.
   return isGridRowReadOnly(row.interactionMode);
 }
 
 /**
- * Return CSS classes only for PRESENTATION.
+ * Shared AG Grid row-class adapter.
  *
- * `getRowClass` is an AG Grid styling hook: AG Grid calls it while rendering rows and adds the returned
- * class to that row element. It does not prevent selection or editing. Native `isRowSelectable`,
- * column `editable`, shared programmatic-edit guards, and backend validation remain the enforcement.
+ * Transactions follows the recommended common API contract and exposes `interactionMode` directly,
+ * so there is NO Transaction-specific `if (readOnly) ... if (selectionDisabled) ...` class mapping.
+ * The shared helper owns that reusable AG Grid mechanic and supplies the default classes.
+ *
+ * If Transactions later needs an unrelated feature-only row class, add it without copying the common
+ * interaction logic:
+ *
+ * createGridRowInteractionClassGetter<Transaction>({
+ *   getAdditionalClass: (row) => row.someFeatureCondition ? 'transaction-row--special' : undefined,
+ * });
+ *
+ * If another table uses different class names, it can override `classNames`. If its backend stores the
+ * mode under another property, it can pass `getMode`. In all cases AG Grid's `getRowClass` callback
+ * shape remains hidden inside the shared helper.
  */
-export function getTransactionRowClass(
-  params: RowClassParams<Transaction>,
-): string | undefined {
-  // A loading/stub RowNode has no Transaction state to style yet.
-  if (!params.data) return undefined;
-
-  // Stronger grey/locked treatment: no selection, no editing, no modifying row actions.
-  if (params.data.interactionMode === 'readOnly') return 'grid-row--read-only';
-
-  // Lighter warning/review treatment: selection/bulk is disabled, but individual editing remains
-  // available. Keeping a separate class is what lets the two restricted states look different.
-  if (params.data.interactionMode === 'selectionDisabled') {
-    return 'grid-row--selection-disabled';
-  }
-
-  // Enabled rows need no extra class; the normal AG Grid theme (including blue selection styling)
-  // remains untouched.
-  return undefined;
-}
+export const getTransactionRowClass = createGridRowInteractionClassGetter<Transaction>();
