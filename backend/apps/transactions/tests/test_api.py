@@ -24,12 +24,12 @@ class TransactionQueryApiTests(APISimpleTestCase):
         )
 
         rows_by_id = {row["id"]: row for row in response.data["rows"]}
-        self.assertEqual(rows_by_id["txn-00001"]["interactionMode"], "readOnly")
-        self.assertIn("Completed", rows_by_id["txn-00001"]["interactionReason"])
+        self.assertEqual(rows_by_id["txn-00001"]["interactionMode"], "enabled")
+        self.assertIsNone(rows_by_id["txn-00001"]["interactionReason"])
         self.assertEqual(rows_by_id["txn-00002"]["interactionMode"], "selectionDisabled")
-        self.assertIn("Treasury", rows_by_id["txn-00002"]["interactionReason"])
-        self.assertEqual(rows_by_id["txn-00003"]["interactionMode"], "enabled")
-        self.assertIsNone(rows_by_id["txn-00003"]["interactionReason"])
+        self.assertIn("Pending Treasury", rows_by_id["txn-00002"]["interactionReason"])
+        self.assertEqual(rows_by_id["txn-00004"]["interactionMode"], "readOnly")
+        self.assertIn("Completed Settlement", rows_by_id["txn-00004"]["interactionReason"])
 
     def test_filters_using_backend_contract_not_ag_grid_payload(self):
         response = self.client.post(
@@ -51,7 +51,13 @@ class TransactionQueryApiTests(APISimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(all(row["status"] == "Completed" for row in response.data["rows"]))
-        self.assertTrue(all(row["interactionMode"] == "readOnly" for row in response.data["rows"]))
+        self.assertTrue(
+            all(
+                row["interactionMode"]
+                == ("readOnly" if row["account"] == "Settlement" else "enabled")
+                for row in response.data["rows"]
+            )
+        )
         self.assertEqual(response.data["totalCount"], 750)
         self.assertEqual(response.data["filteredCount"], 250)
 
@@ -97,18 +103,18 @@ class TransactionUpdateApiTests(APISimpleTestCase):
 
     def test_allowed_edit_recomputes_interaction_policy(self):
         response = self.client.patch(
-            "/api/transactions/txn-00015/",
+            "/api/transactions/txn-00008/",
             {"status": "Completed"},
             format="json",
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["row"]["interactionMode"], "readOnly")
-        self.assertIn("Completed", response.data["row"]["interactionReason"])
+        self.assertIn("Completed Settlement", response.data["row"]["interactionReason"])
 
     def test_read_only_row_rejects_direct_edit(self):
         response = self.client.patch(
-            "/api/transactions/txn-00001/",
+            "/api/transactions/txn-00004/",
             {"account": "MUST-NOT-CHANGE"},
             format="json",
         )
