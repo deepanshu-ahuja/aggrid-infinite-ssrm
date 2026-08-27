@@ -1,20 +1,26 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { CellValueChangedEvent, GridApi, RowNode } from 'ag-grid-community';
+import type { GridRowInteractionMode } from '@/shared/grid/rows/gridRowInteraction';
 import type { Transaction } from '@/features/transactions/api/transactions.contracts';
 import { transactionEditingConfig } from '@/features/transactions/grid/transactionEditing';
 import { buildSelectedTrackedGridUpdatePayload } from './trackedGridEditing';
 import { useTrackedGridEditing } from './useTrackedGridEditing';
 
-function transaction(status: Transaction['status']): Transaction {
+function transaction(
+  status: Transaction['status'],
+  interactionMode: GridRowInteractionMode = 'enabled',
+  id = 'txn-a',
+): Transaction {
   return {
-    id: 'txn-a',
-    reference: 'REF-txn-a',
+    id,
+    reference: `REF-${id}`,
     account: 'Account',
     amount: 100,
     currency: 'USD',
     status,
     transactionDate: '2026-08-24',
+    interactionMode,
   };
 }
 
@@ -121,5 +127,49 @@ describe('useTrackedGridEditing', () => {
 
     expect(result.current.state.changesById).toEqual({});
     expect(result.current.state.originalsById).toEqual({});
+  });
+
+  it('does not let programmatic edit flows write through a read-only row', () => {
+    const editableRow = transaction('Pending', 'enabled', 'txn-enabled');
+    const readOnlyRow = transaction('Pending', 'readOnly', 'txn-read-only');
+    const editableNode = {
+      data: editableRow,
+      setDataValue: vi.fn(),
+    } as unknown as RowNode<Transaction>;
+    const readOnlyNode = {
+      data: readOnlyRow,
+      setDataValue: vi.fn(),
+    } as unknown as RowNode<Transaction>;
+
+    const { result } = renderHook(() => useTrackedGridEditing(transactionEditingConfig));
+
+    act(() => {
+      result.current.applyChangesToNodes([editableNode, readOnlyNode], {
+        status: 'Failed',
+      });
+    });
+
+    expect(editableNode.setDataValue).toHaveBeenCalledWith('status', 'Failed', 'data');
+    expect(readOnlyNode.setDataValue).not.toHaveBeenCalled();
+    expect(result.current.state.changesById).toEqual({
+      'txn-enabled': { status: 'Failed' },
+    });
+  });
+
+  it('does not record a direct cell event for a read-only row', () => {
+    const readOnlyRow = transaction('Completed', 'readOnly');
+    const { result } = renderHook(() => useTrackedGridEditing(transactionEditingConfig));
+
+    act(() => {
+      result.current.handleCellValueChanged({
+        data: readOnlyRow,
+        colDef: { field: 'status' },
+        oldValue: 'Pending',
+        newValue: 'Completed',
+      } as unknown as CellValueChangedEvent<Transaction>);
+    });
+
+    expect(result.current.state.changesById).toEqual({});
+    expect(result.current.lastEdit).toBeUndefined();
   });
 });
