@@ -40,6 +40,29 @@ class TransactionSelectionUpdateApiTests(APISimpleTestCase):
             ["Failed", "Pending", "Failed", "Completed"],
         )
 
+    def test_explicit_selection_skips_rows_outside_backend_selection_universe(self):
+        self.rows[1]["interactionMode"] = "selectionDisabled"
+        self.rows[2]["interactionMode"] = "readOnly"
+
+        response = self.client.patch(
+            self.endpoint,
+            {
+                "selection": {
+                    "mode": "include",
+                    "ids": ["txn-a", "txn-b", "txn-c"],
+                },
+                "changes": {"status": "Failed"},
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["updatedCount"], 1)
+        self.assertEqual(
+            [row["status"] for row in self.rows],
+            ["Failed", "Pending", "Pending", "Completed"],
+        )
+
     def test_updates_filtered_dataset_except_excluded_ids(self):
         response = self.client.patch(
             self.endpoint,
@@ -67,6 +90,36 @@ class TransactionSelectionUpdateApiTests(APISimpleTestCase):
             ["Failed", "Pending", "Pending", "Failed"],
         )
 
+    def test_select_all_filtered_skips_disabled_rows_without_frontend_exclusions(self):
+        self.rows[1]["interactionMode"] = "selectionDisabled"
+        self.rows[3]["interactionMode"] = "readOnly"
+
+        response = self.client.patch(
+            self.endpoint,
+            {
+                "selection": {
+                    "mode": "exclude",
+                    "ids": [],
+                },
+                "filters": [
+                    {
+                        "field": "account",
+                        "operator": "equals",
+                        "value": "Operating",
+                    }
+                ],
+                "changes": {"status": "Failed"},
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["updatedCount"], 1)
+        self.assertEqual(
+            [row["status"] for row in self.rows],
+            ["Failed", "Pending", "Pending", "Completed"],
+        )
+
     def test_updates_all_records_except_excluded_ids(self):
         response = self.client.patch(
             self.endpoint,
@@ -85,6 +138,29 @@ class TransactionSelectionUpdateApiTests(APISimpleTestCase):
         self.assertEqual(
             [row["status"] for row in self.rows],
             ["Failed", "Failed", "Pending", "Failed"],
+        )
+
+    def test_select_all_records_skips_disabled_rows_without_frontend_exclusions(self):
+        self.rows[1]["interactionMode"] = "selectionDisabled"
+        self.rows[2]["interactionMode"] = "readOnly"
+
+        response = self.client.patch(
+            self.endpoint,
+            {
+                "selection": {
+                    "mode": "exclude",
+                    "ids": [],
+                },
+                "changes": {"status": "Failed"},
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["updatedCount"], 2)
+        self.assertEqual(
+            [row["status"] for row in self.rows],
+            ["Failed", "Pending", "Pending", "Failed"],
         )
 
     def test_rejects_filters_for_explicit_selection(self):
