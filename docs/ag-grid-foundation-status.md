@@ -1,18 +1,20 @@
 # AG Grid Foundation Status
 
-This document records what the project has already established around AG Grid, what those decisions cover, and what is intentionally still future work.
+This document records what the project has already established around AG Grid, what remains important, and what should stay future work.
 
-It is a status/guardrail document, not a replacement for the detailed Infinite and SSRM selection-contract documents.
+For implementation guidance when adding another table, see `docs/server-backed-grid-reuse.md`. Detailed row-model selection scenarios remain in the Infinite and SSRM selection-contract documents.
 
 ## Goal
 
-Build a reusable React 19 + Vite + TypeScript AG Grid foundation for server-backed application tables without creating an application-specific grid framework that hides AG Grid.
+Build a reusable React + TypeScript AG Grid foundation for server-backed application tables without creating an application-specific grid framework that hides AG Grid.
 
-The operating rule is:
+The operating rules are:
 
-> Use native AG Grid behavior and APIs first. Share configuration and utilities only when they are genuinely common.
+> Use native AG Grid behavior and APIs first.
 
-Infinite Row Model and Server-Side Row Model (SSRM) stay as separate implementations because their datasource, cache and selection lifecycles are materially different.
+> Keep Infinite and SSRM separate where their native lifecycles differ.
+
+> Share domain-neutral table capabilities; keep fields, business actions, validation and API semantics inside the feature.
 
 ## Completed foundation
 
@@ -20,29 +22,12 @@ Infinite Row Model and Server-Side Row Model (SSRM) stay as separate implementat
 
 - AG Grid Enterprise license initialization is centralized.
 - Required AG Grid modules are registered centrally through `AgGridProvider`.
-- SSRM API support is explicitly registered for native server-side selection APIs.
-- Development validations are enabled in development builds.
-
-### Native grid surface
-
-Feature grids render `AgGridReact` directly.
-
-The former `AppGrid` React wrapper has been removed. It added no useful application behavior and made the native AG Grid boundary less visible.
-
-Application-wide defaults now use AG Grid's native `provideGlobalGridOptions` mechanism.
-
-Today the intentionally small global surface is:
-
-- application AG Grid theme;
-- `defaultColDef` shared by all grids.
-
-Row-model behavior, datasource wiring, selection, IDs and lifecycle callbacks remain visible on the owning feature grid.
+- Application-wide theme/default-column configuration uses native AG Grid setup.
+- Feature grids render `AgGridReact` directly; there is no forwarding-only grid wrapper.
 
 ### Shared server-backed defaults
 
-The project has shared defaults for pagination and block/cache behavior while retaining AG Grid's native option names.
-
-Current defaults include:
+Shared native GridOptions cover common pagination/cache behavior:
 
 - pagination enabled;
 - 25-row default page size;
@@ -52,13 +37,13 @@ Current defaults include:
 - 120 ms block-load debounce;
 - one concurrent datasource request.
 
-A feature can override an individual option when there is a measured UX/backend reason to differ.
+These are defaults, not fixed business rules. A feature may override an individual value for a measured reason.
 
 ### Native Grid State persistence
 
-User table preferences now use AG Grid's native `GridState` instead of parallel React state.
+User table preferences use AG Grid's native `GridState` instead of a parallel application representation.
 
-The shared persistence boundary stores only state that is genuinely common to both current row models:
+The shared persistence boundary currently retains:
 
 - column order;
 - column pinning;
@@ -67,61 +52,49 @@ The shared persistence boundary stores only state that is genuinely common to bo
 - filter state;
 - sort state.
 
-Each row model has its own persistence key:
+Infinite and SSRM use separate state keys. Pagination position and row selection are deliberately not persisted as durable preferences.
 
-- `transactions:infinite`;
-- `transactions:ssrm`.
-
-This separation is deliberate. Infinite and SSRM may support different native state capabilities over time, so one row model must never overwrite the other's saved preferences.
-
-State is restored through native `initialState` and saved from native `onStateUpdated` events. The grids themselves do not contain `localStorage` calls.
-
-The current storage implementation uses browser storage behind `GridStateStore`. A future user/profile API can replace that implementation without changing AG Grid lifecycle wiring.
-
-Two state areas are deliberately not persisted:
-
-- pagination position, because restore requirements differ by row model and page position is not currently a required preference;
-- row selection, because SSRM can restore native selection state while Infinite cannot, and selection in this application is transient business state rather than a durable layout preference.
+The current storage implementation is browser-backed behind `GridStateStore`, so a future user/profile API can replace storage without changing grid lifecycle ownership.
 
 ### Infinite Row Model
 
-The Transactions Infinite implementation covers:
+The Infinite implementation covers:
 
-- server block loading through a reusable Infinite datasource adapter;
-- backend sorting and filtering through the Transactions request mapper;
-- stable backend row identity through `getRowId`;
+- reusable datasource/loading lifecycle;
+- backend sorting/filtering through the feature mapper;
+- stable backend row identity;
 - pagination and bounded cache behavior;
-- datasource error overlay and native Infinite cache retry;
-- selection restoration when blocks are evicted/reloaded;
-- current-page header selection;
-- filtered-dataset Select All;
-- all-records Select All;
-- include/exclude logical selection representation;
-- filtered totals derived from AG Grid's accepted Infinite model rather than arbitrary async response order;
-- programmatic checkbox synchronization using source `api` to avoid feedback loops.
+- load-error retry;
+- native page/manual selection;
+- custom Select All Filtered / Select All Records semantics for unloaded rows;
+- include/exclude logical selection;
+- selection restoration as blocks materialise/reload;
+- explicit selection persistence across filter changes;
+- filtered-wide selection invalidation when the defining filter changes;
+- all-record selection surviving visible filter changes;
+- backend-authoritative refresh through `refreshInfiniteCache()` after successful writes.
 
-Important lifecycle rules are documented in `frontend/src/infinite-selection-contract.md`.
+With `maxBlocksInCache: 5`, post-write refresh re-queries currently resident Infinite blocks only. Evicted/unloaded blocks are fetched fresh later when needed; cache residency never defines the business-action target.
 
 ### SSRM
 
-The Transactions SSRM implementation covers:
+The SSRM implementation covers:
 
-- reusable flat SSRM datasource wiring;
-- server-side sorting/filtering through the same Transactions request mapper;
+- reusable flat SSRM datasource/loading lifecycle;
+- backend sorting/filtering through the same feature mapper;
 - stable backend row identity;
-- native SSRM All Records selection through AG Grid server-side selection state;
-- explicit Current Page selection because SSRM does not support native `currentPage` Select-All mode;
-- explicit All Filtered selection because SSRM does not support native `filtered` Select-All mode;
-- selection restoration for newly loaded/reloaded RowNodes while custom filtered selection is active;
-- filter-change invalidation of custom filtered Select All;
-- native SSRM failed-load retry;
-- flat server-side selection-state adapter with validation.
+- native explicit and All Records server-side selection;
+- explicit Current Page selection;
+- custom Select All Filtered behavior where required by the product semantics;
+- filtered custom selection invalidation on filter change;
+- native All Records / explicit selection surviving visible filter changes;
+- load retry and backend-authoritative `refreshServerSide()` after successful writes.
 
-Important lifecycle rules are documented in `frontend/src/ssrm-selection-contract.md`.
+Infinite and SSRM intentionally do not share one selection controller. They share semantic helpers only where the meaning is genuinely common.
 
-### Backend-facing selection contract
+### Generic selection-action target
 
-Logical selection contains only:
+Logical selection is shared and compact:
 
 ```ts
 {
@@ -130,91 +103,162 @@ Logical selection contains only:
 }
 ```
 
-The UI scope (`page`, `filtered`, `all`) is not duplicated into that logical object.
+The backend wire contract intentionally does **not** serialize `scope`.
 
-For backend actions:
+```text
+include + ids
+-> exactly those ids
 
-- `include` means exact IDs;
-- filtered `exclude` combines exceptions with mapped backend filters;
-- all-records `exclude` combines exceptions with an explicit empty filter list;
-- page + exclude is invalid and fails loudly.
+exclude + translated filters
+-> filtered rows minus exception ids
 
-The generic builder is `buildGridBulkSelection(...)`.
+exclude without filters
+-> all records minus exception ids
+```
 
-Transactions-specific context is handled by `buildTransactionBulkSelection(...)`.
+The frontend still uses internal row-model context while constructing an exclude request, because Infinite and SSRM reach filtered/all selection differently. That context is not duplicated in the final payload.
 
-Normal row loading and filtered bulk membership reuse the same `mapTransactionFilterModel(...)` mapping so the grid query and a future bulk action cannot silently disagree about filter meaning.
+The generic frontend builder is `buildGridSelectionActionTarget(...)`.
 
-### Development payload validation
+Transactions adds only its feature filter translation and business `changes` payload through `buildTransactionSelectionActionRequest(...)`.
 
-Until real bulk actions exist, development builds retain payload-preview controls so developers can manually inspect the exact backend-facing selection payload.
+### Selection-based server actions
 
-These controls are development-only via `import.meta.env.DEV` and must not appear in production builds.
+Transactions currently exposes action UI above both grids for status updates.
 
-They do not call a bulk backend endpoint.
+The action path is:
 
-Once real Export/Delete/Approve/etc. actions exist, their actual request payload becomes the preferred inspection point and the development preview can be removed.
+```text
+logical selection
+-> shared target construction
+-> Transactions filter translation/business payload
+-> PATCH /api/transactions/selection/
+-> backend update
+-> row-model-specific native refresh
+```
 
-### Tests
+The backend handles explicit IDs, filtered exclude, and all-record exclude without enumerating unloaded rows in the browser.
 
-Regression coverage exists around:
+### Editing
 
-- Infinite selection strategies;
-- Infinite AG Grid lifecycle wiring;
-- SSRM native/custom selection transitions;
-- datasource adapters;
-- server-side selection-state mapping;
-- generic and Transactions bulk-selection builders;
-- Transactions sort/filter request mapping;
-- Grid State preference filtering and browser persistence behavior.
+Tracked edits are keyed by stable backend row ID so unsaved changes can survive RowNode recreation/cache churn.
 
-Tests should focus on our contracts and lifecycle wiring, not reimplement AG Grid's internal test suite.
+Current behavior includes:
+
+- direct edit tracking after AG Grid commits `cellValueChanged`;
+- Escape cancellation creating no draft;
+- latest-edit and explicit bulk apply flows;
+- row Save/Discard;
+- aggregate Save/Discard over `dirty ∩ logical selection`;
+- restoration of unsaved drafts after server-backed rows reload;
+- idempotent Discard behavior.
+
+### Documentation
+
+The reusable foundation now has:
+
+- `docs/server-backed-grid-reuse.md` — simple “how to use this for another table” guide;
+- `docs/ag-grid.md` — detailed architecture/ownership;
+- `frontend/src/infinite-selection-contract.md` — Infinite selection scenarios;
+- `frontend/src/ssrm-selection-contract.md` — SSRM selection scenarios;
+- `docs/transaction-editing.md` — editing behavior;
+- `docs/api-data-flow.md` — backend query/action flow.
+
+## Important remaining work
+
+These are the items worth resolving before calling the current grid foundation fully settled.
+
+### 1. Run the complete executable validation
+
+The branch still needs local executable validation after the latest contract/doc changes:
+
+```bash
+npm run lint
+npm run typecheck
+npm run test:run
+npm run build
+source .venv/bin/activate
+python backend/manage.py test apps.transactions
+```
+
+Do not claim the foundation green until those commands pass.
+
+### 2. Remove the temporary selection console log
+
+The Infinite header still contains the temporary console diagnostic requested during include/exclude inspection. Remove it once manual debugging is complete so production code returns to the normal no-console state.
+
+### 3. Decide the product rule for server actions versus unsaved drafts
+
+This is the most important unresolved interaction.
+
+Example:
+
+```text
+row has an unsaved local status edit
+-> user runs a server selection action that also changes status
+-> backend succeeds
+-> row model refreshes
+-> tracked-edit restoration can reapply the local unsaved value over the fresh backend row
+```
+
+That may be a valid “draft overlays server state” rule, but it can also allow a later Save to overwrite the server action. We need an explicit product decision for conflicts such as:
+
+- preserve the draft and warn/allow later overwrite;
+- clear/acknowledge affected draft fields after the action;
+- block the action when selected rows have conflicting drafts;
+- another deliberate conflict policy.
+
+Do not silently choose this rule inside generic grid code.
+
+### 4. Confirm post-action selection UX
+
+Selection currently remains after a successful server action. Confirm whether product UX wants to:
+
+- preserve selection;
+- clear selection;
+- clear only for some actions.
+
+This should be an action/product choice, not a hidden shared-grid default.
+
+### 5. Manual row-model scenario pass
+
+Automated tests cover the contracts, but a short manual pass should still verify the user-visible combinations independently for Infinite and SSRM:
+
+- explicit rows across pages;
+- explicit rows accumulated across different filters;
+- Select All Filtered plus exceptions;
+- Select All Records plus exceptions;
+- filter changes after explicit selection;
+- filter changes after filtered-wide selection;
+- action success followed by navigation into previously unloaded/evicted data;
+- dirty edits combined with the above scenarios.
 
 ## Architecture rules established
 
 1. Use native AG Grid functionality before adding application code.
 2. Do not wrap `AgGridReact` merely to forward props or inject defaults.
-3. Put truly application-wide GridOptions in `provideGlobalGridOptions`; keep feature/row-model behavior local.
-4. Keep Infinite and SSRM as separate implementations.
-5. Shared datasource utilities may adapt AG Grid callbacks, but must not pretend different row models have identical capabilities.
-6. Use stable backend IDs for row identity.
-7. Selection state must survive row-node/cache lifetime when product semantics require it.
-8. Sorting does not clear selection merely because row positions changed.
-9. Filter-change selection behavior depends on selection semantics; do not add one blanket reset rule.
-10. Reuse the same backend filter mapper for normal queries and filtered bulk actions.
-11. Use native `GridState` for grid preferences; do not create a second application-owned representation of column/filter/sort state.
-12. Treat Infinite and SSRM state capabilities independently when AG Grid support differs.
-13. Explain AG Grid lifecycle and design rationale in comments/JSDoc, especially around API-driven selection and async row loading.
-
-## Foundation review status
-
-The architecture/code review is complete for the current planned foundation.
-
-Completed review items:
-
-- checked Infinite and SSRM separately rather than forcing equivalent implementations;
-- checked shared grid utilities for unnecessary abstraction;
-- kept Grid State preference concerns separate from server-backed pagination/cache defaults;
-- removed stale `AppGrid` guidance and outdated selection-review wording from project docs;
-- synchronized architecture/convention docs with the current native AG Grid design.
-
-Executable verification still needs to be run in an environment with the repository and dependencies available:
-
-- complete frontend test suite;
-- TypeScript/build validation;
-- manual reload check for saved Infinite state;
-- manual switch to SSRM and check its separate saved state.
-
-Once those checks pass, the current AG Grid foundation can be considered complete. No additional speculative grid feature is required.
+3. Each concrete row-model root owns one authoritative native `GridApi` ref.
+4. Keep Infinite and SSRM as separate implementations when their native capabilities/lifecycles differ.
+5. Share domain-neutral semantic/mechanical capabilities, not feature business meaning.
+6. Keep fields, filter mapping, endpoints, action payloads and business validation feature-owned.
+7. Use stable backend IDs for row identity.
+8. Selection state must survive RowNode/cache lifetime when product semantics require it.
+9. Sorting does not clear selection merely because row positions changed.
+10. Explicit/include selection survives filter changes; filtered-wide exclude does not silently change meaning with a new filter.
+11. Reuse the same feature filter mapper for normal row queries and filtered selection actions.
+12. Do not serialize redundant selection context such as `scope` when `mode + ids + filters` already expresses the backend target.
+13. Use native `GridState` for grid preferences; do not mirror column/filter/sort state into a second model.
+14. Explain non-obvious AG Grid lifecycle, cache, selection and ownership decisions in comments/JSDoc.
+15. Do not generalize business-grid wrappers or giant `useGrid` APIs just because concrete roots contain some similar wiring.
 
 ## Intentionally outside current foundation scope
 
 Do not implement these speculatively:
 
-- actual Delete/Approve/Export bulk endpoints;
-- advanced SSRM capabilities that the planned tables do not require;
+- advanced grouped/pivot SSRM behavior before a real table requires it;
 - database-backed user grid preferences before a real user/persistence requirement exists;
-- generalized business-grid wrappers;
+- a generalized business-grid wrapper;
+- speculative cache optimizations that add complexity without measured need;
 - Docker infrastructure for this Databricks same-repository application.
 
-Those should be introduced only when a real product requirement justifies them.
+Add those only when a real product requirement justifies them.
