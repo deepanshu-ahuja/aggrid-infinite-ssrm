@@ -136,6 +136,37 @@ def bulk_update_transactions(
     return [row for row, _changes in resolved]
 
 
+def update_transactions_by_selection(
+    selection: Dict[str, Any],
+    filters: List[Dict[str, Any]],
+    changes: Dict[str, Any],
+) -> int:
+    """Apply one patch to the logical selection represented by the server-backed grid."""
+
+    scope = selection["scope"]
+    selected_ids = selection.get("ids", [])
+
+    if scope == "explicit":
+        # Explicit selection must be exact and atomic: resolve every id before changing any row so a
+        # stale/missing selected id cannot leave a partially updated batch.
+        selected_rows = [_find_transaction(transaction_id) for transaction_id in selected_ids]
+    else:
+        candidates = (
+            _apply_filters(TRANSACTIONS, filters)
+            if scope == "filtered"
+            else list(TRANSACTIONS)
+        )
+        excluded_ids = set(selected_ids)
+        selected_rows = [
+            row for row in candidates if row["id"] not in excluded_ids
+        ]
+
+    for row in selected_rows:
+        row.update(changes)
+
+    return len(selected_rows)
+
+
 def query_transactions(query: Dict[str, Any]) -> Dict[str, Any]:
     filtered_rows = _apply_filters(TRANSACTIONS, query.get("filters", []))
     sorted_rows = _apply_sort(filtered_rows, query.get("sort", []))
