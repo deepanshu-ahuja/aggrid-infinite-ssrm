@@ -107,7 +107,14 @@ export function TransactionsInfiniteGrid({
     applyBulkChanges,
   } = useCurrentPageEditActions({ lastEdit, applyChangesToNodes }, gridApi);
 
-  /** Backend writes are authoritative; Infinite reloads cached rows after any successful persistence. */
+  /**
+   * Backend writes are authoritative, so refresh the Infinite blocks that AG Grid currently keeps in
+   * memory. This does NOT fetch every affected backend block. Evicted/unloaded blocks stay unloaded
+   * and are fetched fresh only if the user navigates to them later.
+   *
+   * Example: with five resident cache blocks, one successful mutation can be followed by five query
+   * requests with different offsets. Those are cache refreshes, not repeated mutation requests.
+   */
   const handlePersistedRows = useCallback(() => {
     gridApi.current?.refreshInfiniteCache();
   }, []);
