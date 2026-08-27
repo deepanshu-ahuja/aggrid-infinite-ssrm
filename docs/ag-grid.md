@@ -2,7 +2,7 @@
 
 This document describes how AG Grid is integrated into the application and where shared versus row-model/feature-specific behavior belongs.
 
-For a practical guide to adding another server-backed table, start with `docs/server-backed-grid-reuse.md`. For a concise record of completed work and remaining foundation scope, see `docs/ag-grid-foundation-status.md`. Editing-specific decisions are in `docs/transaction-editing.md`.
+For a practical guide to adding another server-backed table, start with `docs/server-backed-grid-reuse.md`. For a concise record of completed work and remaining foundation scope, see `docs/ag-grid-foundation-status.md`. Row eligibility/read-only behavior is in `docs/row-interaction.md`. Editing-specific decisions are in `docs/transaction-editing.md`.
 
 ## Core rule
 
@@ -79,6 +79,7 @@ Current responsibilities include:
 - selection primitives/adapters;
 - row-model-specific reusable selection controllers;
 - generic backend-facing selection-action target construction;
+- domain-neutral row interaction mode predicates;
 - native Grid State persistence boundary;
 - generic tracked-edit mechanics;
 - formatters;
@@ -103,14 +104,15 @@ They both load server data from the backend, but their datasource, cache, refres
 - Infinite retry/refresh through native Infinite APIs;
 - native page/manual selection;
 - custom dataset-wide selection where Infinite cannot represent unloaded Select All;
+- native loaded-row selectability from the feature row policy;
 - Infinite preference persistence lifecycle;
 - transaction editing/action integration.
 
 Infinite selection supports three UI strategies:
 
-- `page` — ordinary selected IDs are AG Grid-owned; the custom header selects current-page RowNodes;
-- `filtered` — Select All represents every backend row matching the active filter;
-- `all` — Select All represents the entire dataset.
+- `page` — ordinary selected IDs are AG Grid-owned; the custom header selects eligible current-page RowNodes;
+- `filtered` — Select All represents every eligible backend row matching the active filter;
+- `all` — Select All represents every eligible row in the complete dataset.
 
 For `page`, native selected IDs are read from Grid State (`api.getState().rowSelection`) at action time.
 
@@ -125,19 +127,22 @@ For `filtered/all`, compact application selection is:
 
 This custom state is justified because Infinite cannot represent unloaded dataset-wide selection plus exclusions by itself.
 
+Disabled rows do not become IDs in that custom state. They are outside the selectable universe. Loaded rows use native `isRowSelectable`, and custom reconciliation does not call selection APIs for disabled RowNodes. Unloaded disabled rows are removed by the backend eligibility rule when an action resolves its target.
+
 Applied filters are not mirrored into React state/refs. When a filtered action payload is required, the root reads `api.getFilterModel()` directly and passes it through the feature mapper.
 
 Important lifecycle behavior:
 
 - pagination preserves explicit selection;
 - sorting preserves explicit selection because row identity is stable;
-- dataset-wide selection restores checkbox state when rows materialise;
+- dataset-wide selection restores checkbox state when eligible rows materialise;
+- disabled rows remain outside selection and are not manufactured as exclusions;
 - filtered-wide exclude resets on filter change because its defining dataset changed;
 - all-record exclude is independent of visible filters;
 - backend writes refresh the currently resident Infinite cache blocks, not the entire backend dataset;
 - evicted/unloaded blocks fetch authoritative values later when the user visits them.
 
-See `frontend/src/infinite-selection-contract.md` for scenario details and `docs/server-backed-grid-reuse.md` for the cache explanation.
+See `frontend/src/infinite-selection-contract.md` for scenario details, `docs/row-interaction.md` for row eligibility and `docs/server-backed-grid-reuse.md` for the cache explanation.
 
 ### SSRM
 
@@ -148,7 +153,8 @@ See `frontend/src/infinite-selection-contract.md` for scenario details and `docs
 - stable backend row identity;
 - native SSRM manual/All Records selection;
 - native server-side selection-state APIs;
-- explicit Current Page behavior through loaded RowNodes;
+- native loaded-row selectability from the feature row policy;
+- explicit Current Page behavior through eligible loaded RowNodes;
 - custom Select All Filtered because the required unloaded filtered-selection behavior is not provided by the current native SSRM configuration;
 - SSRM retry/refresh through native SSRM APIs;
 - SSRM preference persistence lifecycle;
@@ -156,11 +162,13 @@ See `frontend/src/infinite-selection-contract.md` for scenario details and `docs
 
 Use native SSRM selection wherever AG Grid supports the requirement.
 
-The native header checkbox means All Records. Current Page and All Filtered remain explicit commands because their product meanings differ from that native All Records behavior.
+The native header checkbox means All Records within the backend-eligible selection universe. Current Page and All Filtered remain explicit commands because their product meanings differ from that native All Records behavior.
+
+Custom/current-page code does not pass disabled RowNodes into selection APIs. Dataset-wide native/custom selection can still remain compact because the backend independently removes disabled unloaded rows from the final action target.
 
 No filter-model snapshot/ref is maintained. If custom filtered selection needs query context, the root reads the currently applied model directly with `api.getFilterModel()`. Custom Select All Filtered is cleared when the filter changes, so that current native model remains the defining query while the custom selection is active.
 
-See `frontend/src/ssrm-selection-contract.md` for scenario details.
+See `frontend/src/ssrm-selection-contract.md` for scenario details and `docs/row-interaction.md` for row eligibility/read-only behavior.
 
 ## Shared server-backed configuration
 
@@ -239,6 +247,8 @@ AG Grid request
 
 The Transactions mapper is the domain boundary between AG Grid filter/sort models and backend query contracts.
 
+Backend row responses may also carry feature-owned interaction policy metadata. The grid maps that metadata to the shared enabled / selection-disabled / read-only capability without moving the feature's business reason into shared grid code.
+
 ## Backend filter and selection-action consistency
 
 Do not create a second filter translator for selection actions.
@@ -249,18 +259,51 @@ Backend-facing selection intentionally serializes only `mode + ids`:
 
 ```text
 include + ids
--> exact ids
+-> eligible rows among those exact ids
 
 exclude + mapped filters
--> filtered dataset minus exception ids
+-> eligible filtered dataset minus user exception ids
 
 exclude without filters
--> all records minus exception ids
+-> all eligible records minus user exception ids
 ```
+
+Disabled rows are not serialized as exclusions. The backend owns the authoritative eligibility rule for loaded and unloaded rows.
 
 There is no serialized `scope` field. The frontend still knows whether an exclude selection is filtered-wide or all-record while constructing the request, but the backend can infer the final dataset from the presence of translated filters.
 
 The generic builder is `buildGridSelectionActionTarget(...)`; Transactions-specific composition is handled by `buildTransactionSelectionActionRequest(...)`.
+
+## Row interaction boundary
+
+The shared interaction modes are:
+
+```ts
+type GridRowInteractionMode = 'enabled' | 'selectionDisabled' | 'readOnly';
+```
+
+Their generic effects are:
+
+```text
+enabled
+-> selectable
+-> editable
+
+selectionDisabled
+-> not selectable / not part of selection-based bulk actions
+-> otherwise editable
+
+readOnly
+-> not selectable / not part of selection-based bulk actions
+-> not editable
+-> no modifying row-level actions
+```
+
+The feature owns why a row receives a mode. The concrete grid maps the result to native AG Grid `isRowSelectable` and `editable` callbacks. Shared programmatic editing accepts the same row-editability predicate so RowNode writes cannot bypass read-only behavior.
+
+The backend independently enforces selection eligibility and read-only persistence. This is required because dataset-wide actions can include rows that the browser has never loaded.
+
+See `docs/row-interaction.md` for the detailed contract and test expectations.
 
 ## Editing boundary
 
@@ -268,7 +311,7 @@ Editing state is application-owned because unsaved edits must survive server-bac
 
 Both row-model roots reuse the generic tracked-edit engine while keeping row-model-specific refresh behavior at the concrete root.
 
-Bulk Save/Discard operates on `dirty ∩ logical selection`. A clean selected row is not persisted, and an unselected dirty row is not included in aggregate Save/Discard.
+Bulk Save/Discard operates on `dirty ∩ logical selection`. A clean selected row is not persisted, and an unselected dirty row is not included in aggregate Save/Discard. Read-only rows are not valid programmatic edit targets; `selectionDisabled` rows remain valid direct-edit targets.
 
 See `docs/transaction-editing.md` for editing-specific decisions.
 
