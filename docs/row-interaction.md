@@ -25,6 +25,34 @@ Their meaning is:
 
 A feature owns the condition that produces the mode. Shared grid code must not contain domain checks such as transaction status, payable state, permissions, workflow state, or lock reason.
 
+A feature may also return an explanatory reason such as `interactionReason`. The reason is presentation metadata only. It tells the user why the backend policy restricted the row; the grid must never parse the text to decide behavior.
+
+## Restricted rows must be visibly understandable
+
+A disabled checkbox by itself is not enough because a user needs to understand that the row is intentionally restricted and, when possible, why.
+
+The two restricted states should look different because they mean different things:
+
+```text
+selectionDisabled
+→ checkbox disabled
+→ row lightly muted
+→ visible "Selection disabled" indicator
+→ reason available in the UI
+→ editing and row-level modifying actions still allowed
+
+readOnly
+→ checkbox disabled
+→ row more strongly muted
+→ visible lock/read-only indicator
+→ reason available in the UI
+→ editing and modifying row-level actions blocked
+```
+
+Presentation is still not enforcement. Native AG Grid selectability/editability callbacks and backend validation remain authoritative.
+
+The current Transactions demo backend uses deterministic sample policies only so the capability is easy to test locally. A real feature should replace those demo reasons with its actual domain/business reasons.
+
 ## Selection-disabled rows are outside the selectable universe
 
 A disabled row is **not** an implicit exclusion.
@@ -78,8 +106,6 @@ Selection restriction and editing restriction are separate capabilities.
 
 Modifying row-level controls should use the same read-only predicate rather than maintain another feature-specific lock check.
 
-A muted row class may be used to communicate read-only state visually, but styling is presentation only; it is never the enforcement mechanism.
-
 ## Backend ownership
 
 The backend is authoritative for rows the browser has never loaded.
@@ -126,11 +152,13 @@ Infinite keeps its custom dataset-wide logical selection because it cannot repre
 A future table such as Payables should:
 
 1. expose its own backend-provided interaction mode or map its backend data to the shared three-mode contract;
-2. use the shared `GridRowInteractionMode` predicates;
-3. pass its feature-owned selectability callback into native AG Grid row selection;
-4. use row-editability for editable columns and programmatic edit helpers;
-5. enforce the equivalent eligibility/read-only rules in its own backend service/repository;
-6. keep disabled rows out of include/exclude bookkeeping.
+2. optionally expose a feature-owned human-readable restriction reason;
+3. use the shared `GridRowInteractionMode` predicates;
+4. pass its feature-owned selectability callback into native AG Grid row selection;
+5. use row-editability for editable columns and programmatic edit helpers;
+6. enforce the equivalent eligibility/read-only rules in its own backend service/repository;
+7. keep disabled rows out of include/exclude bookkeeping;
+8. provide presentation that makes restricted states distinguishable without making styling the enforcement mechanism.
 
 The future table may have completely different reasons for restriction. Those reasons remain feature/domain-specific; only the resulting grid capability is shared.
 
@@ -146,4 +174,5 @@ At minimum, cover:
 - backend selection actions skip disabled unloaded rows;
 - `selectionDisabled` direct edit is allowed;
 - `readOnly` direct edit is rejected;
-- explicit bulk edit containing a read-only row is rejected atomically.
+- explicit bulk edit containing a read-only row is rejected atomically;
+- restricted rows expose a clear state/reason in the UI without using presentation as enforcement.
