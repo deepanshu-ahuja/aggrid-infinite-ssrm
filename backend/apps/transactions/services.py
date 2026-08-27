@@ -1,5 +1,5 @@
 from datetime import date, timedelta
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 
 STATUSES = ("Completed", "Pending", "Failed")
@@ -15,30 +15,36 @@ class TransactionReadOnlyError(PermissionError):
     """Raised when a direct/edit persistence request targets a backend read-only Transaction."""
 
 
-def _interaction_mode_for_index(index: int) -> str:
-    """Deterministic sample policy used only to exercise generic grid interaction states locally."""
-
-    row_number = index + 1
-    if row_number % 17 == 0:
-        return "readOnly"
-    if row_number % 11 == 0:
-        return "selectionDisabled"
-    return "enabled"
-
-
-def _interaction_reason(mode: str) -> Optional[str]:
+def _interaction_policy_for_row(row: Dict[str, Any]) -> Tuple[str, Optional[str]]:
     """
-    Human-readable sample reason returned with a restricted row.
+    Derive the demo Transaction interaction policy from business-looking row data.
 
-    Real features should return the domain reason produced by their backend policy. The grid consumes
-    this text only for explanation/presentation; it never uses the reason string to enforce behavior.
+    This policy is deliberately Transactions-specific. `shared/grid` only consumes the resulting
+    generic interaction mode; a future Payables table can derive the same modes from completely
+    different fields and rules.
     """
 
-    if mode == "selectionDisabled":
-        return "Demo eligibility rule: every 11th row is excluded from selection-based bulk actions."
-    if mode == "readOnly":
-        return "Demo lock rule: every 17th row is read-only and cannot be selected or edited."
-    return None
+    if row["status"] == "Completed":
+        return (
+            "readOnly",
+            "Completed transactions are locked from selection and editing.",
+        )
+
+    if row["status"] == "Pending" and row["account"] == "Treasury":
+        return (
+            "selectionDisabled",
+            "Pending Treasury transactions require individual review, so bulk selection is disabled.",
+        )
+
+    return "enabled", None
+
+
+def _refresh_interaction_metadata(row: Dict[str, Any]) -> None:
+    """Keep returned interaction metadata aligned whenever authoritative row data changes."""
+
+    mode, reason = _interaction_policy_for_row(row)
+    row["interactionMode"] = mode
+    row["interactionReason"] = reason
 
 
 def _build_transactions(count: int = 750) -> List[Dict[str, Any]]:
@@ -46,20 +52,17 @@ def _build_transactions(count: int = 750) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
 
     for index in range(count):
-        interaction_mode = _interaction_mode_for_index(index)
-        rows.append(
-            {
-                "id": f"txn-{index + 1:05d}",
-                "reference": f"TRX-{100000 + index}",
-                "account": ACCOUNTS[index % len(ACCOUNTS)],
-                "amount": round(500 + ((index * 791.37) % 250000), 2),
-                "currency": CURRENCIES[index % len(CURRENCIES)],
-                "status": STATUSES[index % len(STATUSES)],
-                "transactionDate": today - timedelta(days=index % 365),
-                "interactionMode": interaction_mode,
-                "interactionReason": _interaction_reason(interaction_mode),
-            }
-        )
+        row = {
+            "id": f"txn-{index + 1:05d}",
+            "reference": f"TRX-{100000 + index}",
+            "account": ACCOUNTS[index % len(ACCOUNTS)],
+            "amount": round(500 + ((index * 791.37) % 250000), 2),
+            "currency": CURRENCIES[index % len(CURRENCIES)],
+            "status": STATUSES[index % len(STATUSES)],
+            "transactionDate": today - timedelta(days=index % 365),
+        }
+        _refresh_interaction_metadata(row)
+        rows.append(row)
 
     return rows
 
@@ -164,6 +167,7 @@ def update_transaction(
         raise TransactionReadOnlyError(transaction_id)
 
     row.update(changes)
+    _refresh_interaction_metadata(row)
     return row
 
 
@@ -188,6 +192,7 @@ def bulk_update_transactions(
 
     for row, changes in resolved:
         row.update(changes)
+        _refresh_interaction_metadata(row)
 
     return [row for row, _changes in resolved]
 
@@ -227,6 +232,7 @@ def update_transactions_by_selection(
 
     for row in selected_rows:
         row.update(changes)
+        _refresh_interaction_metadata(row)
 
     return len(selected_rows)
 
