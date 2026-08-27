@@ -33,6 +33,7 @@ export function TransactionInteractionCell({ data }: CustomCellRendererProps<Tra
         icon={isReadOnly ? <LockIcon /> : undefined}
         label={label}
         size="small"
+        color={isReadOnly ? 'default' : 'warning'}
         variant={isReadOnly ? 'filled' : 'outlined'}
         aria-label={`${label}: ${reason}`}
         sx={{ cursor: 'help' }}
