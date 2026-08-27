@@ -46,7 +46,11 @@ const INFINITE_STATE_KEY = 'transactions:infinite';
 const getTransactionId = (row: Transaction) => row.id;
 const getRowId = ({ data }: GetRowIdParams<Transaction>) => getTransactionId(data);
 
-/** AG Grid asks for row blocks later. This function converts that request to our Transactions API shape. */
+/**
+ * AG Grid's Infinite datasource asks for row ranges later through `getRows`. The feature translates
+ * those native requests into the Transactions backend contract; the shared Infinite loader owns
+ * cancellation/error/cache-lifecycle mechanics.
+ */
 const loadTransactionRows: GridRowsLoader<Transaction> = (request, context) =>
   listTransactions(mapTransactionGridRequest(request), context.signal);
 
@@ -56,7 +60,13 @@ export interface TransactionsInfiniteGridProps {
   onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
 }
 
-/** Transactions grid using AG Grid's Infinite Row Model. */
+/**
+ * Concrete Transactions Infinite Row Model root.
+ *
+ * Important AG Grid lifecycle wiring remains visible here on purpose. We share cohesive mechanics in
+ * hooks/helpers, but we do not hide the real `AgGridReact`, GridApi, datasource, events or row-model
+ * choices behind a generic wrapper.
+ */
 export function TransactionsInfiniteGrid({
   selectionScope: selectionScopeOverride,
   gridOptions: gridOptionsOverride,
@@ -64,9 +74,15 @@ export function TransactionsInfiniteGrid({
 }: TransactionsInfiniteGridProps) {
   const selectionScope = selectionScopeOverride ?? transactionsGridConfig.infinite.selectionScope;
   const gridOptions = gridOptionsOverride ?? transactionsGridConfig.infinite.gridOptions;
+
+  // One authoritative AG Grid API ref belongs to the grid root. Hooks/actions all consume this same
+  // native API instead of creating wrapper APIs or mirrored React state for grid operations.
   const gridApi = useRef<GridApi<Transaction> | null>(null);
 
-  /** Checkbox changes live inside AG Grid, so this state is only used to make React recalculate external controls. */
+  /**
+   * Checkbox state stays in AG Grid / compact selection state. This revision counter exists only to
+   * make external MUI controls recompute derived values when a native selection event occurs.
+   */
   const [, setSelectionRevision] = useState(0);
 
   const {
@@ -112,12 +128,15 @@ export function TransactionsInfiniteGrid({
   } = useCurrentPageEditActions({ lastEdit, applyChangesToNodes }, gridApi);
 
   /**
-   * Backend writes are authoritative, so refresh the Infinite blocks that AG Grid currently keeps in
-   * memory. This does NOT fetch every affected backend block. Evicted/unloaded blocks stay unloaded
-   * and are fetched fresh only if the user navigates to them later.
+   * Backend writes are authoritative, so ask Infinite Row Model to refresh the cache blocks AG Grid
+   * CURRENTLY keeps in memory.
    *
-   * Example: with five resident cache blocks, one successful mutation can be followed by five query
-   * requests with different offsets. Those are cache refreshes, not repeated mutation requests.
+   * `refreshInfiniteCache()` does NOT enumerate/fetch the whole backend dataset. Evicted or never-loaded
+   * blocks remain unloaded and are fetched fresh only if the user later navigates to them. Therefore a
+   * dataset-wide action can update thousands of backend rows without forcing the browser to load them.
+   *
+   * If several blocks are resident, one mutation can legitimately be followed by several row-query
+   * requests at different offsets. Those are cache refreshes, not repeated mutation calls.
    */
   const handlePersistedRows = useCallback(() => {
     gridApi.current?.refreshInfiniteCache();
@@ -168,12 +187,16 @@ export function TransactionsInfiniteGrid({
       const api = gridApi.current;
       if (!api) return;
 
+      // Read the logical selection when the user clicks the action. Dataset-wide Infinite selection can
+      // describe rows that have no RowNode, so loaded `getSelectedRows()` is not the business boundary.
       const currentSelection = readSelectionIntent();
       if (!hasTransactionSelection(currentSelection)) return;
 
       applySelectionAction(
         buildTransactionSelectionActionRequest(
           currentSelection,
+          // Only Select All Filtered attaches the current translated filter universe. Page/manual and
+          // All Records do not let the visible filter redefine their membership.
           selectionScope === 'filtered' ? 'filtered' : 'all',
           api.getFilterModel(),
           { status },
@@ -194,7 +217,11 @@ export function TransactionsInfiniteGrid({
     [handleDiscardRow, isSaving, saveRow, state.changesById],
   );
 
-  /** Push the latest dirty-state functions into AG Grid, then redraw only the Actions column. */
+  /**
+   * Cell renderers consume AG Grid `context`, which sits outside normal React props. Update the native
+   * context with current callbacks/state and refresh only the Actions column rather than redrawing the
+   * whole grid.
+   */
   useEffect(() => {
     const api = gridApi.current;
     if (!api) return;
@@ -209,13 +236,20 @@ export function TransactionsInfiniteGrid({
 
   const handleGridReady = useCallback(
     (event: GridReadyEvent<Transaction>) => {
+      // Capture exactly the GridApi AG Grid created. This root remains the API owner.
       gridApi.current = event.api;
+
+      // GridReady can happen before Infinite RowNodes finish materialising. Defer one turn so custom
+      // dataset selection can reconcile against whatever AG Grid has loaded immediately afterward.
       window.setTimeout(syncSelectionAfterRowsChange, 0);
     },
     [syncSelectionAfterRowsChange],
   );
 
-  /** When Infinite reloads/recreates rows, restore checkbox state and any still-unsaved cell values. */
+  /**
+   * Infinite can recreate RowNodes after model updates, pagination and cache refreshes. Reconcile
+   * checkbox presentation and restore still-unsaved drafts each time those loaded nodes change.
+   */
   const handleRowsChanged = useCallback(() => {
     syncSelectionAfterRowsChange();
     const api = gridApi.current;
@@ -225,6 +259,9 @@ export function TransactionsInfiniteGrid({
   const handleSelectionChanged = useCallback(
     (event: SelectionChangedEvent<Transaction>) => {
       onSelectionChanged(event);
+
+      // Only force external controls to recalculate. Native selection remains in AG Grid / logical
+      // selection controller rather than being copied into React component state.
       setSelectionRevision((revision) => revision + 1);
     },
     [onSelectionChanged],
@@ -232,6 +269,9 @@ export function TransactionsInfiniteGrid({
 
   const handleFilterChanged = useCallback(() => {
     clearLoadError();
+
+    // Only filter-dependent dataset selection is reset. Explicit IDs and All Records keep their
+    // original meaning when the visible filter changes.
     resetFilterDependentSelection();
   }, [clearLoadError, resetFilterDependentSelection]);
 
@@ -269,25 +309,40 @@ export function TransactionsInfiniteGrid({
           datasource={datasource}
           columnDefs={transactionColumns}
           context={rowEditActionsContext}
+          // Stable backend identity lets native selection + draft restoration survive RowNode recreation.
           getRowId={getRowId}
+          // Presentation only: shared helper maps interaction mode to default/overridden CSS classes.
           getRowClass={getTransactionRowClass}
           initialState={initialState}
           rowSelection={{
             mode: 'multiRow',
+
+            // Infinite header behaviour depends on our configured page/filtered/all semantic, so the
+            // selection column supplies its own header instead of enabling AG Grid's default header.
             headerCheckbox: false,
+
+            // Selection is checkbox/action driven in this demo. Clicking arbitrary row content should
+            // not silently toggle business selection.
             enableClickSelection: false,
-            // Native selectability protects clicks and Grid API selection; custom controllers consume RowNode.selectable.
+
+            // Native loaded-row eligibility boundary. AG Grid evaluates this callback and stores the
+            // result in `RowNode.selectable`. Both the custom page header and filtered/all reconciliation
+            // read that native flag, so restricted rows are never passed to selection APIs and never
+            // manufactured into logical exclude IDs.
             isRowSelectable: isTransactionRowSelectable,
           }}
           selectionColumnDef={selectionColumnDef}
           activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={loadError ? { message: loadError, onRetry: retryLoad } : undefined}
           onGridReady={handleGridReady}
+          // Both events can materialise/recreate Infinite RowNodes that need selection/draft reconciliation.
           onModelUpdated={handleRowsChanged}
           onPaginationChanged={handleRowsChanged}
           onRowSelected={onRowSelected}
           onSelectionChanged={handleSelectionChanged}
           onFilterChanged={handleFilterChanged}
+          // AG Grid emits this after a committed value change; tracked editing filters out its own
+          // programmatic `setDataValue` writes using a source tag + synchronous ref guard.
           onCellValueChanged={handleCellValueChanged}
           onStateUpdated={onStateUpdated}
         />
