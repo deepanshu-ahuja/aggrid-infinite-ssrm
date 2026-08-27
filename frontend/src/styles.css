@@ -12,22 +12,40 @@ body {
  * Row interaction presentation only. Native AG Grid callbacks and backend validation enforce the
  * actual behavior; these styles make the restriction obvious without becoming another source of
  * truth.
+ *
+ * AG Grid already renders non-selectable rows as disabled selection controls. The extra treatment
+ * below makes that disabled state visually obvious in this application instead of relying on the
+ * theme's subtle default disabled-checkbox appearance.
  */
 .grid-row--selection-disabled .ag-selection-checkbox,
 .grid-row--read-only .ag-selection-checkbox {
   cursor: not-allowed;
-  opacity: 0.35;
+  filter: grayscale(1);
+  opacity: 0.32;
 }
 
 /**
- * Selection-disabled rows remain editable, so the whole row is only lightly muted. This distinguishes
- * them from ordinary rows without falsely presenting them as fully read-only.
+ * Selection-disabled rows remain editable, so use a light warm background rather than greying out
+ * the row completely. This means "not eligible for checkbox/bulk selection", not "read-only".
  */
 .grid-row--selection-disabled {
-  opacity: 0.84;
+  box-shadow: inset 3px 0 0 rgba(217, 119, 6, 0.72);
 }
 
-/** Fully read-only rows get the stronger whole-row treatment because editing/actions are blocked too. */
+.grid-row--selection-disabled .ag-cell {
+  background-color: rgba(245, 158, 11, 0.09);
+}
+
+/**
+ * Read-only rows are the stronger state: selection, editing and modifying row actions are blocked.
+ * A neutral grey background and stronger foreground muting make the row feel locked/disabled.
+ */
 .grid-row--read-only {
-  opacity: 0.56;
+  box-shadow: inset 3px 0 0 rgba(71, 85, 105, 0.72);
+}
+
+.grid-row--read-only .ag-cell {
+  background-color: rgba(100, 116, 139, 0.14);
+  color: rgba(71, 85, 105, 0.72);
+  cursor: not-allowed;
 }
