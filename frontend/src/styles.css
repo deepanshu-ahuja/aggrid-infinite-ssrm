@@ -7,3 +7,12 @@ body,
 body {
   margin: 0;
 }
+
+/**
+ * Generic presentation for a row whose feature policy marks it fully read-only.
+ * The capability itself is enforced through native AG Grid selection/editing callbacks and backend
+ * validation; this class only communicates that state visually and must never be the enforcement.
+ */
+.grid-row--read-only {
+  opacity: 0.58;
+}
