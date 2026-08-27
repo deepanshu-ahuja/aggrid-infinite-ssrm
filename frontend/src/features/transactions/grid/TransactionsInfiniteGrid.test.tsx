@@ -151,7 +151,6 @@ describe('TransactionsInfiniteGrid production wiring', () => {
     await waitFor(() => {
       expect(transactionApi.updateTransactionsBySelection).toHaveBeenCalledWith({
         selection: {
-          scope: 'explicit',
           mode: 'include',
           ids: ['txn-a', 'txn-b'],
         },
