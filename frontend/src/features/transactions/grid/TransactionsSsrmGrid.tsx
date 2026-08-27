@@ -44,7 +44,11 @@ const getTransactionId = (row: Transaction) => row.id;
 const getRowId = ({ data }: GetRowIdParams<Transaction>) => getTransactionId(data);
 const EMPTY_SELECTION: ServerSelectionIntent<string> = { mode: 'include', ids: [] };
 
-/** AG Grid asks the server for row blocks. This function converts that request to our Transactions API shape. */
+/**
+ * AG Grid's SSRM datasource asks for row ranges later through `getRows`. Keep the loader feature-owned:
+ * it translates AG Grid's request into the Transactions backend contract, while the shared datasource
+ * hook owns cancellation/error/lifecycle mechanics.
+ */
 const loadTransactionRows: GridRowsLoader<Transaction> = (request, context) =>
   listTransactions(mapTransactionGridRequest(request), context.signal);
 
@@ -52,15 +56,28 @@ export interface TransactionsSsrmGridProps {
   gridOptions?: TransactionsSsrmGridOptions;
 }
 
-/** Transactions grid using AG Grid's Server-Side Row Model (SSRM). */
+/**
+ * Concrete Transactions SSRM root.
+ *
+ * This is intentionally where the important AG Grid capabilities are visibly composed. We do not hide
+ * `AgGridReact`, `GridApi`, row-model events, selection wiring or editing wiring behind a generic grid
+ * wrapper because a developer debugging SSRM lifecycle needs to see those native boundaries.
+ */
 export function TransactionsSsrmGrid({
   gridOptions: gridOptionsOverride,
 }: TransactionsSsrmGridProps) {
   const gridOptions = gridOptionsOverride ?? transactionsGridConfig.ssrm.gridOptions;
+
+  // One authoritative AG Grid API ref belongs to the concrete root. Hooks receive this same ref instead
+  // of creating wrapper APIs or mirrored React state for grid operations.
   const gridApi = useRef<GridApi<Transaction> | null>(null);
   const [isGridReady, setIsGridReady] = useState(false);
 
-  /** Checkbox changes live inside AG Grid, so this state is only used to make React recalculate external controls. */
+  /**
+   * Checkbox state itself stays inside AG Grid. This revision counter exists only because the external
+   * MUI action controls render outside the grid and need React to recalculate their derived state after
+   * native selection changes.
+   */
   const [, setSelectionRevision] = useState(0);
 
   const {
@@ -109,7 +126,10 @@ export function TransactionsSsrmGrid({
     applyBulkChanges,
   } = useCurrentPageEditActions({ lastEdit, applyChangesToNodes }, gridApi);
 
-  /** Backend writes are authoritative; SSRM reloads its server-side rows after successful persistence. */
+  /**
+   * Backend writes are authoritative. `refreshServerSide()` tells SSRM to ask its datasource for fresh
+   * server rows using SSRM's own cache/lifecycle instead of us patching RowNodes manually.
+   */
   const handlePersistedRows = useCallback(() => {
     gridApi.current?.refreshServerSide();
   }, []);
@@ -163,12 +183,16 @@ export function TransactionsSsrmGrid({
       const api = gridApi.current;
       if (!api) return;
 
+      // Always read logical selection at click time. Native SSRM may represent All Records across rows
+      // that are not loaded, so `api.getSelectedRows()` would be the wrong business-action boundary.
       const currentSelection = readSelectionIntent();
       if (!hasTransactionSelection(currentSelection)) return;
 
       applySelectionAction(
         buildTransactionSelectionActionRequest(
           currentSelection,
+          // Only our custom filtered-wide mode adds translated filters. Native All Records deliberately
+          // sends no filters so Python targets the whole eligible dataset.
           isFilteredSelectAllActive ? 'filtered' : 'all',
           api.getFilterModel(),
           { status },
@@ -189,7 +213,11 @@ export function TransactionsSsrmGrid({
     [handleDiscardRow, isSaving, saveRow, state.changesById],
   );
 
-  /** Push the latest dirty-state functions into AG Grid, then redraw only the Actions column. */
+  /**
+   * AG Grid cell renderers receive `context` outside React's normal prop tree. Push the latest callback
+   * references into the native grid context, then redraw only the Actions column so row renderers see
+   * current dirty/saving state without recreating the whole grid.
+   */
   useEffect(() => {
     const api = gridApi.current;
     if (!api) return;
@@ -203,11 +231,15 @@ export function TransactionsSsrmGrid({
   });
 
   const handleGridReady = useCallback((event: GridReadyEvent<Transaction>) => {
+    // Capture exactly the GridApi instance AG Grid created. Other hooks/actions share this same ref.
     gridApi.current = event.api;
     setIsGridReady(true);
   }, []);
 
-  /** When SSRM loads/replaces rows, restore checkbox state and any still-unsaved cell values. */
+  /**
+   * `modelUpdated` means SSRM's displayed RowNodes may have been loaded/replaced/recreated. Reconcile
+   * custom filtered checkbox presentation and restore still-unsaved drafts onto the new RowNodes.
+   */
   const handleModelUpdated = useCallback(() => {
     syncSelectionAfterRowsChange();
     const api = gridApi.current;
@@ -216,7 +248,10 @@ export function TransactionsSsrmGrid({
 
   const handleSelectionChanged = useCallback(
     (event: SelectionChangedEvent<Transaction>) => {
+      // First let the SSRM selection controller handle native-vs-custom ownership transitions.
       onSelectionChanged(event);
+
+      // Then trigger only a React re-render for external action controls; selected IDs remain AG Grid-owned.
       setSelectionRevision((revision) => revision + 1);
     },
     [onSelectionChanged],
@@ -224,6 +259,9 @@ export function TransactionsSsrmGrid({
 
   const handleFilterChanged = useCallback(() => {
     clearLoadError();
+
+    // Custom Select All Filtered belongs to the old filter universe, so it must be cleared. Native All
+    // Records and explicit native selections are intentionally preserved by the selection controller.
     resetFilterDependentSelection();
   }, [clearLoadError, resetFilterDependentSelection]);
 
@@ -284,24 +322,39 @@ export function TransactionsSsrmGrid({
           serverSideDatasource={datasource}
           columnDefs={transactionColumns}
           context={rowEditActionsContext}
+          // Stable backend identity is mandatory for selection/edit restoration when SSRM recreates nodes.
           getRowId={getRowId}
+          // Shared interaction class helper supplies restricted-row presentation only; it does not enforce behavior.
           getRowClass={getTransactionRowClass}
           initialState={initialState}
           rowSelection={{
             mode: 'multiRow',
+
+            // SSRM DOES support native All Records. Keep the native header enabled instead of replacing
+            // it with an application header and duplicating server-side selection state.
             headerCheckbox: true,
             selectAll: 'all',
+
+            // This controller is intentionally flat-row selection. Group/tree selection would produce
+            // a different server-side selection-state shape and needs a separate design.
             groupSelects: 'self',
-            // Native SSRM selection remains authoritative; disabled loaded rows are non-selectable.
+
+            // This is the native loaded-row eligibility boundary. AG Grid evaluates it and writes the
+            // result to `RowNode.selectable`; shared Current Page / All Filtered mechanics consume that
+            // native flag. Restricted rows are therefore never passed into selection API calls and are
+            // never converted into frontend exclude IDs.
             isRowSelectable: isTransactionRowSelectable,
           }}
           activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={loadError ? { message: loadError, onRetry: retryLoad } : undefined}
           onGridReady={handleGridReady}
+          // Model changes are where newly materialised SSRM RowNodes need selection/draft reconciliation.
           onModelUpdated={handleModelUpdated}
           onRowSelected={onRowSelected}
           onSelectionChanged={handleSelectionChanged}
           onFilterChanged={handleFilterChanged}
+          // AG Grid fires this only after a cell value is committed; the tracked-edit hook distinguishes
+          // real user commits from its own programmatic `setDataValue` writes.
           onCellValueChanged={handleCellValueChanged}
           onStateUpdated={onStateUpdated}
         />

@@ -4,6 +4,8 @@ This document describes the reusable row-interaction capability used by server-b
 
 The goal is to let each feature decide **why** a row is restricted while keeping the grid behavior itself domain-neutral and consistent across Infinite Row Model and SSRM.
 
+For the concrete implementation checklist and browser/network test steps, see [Row interaction capability: what exists and how to test it](./row-interaction-manual-testing.md).
+
 ## Interaction modes
 
 Shared grid code understands only three modes:
@@ -52,6 +54,58 @@ readOnly
 Selected rows use the normal AG Grid selection/accent treatment and must remain visually distinct from either restricted state.
 
 Presentation is still not enforcement. Native AG Grid selectability/editability callbacks and backend validation remain authoritative.
+
+## Reusable row-class mapping
+
+The common interaction-to-class mapping lives in:
+
+`frontend/src/shared/grid/rows/gridRowInteractionClass.ts`
+
+A table using the recommended common row contract needs only:
+
+```ts
+const getRowClass = createGridRowInteractionClassGetter<MyRow>();
+```
+
+The helper owns the AG Grid `RowClassParams` callback shape, loading/stub-row handling, default interaction classes, and class merging. A feature should not copy the same `if (readOnly) ... if (selectionDisabled) ...` switch into every grid.
+
+The recommended API property is:
+
+```ts
+interactionMode: GridRowInteractionMode;
+```
+
+This is a convention, not a forced backend shape. If another feature stores the mode elsewhere, adapt it:
+
+```ts
+const getRowClass = createGridRowInteractionClassGetter<MyRow>({
+  getMode: (row) => row.permissions.gridInteractionMode,
+});
+```
+
+The public TypeScript overloads deliberately require `getMode` when the row type does not expose the recommended `interactionMode` property. This prevents a future feature from silently using the helper with the wrong row shape.
+
+A feature may override only the interaction class names:
+
+```ts
+const getRowClass = createGridRowInteractionClassGetter<MyRow>({
+  classNames: {
+    readOnly: 'my-grid--locked',
+    selectionDisabled: 'my-grid--selection-disabled',
+  },
+});
+```
+
+Or append one feature-only class while preserving the common interaction class:
+
+```ts
+const getRowClass = createGridRowInteractionClassGetter<MyRow>({
+  getAdditionalClass: (row) =>
+    row.isHighValue ? 'my-feature-row--high-value' : undefined,
+});
+```
+
+That small extension point must not become the future general conditional-row-style engine. Complex condition arrays / arbitrary style rules remain a separate capability so row-interaction code stays focused.
 
 ## Current Transactions demo policy
 
@@ -107,11 +161,11 @@ The same rule applies to:
 
 For loaded rows, use AG Grid's native row-selectability capability.
 
-The concrete grid maps the feature-provided interaction mode to `rowSelection.isRowSelectable`. This makes the checkbox non-selectable at the AG Grid boundary rather than maintaining a parallel React selected-ID rule.
+The concrete grid maps the feature-provided interaction mode to `rowSelection.isRowSelectable`. AG Grid evaluates that callback and exposes the result on `RowNode.selectable`. Shared selection mechanics consume that native flag instead of re-running feature conditions.
 
 Custom selection mechanics must also avoid touching disabled nodes:
 
-- Infinite current-page header passes only `RowNode`s whose native `selectable` flag is not false to `setNodesSelected`;
+- Infinite current-page header passes only `RowNode`s whose native `selectable` flag is true to `setNodesSelected`;
 - Infinite custom filtered/all selection reconciliation never calls `setSelected(true)` for a disabled node;
 - SSRM current-page selection passes only selectable nodes to the native selection API;
 - SSRM custom Select All Filtered reconciliation skips disabled nodes.
@@ -174,13 +228,14 @@ Infinite keeps its custom dataset-wide logical selection because it cannot repre
 A future table such as Payables should:
 
 1. expose its own backend-provided interaction mode or map its backend data to the shared three-mode contract;
-2. optionally expose a feature-owned human-readable restriction reason;
-3. use the shared `GridRowInteractionMode` predicates;
-4. pass its feature-owned selectability callback into native AG Grid row selection;
-5. use row-editability for editable columns and programmatic edit helpers;
-6. enforce the equivalent eligibility/read-only rules in its own backend service/repository;
-7. keep disabled rows out of include/exclude bookkeeping;
-8. provide presentation that makes restricted states distinguishable without making styling the enforcement mechanism.
+2. preferably expose the common `interactionMode` field, or provide a small `getMode(row)` adapter;
+3. optionally expose a feature-owned human-readable restriction reason;
+4. reuse `createGridRowInteractionClassGetter` instead of copying AG Grid row-class logic;
+5. pass its feature-owned selectability callback into native AG Grid row selection;
+6. use row-editability for editable columns and programmatic edit helpers;
+7. enforce equivalent eligibility/read-only rules in its own backend service/repository;
+8. keep disabled rows out of include/exclude bookkeeping;
+9. provide presentation that makes restricted states distinguishable without making styling the enforcement mechanism.
 
 The future table may have completely different reasons for restriction. Those reasons remain feature/domain-specific; only the resulting grid capability is shared.
 
@@ -188,6 +243,11 @@ The future table may have completely different reasons for restriction. Those re
 
 At minimum, cover:
 
+- generic interaction-mode capability mapping;
+- shared default row classes;
+- custom `getMode` adapter;
+- interaction class-name overrides;
+- appended feature-only row class;
 - native checkbox selectability for all three modes;
 - Select Current Page skips disabled rows;
 - Select All Filtered does not programmatically select disabled loaded rows;

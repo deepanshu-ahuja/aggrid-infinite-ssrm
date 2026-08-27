@@ -12,29 +12,38 @@ import { SelectionHeaderCheckbox } from '../SelectionHeaderCheckbox';
 import type { InfiniteSelectionMode, ServerSelectionIntent } from '../serverSelection';
 
 interface UseInfiniteSelectionControllerOptions<TData> {
-  /** Root-owned GridApi; the controller reads it but never owns/replaces it. */
+  /** Root-owned GridApi; this hook consumes native AG Grid state but never replaces the API owner. */
   gridApi: RefObject<GridApi<TData> | null>;
 
-  /** User-visible Infinite selection strategy for this grid instance. */
+  /** `page`, `filtered`, or `all`: the product selection meaning chosen for this grid instance. */
   scope: InfiniteSelectionMode;
 
-  /** Stable backend row identity used to reconcile logical selection onto loaded RowNodes. */
+  /** Stable backend identity. Infinite RowNodes may be evicted/recreated, so row index is not enough. */
   getRowId: (row: TData) => string;
 
-  /** Complete unfiltered dataset count returned by the normal page-loading response. */
+  /** Complete unfiltered count returned by normal row loading; no extra selection metadata request. */
   totalCount: number;
 
-  /** Publishes the current logical selection to feature consumers. */
+  /** Optional feature observer for the current compact logical selection. */
   onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
 }
 
 /**
- * Complete Infinite Row Model selection capability.
+ * Infinite Row Model selection capability.
  *
- * The controller owns selection semantics only. It does NOT fetch supporting metadata. The complete
- * dataset count comes from the normal loading response, while the filtered count is read from AG
- * Grid's accepted Infinite model. This keeps backend I/O in row loading and selection focused on
- * selection behavior.
+ * WHY INFINITE NEEDS CUSTOM DATASET SELECTION
+ * -------------------------------------------
+ * Infinite Row Model only has concrete RowNodes for blocks AG Grid has loaded. Therefore it cannot
+ * natively keep checkbox state for every unloaded row in a huge filtered/all-record dataset.
+ *
+ * We split ownership instead of mirroring everything in React:
+ * - `page` mode -> AG Grid native explicit selected IDs are authoritative;
+ * - `filtered` / `all` -> a compact logical include/exclude state represents unloaded rows, while
+ *   loaded RowNodes are synchronised only for visual/native checkbox consistency.
+ *
+ * Disabled rows remain outside both worlds. The grid root supplies native `isRowSelectable`; this hook
+ * reads AG Grid's resulting `RowNode.selectable` flag and never manufactures disabled IDs into the
+ * logical include/exclude state.
  */
 export function useInfiniteSelectionController<TData>({
   gridApi,
@@ -44,11 +53,13 @@ export function useInfiniteSelectionController<TData>({
   onSelectionChange,
 }: UseInfiniteSelectionControllerOptions<TData>) {
   /**
-   * Number of rows in the currently accepted filtered result. We keep this only because the custom
-   * Infinite "Select All Filtered" header needs a count for its checked/indeterminate state.
+   * Only filtered-wide selection needs the final filtered result size for header checked/indeterminate
+   * presentation. This is not a copy of the row data or selected IDs.
    */
   const [filteredTotal, setFilteredTotal] = useState(0);
 
+  // Dataset-wide header math uses the appropriate universe size. Page mode does not use this custom
+  // dataset-selection helper at all, so zero is intentional there.
   const datasetTotal = scope === 'all' ? totalCount : scope === 'filtered' ? filteredTotal : 0;
 
   const {
@@ -60,12 +71,19 @@ export function useInfiniteSelectionController<TData>({
     setHeaderSelected,
     onFilterChanged: resetDatasetSelectionForFilter,
   } = useDatasetSelection({
+    // `useDatasetSelection` itself only needs to distinguish "all" from "filtered". Page mode never
+    // exposes its state because native AG Grid selection stays authoritative in that mode.
     scope: scope === 'all' ? 'all' : 'filtered',
     totalRowCount: datasetTotal,
     onSelectionChange: scope === 'page' ? undefined : onSelectionChange,
   });
 
-  /** Read page/manual selection directly from native Grid State at action time. */
+  /**
+   * Read page/manual selection from AG Grid AT ACTION TIME.
+   *
+   * We deliberately do not maintain a second React array of selected IDs. AG Grid already persists
+   * explicit Infinite row selection in Grid State, so that native state is the source of truth.
+   */
   const readPageSelectionIntent = useCallback((): ServerSelectionIntent<string> => {
     const nativeSelection = gridApi.current?.getState().rowSelection;
 
@@ -76,40 +94,58 @@ export function useInfiniteSelectionController<TData>({
   }, [gridApi]);
 
   const readSelectionIntent = useCallback(
+    // Page/manual -> native Grid State. Filtered/all -> compact logical dataset state.
     () => (scope === 'page' ? readPageSelectionIntent() : datasetIntent),
     [datasetIntent, readPageSelectionIntent, scope],
   );
 
-  /** Reconcile application-owned dataset selection onto Infinite rows that currently exist in memory. */
+  /**
+   * Reconcile logical filtered/all selection onto ONLY the Infinite RowNodes currently in memory.
+   *
+   * This never loads missing blocks. An unloaded row is represented by the compact logical selection;
+   * when AG Grid later materialises that row, `onRowsChanged` calls this function again.
+   */
   const syncLoadedRows = useCallback(() => {
+    // Page mode has no application-owned dataset selection to reconcile.
     if (scope === 'page') return;
 
     gridApi.current?.forEachNode((node) => {
-      if (!node.data || node.selectable === false) return;
+      if (!node.data) {
+        // Infinite can expose loading/stub nodes. No data means no stable backend ID yet.
+        return;
+      }
 
-      /**
-       * `isRowSelectable` is AG Grid's authority for whether a loaded row may participate in
-       * selection. Custom Select All must never work around it by programmatically selecting a row
-       * that AG Grid has marked non-selectable. Disabled rows are not logical exclusions; they are
-       * outside the selectable universe entirely.
-       */
+      if (node.selectable === false) {
+        // IMPORTANT: this is AG Grid's evaluated `rowSelection.isRowSelectable` result.
+        // Never call `setSelected` for a restricted row and never add it to logical exclusions.
+        return;
+      }
+
       const shouldBeSelected = isRowSelected(getRowId(node.data));
+
+      // Avoid unnecessary native writes/events when the RowNode already matches the logical state.
       if (node.isSelected() !== shouldBeSelected) {
+        // `source='api'` lets our row-selected event handler recognise this as reconciliation rather
+        // than a user checkbox action. Without that distinction we could feed our own sync back into
+        // the exception state and create loops/incorrect exclusions.
         node.setSelected(shouldBeSelected, false, 'api');
       }
     });
   }, [getRowId, gridApi, isRowSelected, scope]);
 
   /**
-   * Runs after AG Grid changes the Infinite rows it currently knows about. This keeps newly loaded
-   * selectable rows visually consistent with our custom dataset-wide selection and updates the
-   * filtered count once AG Grid knows the final size of the current filtered result.
+   * Called after Infinite model/page/cache changes.
+   *
+   * Newly loaded rows start from backend data/native defaults; this hook reapplies only the visual
+   * checkbox state implied by the compact filtered/all selection.
    */
   const onRowsChanged = useCallback(() => {
     const api = gridApi.current;
     if (!api) return;
 
     if (scope === 'filtered' && api.isLastRowIndexKnown()) {
+      // Infinite only knows the final filtered size after the datasource tells AG Grid there is no
+      // later row. Until then, `getDisplayedRowCount()` can represent an unfinished result.
       setFilteredTotal(api.getDisplayedRowCount());
     }
 
@@ -119,6 +155,8 @@ export function useInfiniteSelectionController<TData>({
   useEffect(() => {
     if (scope === 'page') return;
 
+    // A user checkbox/header action changes the compact dataset intent first. Reconcile loaded rows
+    // immediately, then ask AG Grid to redraw the custom header checked/indeterminate presentation.
     syncLoadedRows();
     gridApi.current?.refreshHeader();
   }, [datasetIntent, gridApi, scope, syncLoadedRows]);
@@ -133,12 +171,15 @@ export function useInfiniteSelectionController<TData>({
     };
 
     if (scope === 'page') {
+      // Infinite does not provide the exact "current pagination page" header behavior we need, so the
+      // custom header uses native RowNodes + `setNodesSelected` and still leaves selected state in AG Grid.
       return {
         ...base,
         headerComponent: InfiniteCurrentPageSelectionHeader,
       };
     }
 
+    // Filtered/all selection needs a logical header because unloaded rows have no checkbox RowNode.
     return {
       ...base,
       headerComponent: SelectionHeaderCheckbox,
@@ -146,6 +187,8 @@ export function useInfiniteSelectionController<TData>({
         ...headerState,
         label: headerLabel,
         onChange: (checked: boolean) => {
+          // This changes only compact logical selection. The effect above then reconciles whatever
+          // eligible RowNodes happen to be loaded; it does not enumerate the server dataset.
           setHeaderSelected(checked);
         },
       },
@@ -154,12 +197,22 @@ export function useInfiniteSelectionController<TData>({
 
   const onRowSelected = useCallback(
     (event: RowSelectedEvent<TData>) => {
-      if (
-        scope === 'page' ||
-        event.source === 'api' ||
-        !event.data ||
-        event.node.selectable === false
-      ) {
+      if (scope === 'page') {
+        // Native Grid State owns page/manual mode; `onSelectionChanged` below publishes it.
+        return;
+      }
+
+      if (event.source === 'api') {
+        // Ignore our own `syncLoadedRows` writes. Only a user/native interaction should change the
+        // logical exception set.
+        return;
+      }
+
+      if (!event.data) return;
+
+      if (event.node.selectable === false) {
+        // Defence in depth. A restricted row should not generate a user selection event at all, but if
+        // one arrives we still refuse to put its ID into the logical selection state.
         return;
       }
 
@@ -172,6 +225,8 @@ export function useInfiniteSelectionController<TData>({
     (event: SelectionChangedEvent<TData>) => {
       if (scope !== 'page') return;
 
+      // Explicit page/manual selection is already encoded by AG Grid Grid State as selected IDs.
+      // Publish that native snapshot; do not reconstruct it from loaded rows with `getSelectedRows()`.
       const nativeSelection = event.api.getState().rowSelection;
       onSelectionChange?.({
         mode: 'include',
@@ -182,14 +237,16 @@ export function useInfiniteSelectionController<TData>({
   );
 
   /**
-   * Clear only selection/count state whose meaning came from the previous filter.
+   * Clear only state whose meaning depended on the PREVIOUS filter.
    *
-   * Example: "Select All Filtered" while Status=Completed belongs to the Completed result. When the
-   * filter changes, that selection must not silently become "all rows in the new filter". All Records
-   * selection and ordinary explicit IDs are independent of the visible filter and are left alone.
+   * Example: "Select All Filtered" while Status=Pending means that exact filtered universe. If the
+   * filter changes to Failed, keeping the same exclude state would silently redefine the selection.
+   * All Records and explicit IDs do not have that problem.
    */
   const resetFilterDependentSelection = useCallback(() => {
     if (scope === 'filtered') {
+      // Reset header-count presentation as soon as the defining filter changes; the new result size
+      // will be learned from the next completed Infinite model.
       setFilteredTotal(0);
     }
 
