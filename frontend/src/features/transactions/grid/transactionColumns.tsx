@@ -7,6 +7,7 @@ import {
 import { formatCurrency } from '@/shared/grid/formatters/formatCurrency';
 import { formatDate } from '@/shared/grid/formatters/formatDate';
 import type { Transaction } from '../api/transactions.contracts';
+import { TransactionInteractionCell } from './TransactionInteractionCell';
 import { TransactionRowEditActions } from './TransactionRowEditActions';
 import { isTransactionCellEditable } from './transactionRowInteraction';
 import { TransactionStatusCell } from './TransactionStatusCell';
@@ -26,6 +27,16 @@ export const transactionColumns: ColDef<Transaction>[] = [
     minWidth: 150,
     filter: 'agTextColumnFilter',
     filterParams: serverTextFilterParams,
+  },
+  {
+    colId: 'interaction',
+    headerName: 'Access',
+    minWidth: 135,
+    maxWidth: 155,
+    sortable: false,
+    filter: false,
+    editable: false,
+    cellRenderer: TransactionInteractionCell,
   },
   {
     field: 'account',
