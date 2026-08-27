@@ -25,7 +25,6 @@ class TransactionSelectionUpdateApiTests(APISimpleTestCase):
             self.endpoint,
             {
                 "selection": {
-                    "scope": "explicit",
                     "mode": "include",
                     "ids": ["txn-a", "txn-c"],
                 },
@@ -46,7 +45,6 @@ class TransactionSelectionUpdateApiTests(APISimpleTestCase):
             self.endpoint,
             {
                 "selection": {
-                    "scope": "filtered",
                     "mode": "exclude",
                     "ids": ["txn-b"],
                 },
@@ -74,7 +72,6 @@ class TransactionSelectionUpdateApiTests(APISimpleTestCase):
             self.endpoint,
             {
                 "selection": {
-                    "scope": "all",
                     "mode": "exclude",
                     "ids": ["txn-c"],
                 },
@@ -95,7 +92,6 @@ class TransactionSelectionUpdateApiTests(APISimpleTestCase):
             self.endpoint,
             {
                 "selection": {
-                    "scope": "explicit",
                     "mode": "include",
                     "ids": ["txn-a"],
                 },
@@ -112,3 +108,20 @@ class TransactionSelectionUpdateApiTests(APISimpleTestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+
+    def test_rejects_removed_scope_field_in_selection(self):
+        response = self.client.patch(
+            self.endpoint,
+            {
+                "selection": {
+                    "scope": "all",
+                    "mode": "exclude",
+                    "ids": [],
+                },
+                "changes": {"status": "Failed"},
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("scope", response.data["selection"])
