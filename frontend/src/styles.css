@@ -9,10 +9,17 @@ body {
 }
 
 /**
- * Generic presentation for a row whose feature policy marks it fully read-only.
- * The capability itself is enforced through native AG Grid selection/editing callbacks and backend
- * validation; this class only communicates that state visually and must never be the enforcement.
+ * Row interaction presentation only. Native AG Grid callbacks and backend validation enforce the
+ * actual behavior; these styles make the restriction obvious without becoming another source of
+ * truth. `selectionDisabled` stays otherwise interactive, so only its selection control is muted.
  */
+.grid-row--selection-disabled .ag-selection-checkbox,
+.grid-row--read-only .ag-selection-checkbox {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+/** Fully read-only rows get the stronger whole-row treatment because editing/actions are blocked too. */
 .grid-row--read-only {
   opacity: 0.58;
 }
