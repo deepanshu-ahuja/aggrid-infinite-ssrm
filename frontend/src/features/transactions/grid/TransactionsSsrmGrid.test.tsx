@@ -9,6 +9,7 @@ import type {
   SelectionChangedEvent,
 } from 'ag-grid-community';
 import { serverBackedGridDefaults } from '@/shared/grid/config/serverBackedGridDefaults';
+import type { GridRowInteractionMode } from '@/shared/grid/rows/gridRowInteraction';
 import type { Transaction } from '../api/transactions.contracts';
 import { TransactionsSsrmGrid } from './TransactionsSsrmGrid';
 
@@ -33,6 +34,7 @@ interface CapturedGridProps {
     headerCheckbox?: boolean;
     selectAll?: string;
     groupSelects?: string;
+    isRowSelectable?: (node: RowNode<Transaction>) => boolean;
   };
   onGridReady?: (event: GridReadyEvent<Transaction>) => void;
   onModelUpdated?: () => void;
@@ -46,7 +48,11 @@ function getGridProps(): CapturedGridProps {
   return gridCapture.props as CapturedGridProps;
 }
 
-function createTransaction(id: string, status: Transaction['status'] = 'Completed'): Transaction {
+function createTransaction(
+  id: string,
+  status: Transaction['status'] = 'Completed',
+  interactionMode: GridRowInteractionMode = 'enabled',
+): Transaction {
   return {
     id,
     reference: `REF-${id}`,
@@ -55,6 +61,7 @@ function createTransaction(id: string, status: Transaction['status'] = 'Complete
     currency: 'USD',
     status,
     transactionDate: '2026-08-24',
+    interactionMode,
   };
 }
 
@@ -67,13 +74,15 @@ function createRowNode(
   id: string,
   rowIndex: number,
   status: Transaction['status'] = 'Completed',
+  interactionMode: GridRowInteractionMode = 'enabled',
 ): TestRowNode {
   let selected = false;
-  const data = createTransaction(id, status);
+  const data = createTransaction(id, status, interactionMode);
 
   const node = {
     data,
     rowIndex,
+    selectable: interactionMode === 'enabled',
     isSelected: vi.fn(() => selected),
     setSelected: vi.fn((nextSelected: boolean) => {
       selected = nextSelected;
@@ -216,9 +225,22 @@ describe('TransactionsSsrmGrid selection and editing', () => {
     });
   });
 
-  it('adds current-page rows to ordinary native explicit selection', () => {
+  it('uses backend interaction mode through native AG Grid row selectability', () => {
+    render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
+
+    const isRowSelectable = getGridProps().rowSelection?.isRowSelectable;
+    expect(isRowSelectable?.(createRowNode('enabled', 0).node)).toBe(true);
+    expect(
+      isRowSelectable?.(createRowNode('selection-disabled', 1, 'Completed', 'selectionDisabled').node),
+    ).toBe(false);
+    expect(isRowSelectable?.(createRowNode('read-only', 2, 'Completed', 'readOnly').node)).toBe(
+      false,
+    );
+  });
+
+  it('adds only selectable current-page rows to ordinary native explicit selection', () => {
     const rowA = createRowNode('txn-a', 0);
-    const rowB = createRowNode('txn-b', 1);
+    const rowB = createRowNode('txn-b', 1, 'Completed', 'selectionDisabled');
     const rowC = createRowNode('txn-c', 2);
     const fixture = createGridApiFixture([rowA.node, rowB.node, rowC.node]);
 
@@ -234,8 +256,9 @@ describe('TransactionsSsrmGrid selection and editing', () => {
 
     expect(fixture.getNativeSelectionState()).toEqual({
       selectAll: false,
-      toggledNodes: ['txn-existing', 'txn-a', 'txn-b'],
+      toggledNodes: ['txn-existing', 'txn-a'],
     });
+    expect(rowB.node.setSelected).not.toHaveBeenCalled();
   });
 
   it('switches native All Records to explicit current-page selection', () => {
@@ -273,9 +296,9 @@ describe('TransactionsSsrmGrid selection and editing', () => {
     expect(fixture.api.setNodesSelected).not.toHaveBeenCalled();
   });
 
-  it('selects loaded rows when entering Select All Filtered', () => {
+  it('selects only selectable loaded rows when entering Select All Filtered', () => {
     const rowA = createRowNode('txn-a', 0);
-    const rowB = createRowNode('txn-b', 1);
+    const rowB = createRowNode('txn-b', 1, 'Completed', 'readOnly');
     const fixture = createGridApiFixture([rowA.node, rowB.node]);
 
     render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
@@ -284,7 +307,7 @@ describe('TransactionsSsrmGrid selection and editing', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Select all filtered' }));
 
     expect(rowA.node.setSelected).toHaveBeenCalledWith(true, false, 'api');
-    expect(rowB.node.setSelected).toHaveBeenCalledWith(true, false, 'api');
+    expect(rowB.node.setSelected).not.toHaveBeenCalled();
     expect(fixture.getNativeSelectionState()).toEqual({
       selectAll: false,
       toggledNodes: [],
@@ -313,7 +336,7 @@ describe('TransactionsSsrmGrid selection and editing', () => {
     expect(rowA.node.setSelected).toHaveBeenCalledWith(true, false, 'api');
   });
 
-  it('restores newly loaded rows while Select All Filtered is active', () => {
+  it('restores newly loaded selectable rows while Select All Filtered is active', () => {
     const rowA = createRowNode('txn-a', 0);
     const rowB = createRowNode('txn-b', 1);
     const fixture = createGridApiFixture([rowA.node]);
@@ -330,6 +353,23 @@ describe('TransactionsSsrmGrid selection and editing', () => {
     });
 
     expect(rowB.node.setSelected).toHaveBeenCalledWith(true, false, 'api');
+  });
+
+  it('does not touch newly loaded disabled rows while Select All Filtered is active', () => {
+    const rowA = createRowNode('txn-a', 0);
+    const disabledRow = createRowNode('txn-disabled', 1, 'Completed', 'selectionDisabled');
+    const fixture = createGridApiFixture([rowA.node]);
+
+    render(<TransactionsSsrmGrid gridOptions={serverBackedGridDefaults} />);
+    ready(fixture.api);
+    fireEvent.click(screen.getByRole('button', { name: 'Select all filtered' }));
+
+    fixture.setRows([rowA.node, disabledRow.node]);
+    act(() => {
+      getGridProps().onModelUpdated?.();
+    });
+
+    expect(disabledRow.node.setSelected).not.toHaveBeenCalled();
   });
 
   it('restores an unsaved edit when SSRM reloads the row with the old backend value', () => {
