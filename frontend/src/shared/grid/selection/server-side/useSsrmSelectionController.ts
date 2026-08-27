@@ -57,8 +57,8 @@ export function useSsrmSelectionController<TData>({
   );
 
   /**
-   * Production-capable selection reader for a future real bulk action. It returns the logical mode +
-   * IDs only; a feature action can separately combine filtered mode with the current filter model.
+   * Production-capable selection reader. It returns the logical mode + IDs only; a feature action can
+   * separately combine filtered mode with the current filter model.
    */
   const readSelectionIntent = useCallback((): ServerSelectionIntent<string> => {
     if (filteredSelection) {
@@ -72,15 +72,17 @@ export function useSsrmSelectionController<TData>({
   }, [filteredSelection, gridApi]);
 
   /**
-   * Custom filtered selection can describe unloaded rows. Whenever rows materialise, reconcile their
-   * visible checkboxes from the logical include/exclude state. API source prevents feedback loops.
+   * Custom filtered selection can describe unloaded rows. Whenever rows materialise, reconcile only
+   * AG Grid-selectable rows. `RowNode.selectable` is the result of the root's native
+   * `rowSelection.isRowSelectable` policy, so this controller does not duplicate feature conditions.
+   * Disabled rows are outside selection altogether; they are not converted into exception IDs.
    */
   const syncLoadedFilteredSelection = useCallback(
     (selection: ServerSelection<string>, api = gridApi.current) => {
       if (!api) return;
 
       api.forEachNode((node) => {
-        if (!node.data) return;
+        if (!node.data || !node.selectable) return;
 
         const shouldBeSelected = isServerRowSelected(selection, getRowId(node.data));
 
@@ -94,7 +96,7 @@ export function useSsrmSelectionController<TData>({
 
   /**
    * Runs after SSRM changes the displayed row model. If Select All Filtered is active, newly loaded
-   * rows must immediately receive the checkbox state represented by that logical selection.
+   * selectable rows immediately receive the checkbox state represented by that logical selection.
    */
   const onModelUpdated = useCallback(() => {
     if (filteredSelection) {
@@ -102,10 +104,10 @@ export function useSsrmSelectionController<TData>({
     }
   }, [filteredSelection, syncLoadedFilteredSelection]);
 
-  /** User row toggles mutate the filtered selection exception set only while custom mode is active. */
+  /** User row toggles mutate the filtered exception set only for rows AG Grid considers selectable. */
   const onRowSelected = useCallback(
     (event: RowSelectedEvent<TData>) => {
-      if (event.source === 'api' || !event.data) return;
+      if (event.source === 'api' || !event.data || !event.node.selectable) return;
 
       setFilteredSelection((current) => {
         if (!current) return current;
@@ -146,7 +148,7 @@ export function useSsrmSelectionController<TData>({
 
   /**
    * SSRM has no native current-page Select All mode. Resolve the visible page, leave any dataset-wide
-   * native/custom mode, then add exactly those concrete RowNodes using native node selection.
+   * native/custom mode, then add only selectable concrete RowNodes using native node selection.
    */
   const selectCurrentPage = useCallback(() => {
     const api = gridApi.current;
@@ -168,9 +170,10 @@ export function useSsrmSelectionController<TData>({
         api.setServerSideSelectionState(createEmptyServerSideSelectionState());
       }
 
-      if (pageNodes.length > 0) {
+      const selectablePageNodes = pageNodes.filter((node) => node.selectable);
+      if (selectablePageNodes.length > 0) {
         api.setNodesSelected({
-          nodes: pageNodes,
+          nodes: selectablePageNodes,
           newValue: true,
         });
       }
