@@ -1,5 +1,5 @@
 from datetime import date, timedelta
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Optional
 
 
 STATUSES = ("Completed", "Pending", "Failed")
@@ -26,11 +26,27 @@ def _interaction_mode_for_index(index: int) -> str:
     return "enabled"
 
 
+def _interaction_reason(mode: str) -> Optional[str]:
+    """
+    Human-readable sample reason returned with a restricted row.
+
+    Real features should return the domain reason produced by their backend policy. The grid consumes
+    this text only for explanation/presentation; it never uses the reason string to enforce behavior.
+    """
+
+    if mode == "selectionDisabled":
+        return "Demo eligibility rule: every 11th row is excluded from selection-based bulk actions."
+    if mode == "readOnly":
+        return "Demo lock rule: every 17th row is read-only and cannot be selected or edited."
+    return None
+
+
 def _build_transactions(count: int = 750) -> List[Dict[str, Any]]:
     today = date.today()
     rows: List[Dict[str, Any]] = []
 
     for index in range(count):
+        interaction_mode = _interaction_mode_for_index(index)
         rows.append(
             {
                 "id": f"txn-{index + 1:05d}",
@@ -40,7 +56,8 @@ def _build_transactions(count: int = 750) -> List[Dict[str, Any]]:
                 "currency": CURRENCIES[index % len(CURRENCIES)],
                 "status": STATUSES[index % len(STATUSES)],
                 "transactionDate": today - timedelta(days=index % 365),
-                "interactionMode": _interaction_mode_for_index(index),
+                "interactionMode": interaction_mode,
+                "interactionReason": _interaction_reason(interaction_mode),
             }
         )
 
