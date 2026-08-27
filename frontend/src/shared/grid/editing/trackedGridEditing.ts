@@ -15,10 +15,12 @@ export type TrackedGridConflicts<TField extends string, TValue> = Partial<
 /**
  * Row-ID keyed edit state that survives AG Grid RowNode/cache recreation.
  *
- * `originalsById` is the BASE value captured when a field first became dirty. `changesById` is the
- * current LOCAL value. `conflictsById` exists only when a later authoritative refresh supplies a REMOTE
- * value that differs from both BASE and LOCAL. Keeping these three concerns separate makes refresh
- * reconciliation field-level instead of turning an otherwise valid row into one opaque conflict.
+ * `originalsById` = BASE value captured when the field first became dirty.
+ * `changesById`   = LOCAL unsaved value that the user currently sees.
+ * `conflictsById` = latest REMOTE value only when it diverges from both BASE and LOCAL.
+ *
+ * The state is intentionally field-level. One server-changed cell must not turn unrelated edits in the
+ * same row into conflicts, and we do not duplicate whole server rows in React state.
  */
 export interface TrackedGridEditingState<TField extends string, TValue> {
   changesById: Record<string, TrackedGridChanges<TField, TValue>>;
@@ -57,6 +59,12 @@ export function hasTrackedGridField<TField extends string, TValue>(
   return Object.prototype.hasOwnProperty.call(values, field);
 }
 
+/**
+ * Central cleanup path for one logical field edit.
+ *
+ * Manual revert, server convergence, `Use server`, and save acknowledgement all mean the field is clean.
+ * Keeping that transition here prevents stale BASE/REMOTE metadata from surviving after LOCAL is gone.
+ */
 function removeTrackedGridField<TField extends string, TValue>(
   state: TrackedGridEditingState<TField, TValue>,
   rowId: string,
@@ -65,8 +73,7 @@ function removeTrackedGridField<TField extends string, TValue>(
   const currentChanges = state.changesById[rowId];
   if (!currentChanges || !hasTrackedGridField(currentChanges, field)) return state;
 
-  // Keep these clones explicitly typed. Generic object spread with an empty fallback otherwise narrows
-  // to `{}` and loses the TField index signature under strict TypeScript checking.
+  // Explicit annotations preserve TField indexing under strict TypeScript when the fallback is `{}`.
   const changes: TrackedGridChanges<TField, TValue> = { ...currentChanges };
   const originals: TrackedGridChanges<TField, TValue> = {
     ...(state.originalsById[rowId] ?? {}),
@@ -74,6 +81,8 @@ function removeTrackedGridField<TField extends string, TValue>(
   const conflicts: TrackedGridConflicts<TField, TValue> = {
     ...(state.conflictsById[rowId] ?? {}),
   };
+
+  // A field is one unit of edit state: LOCAL, BASE, and REMOTE are cleared together.
   delete changes[field];
   delete originals[field];
   delete conflicts[field];
@@ -83,6 +92,7 @@ function removeTrackedGridField<TField extends string, TValue>(
   const conflictsById = { ...state.conflictsById };
 
   if (Object.keys(changes).length === 0) {
+    // No dirty fields remain, so remove the row instead of keeping empty map entries around.
     delete changesById[rowId];
     delete originalsById[rowId];
     delete conflictsById[rowId];
@@ -97,17 +107,10 @@ function removeTrackedGridField<TField extends string, TValue>(
 }
 
 /**
- * Records one row/field transition without knowing anything about the feature that owns the row.
+ * Record one user/programmatic edit without knowing the owning feature's row shape.
  *
- * This is the reusable state machine behind direct cell edits and programmatic bulk propagation:
- * - first edit captures the original value;
- * - later edits preserve that first original value;
- * - returning to the original value removes an ordinary non-conflicted edit;
- * - different fields accumulate under the same stable backend row ID.
- *
- * If the field is already conflicted, the REMOTE value becomes an additional meaningful reference.
- * Editing directly to that REMOTE value resolves the conflict and removes the draft. Other values remain
- * an explicit local choice until the user resolves the conflict through the feature UI.
+ * BASE is captured only on the first transition away from the server value. Later edits change LOCAL
+ * but keep that first BASE so A -> B -> C -> A is recognised as a complete manual revert.
  */
 export function recordTrackedGridCellChange<TField extends string, TValue>(
   state: TrackedGridEditingState<TField, TValue>,
@@ -124,10 +127,12 @@ export function recordTrackedGridCellChange<TField extends string, TValue>(
   const conflict = currentConflicts[field];
 
   if (conflict && Object.is(conflict.remoteValue, newValue)) {
+    // During a conflict, directly choosing the current REMOTE value has the same meaning as `Use server`.
     return removeTrackedGridField(state, rowId, field);
   }
 
   if (hasTrackedGridField(currentChanges, field) && Object.is(currentChanges[field], newValue)) {
+    // AG Grid can emit an idempotent change event. Do not manufacture a new state object for it.
     return state;
   }
 
@@ -140,13 +145,16 @@ export function recordTrackedGridCellChange<TField extends string, TValue>(
     : oldValue;
 
   if (!hasTrackedGridField(currentOriginals, field)) {
+    // First dirty transition: this old value is the BASE used by future refresh reconciliation.
     nextOriginals[field] = oldValue;
   }
 
   if (!conflict && Object.is(originalValue, newValue)) {
+    // Ordinary edit returned to BASE. It is no longer dirty and needs no reconciliation metadata.
     delete nextChanges[field];
     delete nextOriginals[field];
   } else {
+    // New/continued draft. An existing conflict deliberately remains unresolved until an explicit choice.
     nextChanges[field] = newValue;
   }
 
@@ -169,15 +177,14 @@ export function recordTrackedGridCellChange<TField extends string, TValue>(
 }
 
 /**
- * Reconcile fresh authoritative values with the fields that already have local drafts.
+ * Three-way reconciliation for genuinely refreshed server values.
  *
- * Per edited field:
- * - REMOTE === BASE: the server did not change our baseline; keep LOCAL dirty and clear stale conflict.
- * - REMOTE === LOCAL: the server already contains the desired value; clear the draft automatically.
- * - otherwise: retain LOCAL, remember REMOTE, and mark only that field conflicted.
+ * For each dirty field:
+ * BASE   = value when the field first became dirty
+ * LOCAL  = current unsaved value
+ * REMOTE = latest authoritative server value
  *
- * The caller supplies only values from a freshly materialised server row. Unedited fields are not copied
- * into React state and continue to render directly from AG Grid's server-backed row data.
+ * Only dirty fields participate. Unedited fields continue to render directly from the refreshed row.
  */
 export function reconcileTrackedGridRemoteValues<TField extends string, TValue>(
   state: TrackedGridEditingState<TField, TValue>,
@@ -201,6 +208,8 @@ export function reconcileTrackedGridRemoteValues<TField extends string, TValue>(
     const baseValue = originals[candidateField] as TValue;
 
     if (Object.is(remoteValue, localValue)) {
+      // REMOTE == LOCAL: the backend already contains the user's desired value. Leaving it dirty would
+      // create a fake unsaved change, so clean the field automatically with no conflict UI.
       nextState = removeTrackedGridField(nextState, rowId, candidateField);
       continue;
     }
@@ -211,8 +220,12 @@ export function reconcileTrackedGridRemoteValues<TField extends string, TValue>(
     };
 
     if (Object.is(remoteValue, baseValue)) {
+      // REMOTE == BASE: refresh occurred but the server did not modify this field. LOCAL remains an
+      // ordinary dirty draft. If an earlier conflict existed and the server moved back to BASE, clear it.
       delete rowConflicts[candidateField];
     } else {
+      // REMOTE differs from both BASE and LOCAL: two independent edits compete for the same field.
+      // Keep LOCAL visible, remember REMOTE for the resolver, and let mutation guards block persistence.
       rowConflicts[candidateField] = { remoteValue };
     }
 
@@ -225,7 +238,7 @@ export function reconcileTrackedGridRemoteValues<TField extends string, TValue>(
   return nextState;
 }
 
-/** Accept the current authoritative server value for one conflicted field and forget its local draft. */
+/** Accept REMOTE for one conflicted field; LOCAL/BASE/REMOTE state is no longer needed afterward. */
 export function resolveTrackedGridConflictWithRemote<TField extends string, TValue>(
   state: TrackedGridEditingState<TField, TValue>,
   rowId: string,
@@ -236,10 +249,10 @@ export function resolveTrackedGridConflictWithRemote<TField extends string, TVal
 }
 
 /**
- * Keep the user's local value intentionally after reviewing a conflict.
+ * Keep LOCAL intentionally after the user has reviewed REMOTE.
  *
- * The latest REMOTE value becomes the new BASE, the conflict marker clears, and LOCAL stays dirty so a
- * later Save is an explicit overwrite decision rather than an accidental stale write.
+ * REMOTE becomes the new BASE and the conflict marker clears. LOCAL intentionally remains dirty so a
+ * later Save is a deliberate overwrite of the reviewed server value, not an accidental stale write.
  */
 export function resolveTrackedGridConflictWithLocal<TField extends string, TValue>(
   state: TrackedGridEditingState<TField, TValue>,
@@ -253,6 +266,7 @@ export function resolveTrackedGridConflictWithLocal<TField extends string, TValu
   const originalsById = { ...state.originalsById };
   originalsById[rowId] = {
     ...(originalsById[rowId] ?? {}),
+    // Rebase to the value the user just reviewed, otherwise the same server value would conflict again.
     [field]: conflict.remoteValue,
   };
 
@@ -260,6 +274,8 @@ export function resolveTrackedGridConflictWithLocal<TField extends string, TValu
   const rowConflicts: TrackedGridConflicts<TField, TValue> = {
     ...(conflictsById[rowId] ?? {}),
   };
+
+  // LOCAL stays in `changesById`; only the unresolved conflict is cleared.
   delete rowConflicts[field];
   if (Object.keys(rowConflicts).length === 0) delete conflictsById[rowId];
   else conflictsById[rowId] = rowConflicts;
@@ -267,7 +283,7 @@ export function resolveTrackedGridConflictWithLocal<TField extends string, TValu
   return { ...state, originalsById, conflictsById };
 }
 
-/** Forget one row's local draft after the caller has restored authoritative values in loaded RowNodes. */
+/** Forget one row's tracked state after the caller restores authoritative values into loaded RowNodes. */
 export function discardTrackedGridRow<TField extends string, TValue>(
   state: TrackedGridEditingState<TField, TValue>,
   rowId: string,
@@ -285,11 +301,10 @@ export function discardTrackedGridRow<TField extends string, TValue>(
 }
 
 /**
- * Remove only values that were actually included in a successful save request.
+ * Acknowledge only exact values that actually succeeded on the backend.
  *
- * A user can edit the same row again while a network request is in flight. Clearing the whole row on
- * success would lose that newer local change. A field is therefore acknowledged only when the current
- * tracked value still equals the submitted value; newer values remain dirty for the next save.
+ * If the user edits the same field again while the request is in flight, the newer LOCAL value must
+ * remain dirty rather than being erased by the older response.
  */
 export function acknowledgeTrackedGridChanges<TField extends string, TValue>(
   state: TrackedGridEditingState<TField, TValue>,
@@ -357,7 +372,7 @@ export function isGridRowIdSelected(selection: ServerSelectionIntent<string>, id
   return selection.mode === 'include' ? ids.has(id) : !ids.has(id);
 }
 
-/** True when the requested explicit updates contain at least one row with unresolved conflicts. */
+/** True when an explicit update set contains at least one row with an unresolved field conflict. */
 export function hasTrackedGridUpdateConflict<TField extends string, TValue>(
   state: TrackedGridEditingState<TField, TValue>,
   updates: TrackedGridUpdatePayload<TField, TValue>['updates'],
@@ -366,9 +381,9 @@ export function hasTrackedGridUpdateConflict<TField extends string, TValue>(
 }
 
 /**
- * Selection-wide business actions can be allowed when they do not touch the conflicted field.
- * Only locally tracked conflicts can be inspected here; unloaded rows without local drafts are not
- * represented and therefore need no frontend conflict resolution.
+ * Selection-wide business actions are blocked only when they touch an actually conflicted field.
+ * Example: a status action is blocked by a selected `status` conflict, but not by an unrelated amount
+ * conflict. This avoids turning "row has any conflict" into an unnecessarily broad global lock.
  */
 export function hasSelectedTrackedGridFieldConflict<TField extends string, TValue>(
   state: TrackedGridEditingState<TField, TValue>,
@@ -384,10 +399,11 @@ export function hasSelectedTrackedGridFieldConflict<TField extends string, TValu
 }
 
 /**
- * Intersects accumulated edits with logical include/exclude selection.
+ * Intersect accumulated edits with logical include/exclude selection.
  *
- * This is production-capable behavior, not a developer-preview concern. A real Save/Bulk Update UI
- * can use the same helper and then let its feature map the selected edits into its backend contract.
+ * Conflicted rows deliberately remain in this payload. The caller then checks
+ * `hasTrackedGridUpdateConflict` and blocks the entire aggregate Save. Silently dropping conflicted rows
+ * here would create surprising partial-save behaviour.
  */
 export function buildSelectedTrackedGridUpdatePayload<TField extends string, TValue>(
   state: TrackedGridEditingState<TField, TValue>,
