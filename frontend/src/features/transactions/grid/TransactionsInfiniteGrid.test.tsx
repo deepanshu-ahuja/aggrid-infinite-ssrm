@@ -11,6 +11,7 @@ import type {
   SelectionChangedEvent,
   SelectionColumnDef,
 } from 'ag-grid-community';
+import type { GridRowInteractionMode } from '@/shared/grid/rows/gridRowInteraction';
 import type { Transaction } from '../api/transactions.contracts';
 import type { TransactionRowEditActionsContext } from './TransactionRowEditActions';
 import { TransactionsInfiniteGrid } from './TransactionsInfiniteGrid';
@@ -35,6 +36,9 @@ vi.mock('../api/transactions.api', () => transactionApi);
 interface CapturedGridProps {
   context?: TransactionRowEditActionsContext;
   selectionColumnDef?: SelectionColumnDef;
+  rowSelection?: {
+    isRowSelectable?: (node: RowNode<Transaction>) => boolean;
+  };
   onGridReady?: (event: GridReadyEvent<Transaction>) => void;
   onModelUpdated?: () => void;
   onPaginationChanged?: (event: PaginationChangedEvent<Transaction>) => void;
@@ -53,7 +57,11 @@ function getGridProps() {
   return gridCapture.props as CapturedGridProps;
 }
 
-function createTransaction(id: string, status: Transaction['status'] = 'Completed'): Transaction {
+function createTransaction(
+  id: string,
+  status: Transaction['status'] = 'Completed',
+  interactionMode: GridRowInteractionMode = 'enabled',
+): Transaction {
   return {
     id,
     reference: `REF-${id}`,
@@ -62,13 +70,14 @@ function createTransaction(id: string, status: Transaction['status'] = 'Complete
     currency: 'USD',
     status,
     transactionDate: '2026-08-24',
-    interactionMode: 'enabled',
+    interactionMode,
   };
 }
 
 function createRowNode(row: Transaction): RowNode<Transaction> {
   const node = {
     data: row,
+    selectable: row.interactionMode === 'enabled',
     setDataValue: vi.fn((field: keyof Transaction, value: unknown) => {
       if (node.data) {
         (node.data as unknown as Record<string, unknown>)[field] = value;
@@ -111,6 +120,22 @@ afterEach(() => {
 });
 
 describe('TransactionsInfiniteGrid production wiring', () => {
+  it('uses backend interaction mode through native AG Grid row selectability', () => {
+    renderGrid(<TransactionsInfiniteGrid selectionScope="page" />);
+
+    const isRowSelectable = getGridProps().rowSelection?.isRowSelectable;
+
+    expect(isRowSelectable?.(createRowNode(createTransaction('enabled')))).toBe(true);
+    expect(
+      isRowSelectable?.(
+        createRowNode(createTransaction('selection-disabled', 'Completed', 'selectionDisabled')),
+      ),
+    ).toBe(false);
+    expect(
+      isRowSelectable?.(createRowNode(createTransaction('read-only', 'Completed', 'readOnly'))),
+    ).toBe(false);
+  });
+
   it('publishes native page/manual selection directly from the root GridApi event', () => {
     vi.useFakeTimers();
     const api = createApi({ rowSelection: ['txn-a', 'txn-b'] });
