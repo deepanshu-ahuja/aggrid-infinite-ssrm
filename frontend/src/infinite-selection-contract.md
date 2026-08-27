@@ -43,7 +43,7 @@ Do not copy `page | filtered | all` into the logical selection object or backend
 include [A, B]
 ```
 
-means exactly A and B are selected.
+means exactly eligible A and B are selected.
 
 Use include for:
 
@@ -67,34 +67,62 @@ include [A, B, C, D]
 
 ---
 
-## 3. Exclude means dataset Select All plus exceptions
+## 3. Exclude means dataset Select All plus user exceptions
 
 ```text
 exclude []
 ```
 
-means everything in the current Select-All dataset is selected.
+means every **selection-eligible** row in the current Select-All dataset is selected.
 
 ```text
 exclude [A]
 ```
 
-means everything in that dataset except A.
+means every eligible row in that dataset except user-deselected A.
 
 Which dataset is meant is owned by the Infinite UI strategy:
 
 ```text
-filtered strategy -> all rows matching the defining filter
-all strategy      -> all records
+filtered strategy -> eligible rows matching the defining filter
+all strategy      -> all eligible records
 ```
 
 That context is intentionally not duplicated into logical selection.
+
+### Disabled rows are outside include/exclude bookkeeping
+
+A backend-disabled/read-only row is not an implicit exception.
+
+If loaded page rows are:
+
+```text
+A enabled
+B disabled
+C enabled
+```
+
+Select All Records still has the compact logical state:
+
+```text
+exclude []
+```
+
+Do **not** change it to:
+
+```text
+exclude [B]
+```
+
+`exclude` IDs represent user deselection exceptions. Disabled rows were never eligible for selection.
+
+For loaded rows, native AG Grid `isRowSelectable` prevents checkbox/API selection and the Infinite custom page/dataset helpers avoid passing disabled RowNodes into selection calls. For unloaded rows, backend eligibility removes disabled rows when the business action is resolved.
 
 ---
 
 ## 4. Page strategy
 
-The page header is only a shortcut over concrete IDs on the current page.
+The page header is only a shortcut over eligible concrete IDs on the current page.
 
 Example:
 
@@ -104,7 +132,9 @@ Page 2: manually select E
 -> include [A, B, C, D, E]
 ```
 
-Unchecking a page header removes only the current-page IDs and preserves explicit IDs selected elsewhere.
+Disabled page rows are ignored rather than added to an exception list.
+
+Unchecking a page header removes only the selectable current-page IDs and preserves explicit IDs selected elsewhere.
 
 Page is never a backend action scope.
 
@@ -134,17 +164,19 @@ When Select All Filtered is activated:
 exclude []
 ```
 
-means all rows matching the current defining filter.
+means all **eligible** rows matching the current defining filter.
 
-If A is unchecked:
+If eligible A is unchecked:
 
 ```text
 exclude [A]
 ```
 
-means all matching rows except A.
+means all eligible matching rows except A.
 
-The AG Grid filter model remains AG Grid-owned. When a real action is invoked, the root reads `api.getFilterModel()` and the feature maps it to the backend filter contract.
+Disabled rows matching that filter remain outside selection and are not added to `ids`.
+
+The AG Grid filter model remains AG Grid-owned. When a real action is invoked, the root reads `api.getFilterModel()` and the feature maps it to the backend filter contract. Python applies that filter and the authoritative row-eligibility rule for rows the browser never loaded.
 
 ---
 
@@ -187,13 +219,15 @@ Select All Records switches to:
 exclude []
 ```
 
-Unchecking A becomes:
+Unchecking eligible A becomes:
 
 ```text
 exclude [A]
 ```
 
-Visible filter changes do not clear all-record selection because the filter changes what the user sees, not what “all records” means.
+Disabled records remain outside the selectable universe and do not appear in the exception list.
+
+Visible filter changes do not clear all-record selection because the filter changes what the user sees, not what “all eligible records” means.
 
 ---
 
@@ -223,11 +257,11 @@ Example:
 A selected
 -> its block is evicted
 -> logical selection still remembers A
--> block later reloads
+-> block later reloads and is still eligible
 -> new RowNode for A is synced back to selected
 ```
 
-Newly loaded rows are always reconciled against logical selection.
+Newly loaded eligible rows are reconciled against logical selection. Newly loaded disabled rows are not passed into programmatic selection calls.
 
 Programmatic checkbox sync must be marked/handled as API-originated so it does not feed back into selection state.
 
@@ -264,7 +298,7 @@ Only Block 0 is resident
 
 Later user visits rows requiring Block 1
 -> Block 1 loads then
--> backend already contains the action result
+-> backend already contains the action result and current row interaction mode
 ```
 
 Cache residency is a browser performance concern, never the business-action scope.
@@ -273,7 +307,7 @@ Cache residency is a browser performance concern, never the business-action scop
 
 ## 12. Backend action wire contract
 
-The backend action payload has no serialized `scope`.
+The backend action payload has no serialized `scope` and no disabled-row ID list.
 
 ### Explicit/manual/current-page/cross-page
 
@@ -286,7 +320,7 @@ The backend action payload has no serialized `scope`.
 }
 ```
 
-Meaning: exactly A, B and E. Do not attach visible filters.
+Meaning: eligible rows among exact A, B and E. Do not attach visible filters. Loaded UI selection should already prevent disabled IDs, while backend eligibility still protects stale/crafted requests.
 
 ### Select All Filtered
 
@@ -306,7 +340,7 @@ Meaning: exactly A, B and E. Do not attach visible filters.
 }
 ```
 
-Meaning: all backend rows matching the translated filters except A.
+Meaning: eligible backend rows matching the translated filters except user-deselected A.
 
 ### Select All Records
 
@@ -319,7 +353,7 @@ Meaning: all backend rows matching the translated filters except A.
 }
 ```
 
-Meaning: all records except A.
+Meaning: all eligible records except user-deselected A.
 
 The frontend still uses internal `filtered | all` context while building an exclude request; that context only decides whether translated filters are attached.
 
@@ -346,9 +380,9 @@ Do not create a second action-only translator.
 Selection changes themselves do not call the backend action endpoint.
 
 ```text
-select row       -> no action call
-change page      -> no action call
-Select All       -> no action call
+select row        -> no action call
+change page       -> no action call
+Select All        -> no action call
 uncheck exception -> no action call
 ```
 
@@ -360,15 +394,17 @@ A mutation happens only when the user invokes a real feature action such as Mark
 
 | Event | Page/include | Filtered/include | Filtered/exclude | All/include | All/exclude |
 | --- | --- | --- | --- | --- | --- |
-| Row checkbox | update exact ID | update exact ID | update exception | update exact ID | update exception |
-| Page header | add/remove page IDs | n/a | n/a | n/a | n/a |
+| Eligible row checkbox | update exact ID | update exact ID | update exception | update exact ID | update exception |
+| Disabled row checkbox | no selection | no selection | no exception | no selection | no exception |
+| Page header | add/remove selectable page IDs | n/a | n/a | n/a | n/a |
 | Select All Filtered | n/a | switch to exclude [] | remain exclude | n/a | n/a |
 | Select All Records | n/a | n/a | n/a | switch to exclude [] | remain exclude |
 | Pagination | preserve | preserve | preserve | preserve | preserve |
 | Sort | preserve | preserve | preserve | preserve | preserve |
 | Filter change | preserve | preserve | **reset** | preserve | preserve |
 | Cache eviction | preserve | preserve | preserve | preserve | preserve |
-| Block reload | sync | sync | sync | sync | sync |
+| Eligible block reload | sync | sync | sync | sync | sync |
+| Disabled block reload | untouched | untouched | untouched | untouched | untouched |
 | Deliberate clear | clear | clear | clear | clear | clear |
 
 ---
@@ -379,11 +415,15 @@ A mutation happens only when the user invokes a real feature action such as Mark
 2. Never serialize UI strategy as backend `scope`.
 3. Manual/current-page selection is always exact include IDs.
 4. Preserve explicit IDs across pagination, sorting and filter changes.
-5. Dataset Select All uses exclude + exception IDs.
-6. Reset only filtered-wide exclude when its defining filter changes.
-7. Preserve all-record exclude across visible filter changes.
-8. Keep selection independent from RowNode/cache lifetime.
-9. Use stable backend row IDs.
-10. Reuse the same feature filter mapper for row loading and filtered actions.
-11. Use Infinite-native cache APIs; do not copy SSRM refresh/retry behavior.
-12. Explain cache/selection lifecycle in comments when behavior is non-obvious.
+5. Dataset Select All uses exclude + **user** exception IDs.
+6. Disabled rows are outside selection; never manufacture them as include/exclude bookkeeping.
+7. Use native AG Grid row selectability for loaded rows and backend eligibility for unloaded rows.
+8. Reset only filtered-wide exclude when its defining filter changes.
+9. Preserve all-record exclude across visible filter changes.
+10. Keep selection independent from RowNode/cache lifetime.
+11. Use stable backend row IDs.
+12. Reuse the same feature filter mapper for row loading and filtered actions.
+13. Use Infinite-native cache APIs; do not copy SSRM refresh/retry behavior.
+14. Explain cache/selection lifecycle in comments when behavior is non-obvious.
+
+See `docs/row-interaction.md` for the reusable selection-disabled/read-only policy.
