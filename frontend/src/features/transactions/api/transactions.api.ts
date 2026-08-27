@@ -4,6 +4,8 @@ import type {
   TransactionBulkUpdateResponse,
   TransactionListRequest,
   TransactionListResponse,
+  TransactionSelectionActionRequest,
+  TransactionSelectionActionResponse,
   TransactionUpdateChanges,
   TransactionUpdateResponse,
 } from './transactions.contracts';
@@ -36,6 +38,18 @@ export function bulkUpdateTransactions(
 ) {
   return patchJson<TransactionBulkUpdateResponse, TransactionBulkUpdateRequest>(
     '/transactions/bulk/',
+    request,
+    signal,
+  );
+}
+
+/** Apply one patch to the complete logical selection, including unloaded server-backed rows. */
+export function updateTransactionsBySelection(
+  request: TransactionSelectionActionRequest,
+  signal?: AbortSignal,
+) {
+  return patchJson<TransactionSelectionActionResponse, TransactionSelectionActionRequest>(
+    '/transactions/selection/',
     request,
     signal,
   );

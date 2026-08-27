@@ -7,12 +7,14 @@ from apps.transactions.services import (
     bulk_update_transactions,
     query_transactions,
     update_transaction,
+    update_transactions_by_selection,
 )
 
 from .serializers import (
     TransactionBulkUpdateSerializer,
     TransactionChangesSerializer,
     TransactionQuerySerializer,
+    TransactionSelectionUpdateSerializer,
     TransactionSerializer,
 )
 
@@ -85,3 +87,28 @@ class TransactionBulkUpdateView(APIView):
                 "updatedCount": len(serialized_rows),
             }
         )
+
+
+class TransactionSelectionUpdateView(APIView):
+    """Apply one validated patch to the logical selection represented by the grid."""
+
+    def patch(self, request):
+        serializer = TransactionSelectionUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            updated_count = update_transactions_by_selection(
+                data["selection"],
+                data.get("filters", []),
+                data["changes"],
+            )
+        except TransactionNotFoundError:
+            # Only explicit/include selection resolves exact ids. Dataset-wide exclude selection can
+            # safely ignore stale exception ids because they do not identify rows to mutate.
+            return Response(
+                {"detail": "One or more selected transactions were not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response({"updatedCount": updated_count})

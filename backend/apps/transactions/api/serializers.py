@@ -108,6 +108,65 @@ class TransactionBulkUpdateSerializer(serializers.Serializer):
         return updates
 
 
+class TransactionSelectionSerializer(serializers.Serializer):
+    """Logical server-backed selection used by actions above the grid."""
+
+    scope = serializers.ChoiceField(choices=("explicit", "filtered", "all"))
+    mode = serializers.ChoiceField(choices=("include", "exclude"))
+    ids = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        default=list,
+    )
+
+    def validate_ids(self, ids):
+        if len(ids) != len(set(ids)):
+            raise serializers.ValidationError("Selection ids must be unique.")
+        return ids
+
+    def validate(self, attrs):
+        scope = attrs["scope"]
+        mode = attrs["mode"]
+        ids = attrs.get("ids", [])
+
+        # Explicit/manual/current-page selection already knows every selected id. Dataset-wide
+        # selection is the opposite representation: everything in that scope except the listed ids.
+        if scope == "explicit":
+            if mode != "include":
+                raise serializers.ValidationError(
+                    "Explicit selection must use include mode."
+                )
+            if not ids:
+                raise serializers.ValidationError(
+                    "Explicit selection requires at least one id."
+                )
+        elif mode != "exclude":
+            raise serializers.ValidationError(
+                "Filtered and all-record selection must use exclude mode."
+            )
+
+        return attrs
+
+
+class TransactionSelectionUpdateSerializer(serializers.Serializer):
+    selection = TransactionSelectionSerializer()
+    filters = TransactionFilterSerializer(many=True, required=False, default=list)
+    changes = TransactionChangesSerializer()
+
+    def validate(self, attrs):
+        scope = attrs["selection"]["scope"]
+        filters = attrs.get("filters", [])
+
+        # Filters define the dataset only for Select All Filtered. Explicit ids remain exact even if
+        # the user changes filters before acting, and Select All Records is intentionally filter-free.
+        if scope != "filtered" and filters:
+            raise serializers.ValidationError(
+                {"filters": "Filters are only valid for filtered selection."}
+            )
+
+        return attrs
+
+
 class TransactionSerializer(serializers.Serializer):
     id = serializers.CharField()
     reference = serializers.CharField()

@@ -5,6 +5,7 @@ import type {
   GridQueryFilter,
   GridQuerySort,
 } from '@/shared/grid/query/gridQuery.contracts';
+import type { GridSelectionActionTarget } from '@/shared/grid/selection/gridSelectionActionTarget';
 
 /**
  * Transaction statuses returned by the Transactions backend.
@@ -112,6 +113,22 @@ export type TransactionSort = GridQuerySort<TransactionField>;
  * not expose those shapes until the mapper + shared contract + backend support them end-to-end.
  */
 export type TransactionFilter = GridQueryFilter<TransactionField>;
+
+/**
+ * Transactions adds only its domain mutation payload to the shared server-backed selection target.
+ * Explicit / filtered / all selection semantics remain shared so another table can reuse them with a
+ * different action payload and different filter translator.
+ */
+export type TransactionSelectionActionRequest = GridSelectionActionTarget<
+  Transaction['id'],
+  TransactionFilter
+> & {
+  changes: TransactionUpdateChanges;
+};
+
+export interface TransactionSelectionActionResponse {
+  updatedCount: number;
+}
 
 /**
  * Backend request for a flat Transactions grid query.
