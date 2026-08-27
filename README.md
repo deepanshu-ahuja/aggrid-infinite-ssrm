@@ -41,7 +41,6 @@ npm run typecheck
 npm run test:run
 npm run build
 source .venv/bin/activate
-python backend/manage.py check
 python backend/manage.py test apps.transactions
 ```
 
