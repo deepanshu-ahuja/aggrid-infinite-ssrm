@@ -62,6 +62,7 @@ function createTransaction(id: string, status: Transaction['status'] = 'Complete
     currency: 'USD',
     status,
     transactionDate: '2026-08-24',
+    interactionMode: 'enabled',
   };
 }
 
