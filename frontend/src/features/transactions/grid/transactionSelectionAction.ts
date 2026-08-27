@@ -1,3 +1,8 @@
+import {
+  buildGridSelectionActionTarget,
+  hasGridSelection,
+  type GridSelectionExcludeScope,
+} from '@/shared/grid/selection/gridSelectionActionTarget';
 import type { ServerSelectionIntent } from '@/shared/grid/selection/serverSelection';
 import type {
   TransactionSelectionActionRequest,
@@ -5,18 +10,17 @@ import type {
 } from '../api/transactions.contracts';
 import { mapTransactionFilterModel } from './transactionRequest.mapper';
 
-export type TransactionExcludeScope = 'filtered' | 'all';
+export type TransactionExcludeScope = GridSelectionExcludeScope;
 
-/** An include selection is empty only when it has no explicit ids; exclude always represents a dataset. */
-export function hasTransactionSelection(selection: ServerSelectionIntent<string>) {
-  return selection.mode === 'exclude' || selection.ids.length > 0;
-}
+/** Transactions exposes the shared empty-selection rule without creating a second implementation. */
+export const hasTransactionSelection = hasGridSelection;
 
 /**
- * Translate the grid's logical include/exclude state into the backend action contract.
+ * Transactions-specific composition around the shared server-backed selection target.
  *
- * Explicit ids stay exact even when filters are visible. Only Select All Filtered carries the
- * current filter model because that filter is part of the selected dataset's meaning.
+ * The shared helper owns explicit/filtered/all selection meaning. This feature owns only the
+ * Transactions filter translation and the domain action payload (`changes`). A future Payables table
+ * can reuse the same shared helper with its own filter mapper and action payload.
  */
 export function buildTransactionSelectionActionRequest(
   selection: ServerSelectionIntent<string>,
@@ -24,35 +28,13 @@ export function buildTransactionSelectionActionRequest(
   filterModel: object,
   changes: TransactionUpdateChanges,
 ): TransactionSelectionActionRequest {
-  if (selection.mode === 'include') {
-    return {
-      selection: {
-        scope: 'explicit',
-        mode: 'include',
-        ids: [...selection.ids],
-      },
-      changes,
-    };
-  }
-
-  if (excludeScope === 'filtered') {
-    return {
-      selection: {
-        scope: 'filtered',
-        mode: 'exclude',
-        ids: [...selection.ids],
-      },
-      filters: mapTransactionFilterModel(filterModel),
-      changes,
-    };
-  }
+  const filters =
+    selection.mode === 'exclude' && excludeScope === 'filtered'
+      ? mapTransactionFilterModel(filterModel)
+      : [];
 
   return {
-    selection: {
-      scope: 'all',
-      mode: 'exclude',
-      ids: [...selection.ids],
-    },
+    ...buildGridSelectionActionTarget(selection, excludeScope, filters),
     changes,
   };
 }
