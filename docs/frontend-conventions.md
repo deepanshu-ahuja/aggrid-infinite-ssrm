@@ -2,19 +2,61 @@
 
 ## Ownership
 
-Place feature behavior under `frontend/src/features/<feature>`. This includes columns, feature renderers, API contracts, request mapping and screen-specific grid options. Promote code into `shared` only after it is library-level infrastructure or has demonstrated reuse across features.
+Place feature behavior under `frontend/src/features/<feature>`. This includes domain rows, columns, feature renderers, API contracts, field/request mapping, business actions, business validation and screen-specific choices.
+
+Promote code into `shared` when it is genuinely domain-neutral application/grid infrastructure. A second feature does not have to exist first when the capability is already inherently generic (for example stable include/exclude selection semantics or a row-model datasource adapter), but do not generalize merely because future reuse is imaginable.
+
+For every new grid concern, ask both questions:
+
+```text
+Would another server-backed table need this for the same reason?
+Does this code know anything about the current domain's fields/actions/API meaning?
+```
+
+If the first answer is yes and the second is no, it is a strong candidate for `shared/grid`. If the code needs Transaction/Payable/etc. fields, endpoint semantics, action names or validation, keep it feature-owned.
 
 Use MUI components directly. Shared components should represent an application concept or repeated behavior, not aliases that hide `Box`, `Stack`, `Typography` or other MUI primitives.
 
 For AG Grid code, distinguish reusable capability mechanics from feature semantics:
 
 - keep concrete `AgGridReact` rendering and the authoritative `GridApi` ref visible in the owning grid root;
-- put row-model-independent mechanics such as tracked-edit state, current-page target resolution and Grid State persistence wiring in `shared/grid`;
+- put row-model-independent mechanics such as tracked-edit state, current-page target resolution, generic selection-action targets and Grid State persistence wiring in `shared/grid`;
 - keep row-model-specific mechanics under the relevant shared Infinite/SSRM area when they are genuinely reusable across features;
-- keep feature fields, validation, API requests, request mapping, backend payload shape and feature UI under the feature;
+- keep Infinite and SSRM implementations separate when their native lifecycle/capabilities differ; sharing a semantic helper does not require sharing one controller/root;
+- keep feature fields, validation, API requests, filter/request mapping, business action payloads and feature UI under the feature;
 - do not replace a large component with one giant `useGrid(...)` hook that merely hides AG Grid lifecycle behind another abstraction.
 
-A useful test for ownership is: if replacing `Transaction` with another row type only requires supplying row identity, editable fields, a loader or a mapper, the underlying mechanic is probably reusable grid infrastructure. If the actual business semantics or backend contract change, keep it feature-owned.
+A useful ownership test is: if replacing `Transaction` with another row type only requires supplying row identity, editable fields, a loader, translated filters or an action payload, the underlying mechanic is probably reusable grid infrastructure. If the actual business semantics or backend contract change, keep that part feature-owned.
+
+### Server-backed selection/action boundary
+
+Logical selection is reusable grid behavior:
+
+```ts
+{
+  mode: 'include' | 'exclude',
+  ids: string[],
+}
+```
+
+The generic action target should express only information the backend actually needs:
+
+```text
+include + ids
+-> exact ids
+
+exclude + translated filters
+-> filtered dataset minus exception ids
+
+exclude without filters
+-> all records minus exception ids
+```
+
+Do not serialize redundant UI history such as `scope: page | filtered | all` when `mode + ids + filters` already defines the server target.
+
+The frontend may still need row-model-specific internal context while constructing that request. Infinite and SSRM can reach the same logical target through different native/custom selection mechanisms; preserve those differences instead of forcing one implementation.
+
+Feature filter translation remains feature-owned and must be reused consistently between normal row loading and Select All Filtered actions.
 
 ### Abstraction threshold
 
@@ -58,8 +100,12 @@ For meaningful React state, refs, effects, memoized values and callbacks, docume
 - how it differs from nearby state that looks similar;
 - what race condition, ownership boundary or third-party lifecycle rule makes the implementation necessary.
 
+For server-backed grids, comments should also explain non-obvious cache/refresh behavior when it can surprise a developer. For example, `refreshInfiniteCache()` refreshes currently resident Infinite blocks; it does not enumerate or load every backend block affected by a dataset-wide business action.
+
 Do not add noise such as `// set the error` above `setError(...)` or `// return the result` above a return statement. The goal is to make architectural intent recoverable by another developer or coding agent without narrating obvious code.
 
 ## Testing
 
-Prioritize stable boundaries: request mappers, datasource callback behavior, API validation and business transformations. Test feature screens when they gain user interaction or state beyond straightforward library composition. Avoid snapshots of third-party component markup.
+Prioritize stable boundaries: request mappers, datasource callback behavior, selection/action target construction, API validation and business transformations. Test feature screens when they gain user interaction or state beyond straightforward library composition. Avoid snapshots of third-party component markup.
+
+Test Infinite and SSRM lifecycle wiring independently when their behavior differs. Share tests only for genuinely shared semantic helpers; do not create a fake common row-model behavior merely to reduce test duplication.
