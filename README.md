@@ -36,9 +36,8 @@ The feature-level `frontend/src/features/transactions/transactionsGrid.config.ts
 ## Verification
 
 ```bash
-npm run typecheck
 npm run lint
-npm run format:check
+npm run typecheck
 npm run test:run
 npm run build
 source .venv/bin/activate
