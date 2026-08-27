@@ -12,7 +12,10 @@ interface UseTransactionSelectionActionOptions {
 export function useTransactionSelectionAction({ onApplied }: UseTransactionSelectionActionOptions) {
   const { mutate, isPending, error } = useMutation(
     {
-      mutationFn: updateTransactionsBySelection,
+      // TanStack supplies mutation context separately. Keep that framework argument away from the
+      // API client's optional AbortSignal parameter by forwarding only the request variable.
+      mutationFn: (request: TransactionSelectionActionRequest) =>
+        updateTransactionsBySelection(request),
       onSuccess: () => onApplied(),
     },
     queryClient,
