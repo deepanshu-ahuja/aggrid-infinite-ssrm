@@ -17,43 +17,30 @@ import {
   type TrackedGridUpdatePayload,
 } from './trackedGridEditing';
 
-/**
- * Source tag passed to AG Grid when THIS hook writes a value with `RowNode.setDataValue`.
- *
- * AG Grid fires `cellValueChanged` for both a real user edit and many programmatic value changes. If
- * we did not tag our own writes, restoring/discarding/resolving a draft could be mistaken for a brand-new
- * user edit and recreate dirty state immediately after we tried to reconcile it.
- */
 const TRACKED_GRID_WRITE_SOURCE = 'data';
 
 export interface UseTrackedGridEditingOptions<TData, TField extends string, TValue> {
-  /** Stable backend identity. Never use row index because server-backed RowNodes are recreated. */
   getRowId: (row: TData) => string;
-
-  /** Feature-owned writable fields. Shared editing code must not know Transaction/Payable field names. */
   editableFields: readonly TField[];
-
-  /** Runtime type guard because AG Grid column definitions expose `field` as a general string. */
   isEditableField: (field: string | undefined) => field is TField;
-
-  /** Feature-owned value reader keeps this hook independent of concrete row shapes. */
   getFieldValue: (row: TData, field: TField) => TValue;
-
-  /**
-   * Optional row-level edit policy supplied by the feature.
-   *
-   * AG Grid's column `editable` callback blocks normal UI editing, but our own current-page/bulk edit
-   * helpers call RowNode APIs directly. Those programmatic edit paths must obey the SAME read-only policy.
-   */
   isRowEditable?: (row: TData) => boolean;
+}
+
+interface LocalOverlayMarker<TData, TField extends string> {
+  /** Exact row-data object that already contains our LOCAL presentation values. */
+  data: TData;
+  fields: Set<TField>;
 }
 
 /**
  * Keeps unsaved edits outside AG Grid RowNodes so drafts survive server-backed row recreation.
  *
- * RowNodes are presentation/cache objects and may disappear. The durable editing state is therefore
- * keyed by backend row ID. When fresh rows materialise, this hook performs three-way field reconciliation
- * (BASE/LOCAL/REMOTE) before reapplying any still-valid local value to the new RowNode.
+ * BASE/LOCAL/REMOTE reconciliation happens only when a RowNode contains genuinely fresh server data.
+ * After this hook writes LOCAL values into a node, a later pagination/model event can revisit the same
+ * node. `localOverlayByNode` records the exact data-object reference we mutated so those revisits are
+ * presentation restores, not false "server now equals LOCAL" acknowledgements. If AG Grid replaces the
+ * row data during a real cache/server refresh, the data reference changes and reconciliation runs again.
  */
 export function useTrackedGridEditing<TData, TField extends string, TValue>({
   getRowId,
@@ -66,9 +53,18 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     createEmptyTrackedGridEditingState<TField, TValue>(),
   );
   const [lastEdit, setLastEdit] = useState<TrackedGridLastEdit<TField, TValue>>();
-
-  // Synchronous re-entrancy guard only; changing it must never cause React rendering.
   const applyingProgrammaticChange = useRef(false);
+  const localOverlayByNode = useRef(new WeakMap<IRowNode<TData>, LocalOverlayMarker<TData, TField>>());
+
+  const markLocalOverlay = useCallback((node: IRowNode<TData>, field: TField) => {
+    if (!node.data) return;
+    const current = localOverlayByNode.current.get(node);
+    if (current?.data === node.data) {
+      current.fields.add(field);
+      return;
+    }
+    localOverlayByNode.current.set(node, { data: node.data, fields: new Set([field]) });
+  }, []);
 
   const handleCellValueChanged = useCallback(
     (event: CellValueChangedEvent<TData>) => {
@@ -83,21 +79,22 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
       const newValue = event.newValue as TValue;
       const rowId = getRowId(event.data);
 
+      // A direct user edit mutates this same row-data object, so later model/page events must not mistake
+      // that LOCAL value for newly fetched REMOTE data.
+      markLocalOverlay(event.node, field);
       setState((current) => recordTrackedGridCellChange(current, rowId, field, oldValue, newValue));
       setLastEdit({ field, value: newValue });
     },
-    [getRowId, isEditableField, isRowEditable],
+    [getRowId, isEditableField, isRowEditable, markLocalOverlay],
   );
 
   const applyChangesToNodes = useCallback(
     (nodes: readonly IRowNode<TData>[], changes: TrackedGridChanges<TField, TValue>) => {
       setState((current) => {
         let next = current;
-
         for (const node of nodes) {
           if (!node.data || (isRowEditable && !isRowEditable(node.data))) continue;
           const rowId = getRowId(node.data);
-
           for (const field of editableFields) {
             if (!hasTrackedGridField(changes, field)) continue;
             next = recordTrackedGridCellChange(
@@ -109,7 +106,6 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
             );
           }
         }
-
         return next;
       });
 
@@ -117,29 +113,24 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
       try {
         for (const node of nodes) {
           if (!node.data || (isRowEditable && !isRowEditable(node.data))) continue;
-
           for (const field of editableFields) {
             if (!hasTrackedGridField(changes, field)) continue;
             const nextValue = changes[field] as TValue;
             if (!Object.is(getFieldValue(node.data, field), nextValue)) {
               node.setDataValue(field, nextValue, TRACKED_GRID_WRITE_SOURCE);
             }
+            markLocalOverlay(node, field);
           }
         }
       } finally {
         applyingProgrammaticChange.current = false;
       }
     },
-    [editableFields, getFieldValue, getRowId, isRowEditable],
+    [editableFields, getFieldValue, getRowId, isRowEditable, markLocalOverlay],
   );
 
   const restoreTrackedEdits = useCallback(
     (api: GridApi<TData>) => {
-      /**
-       * This is intentionally reconciliation, not blind restoration. Each loaded row currently contains
-       * fresh authoritative server values. Before overlaying LOCAL drafts we compare them with their BASE
-       * values and these REMOTE values so a backend change can never be silently hidden by cache refresh.
-       */
       let reconciledState = state;
       const loadedNodes: IRowNode<TData>[] = [];
 
@@ -151,11 +142,14 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
         const rowChanges = reconciledState.changesById[rowId];
         if (!rowChanges) return;
 
+        const marker = localOverlayByNode.current.get(node);
+        const sameLocallyMutatedData = marker?.data === node.data;
         const remoteValues: TrackedGridChanges<TField, TValue> = {};
+
         for (const field of editableFields) {
-          if (hasTrackedGridField(rowChanges, field)) {
-            remoteValues[field] = getFieldValue(node.data, field);
-          }
+          if (!hasTrackedGridField(rowChanges, field)) continue;
+          if (sameLocallyMutatedData && marker.fields.has(field)) continue;
+          remoteValues[field] = getFieldValue(node.data, field);
         }
 
         reconciledState = reconcileTrackedGridRemoteValues(reconciledState, rowId, remoteValues);
@@ -170,21 +164,20 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
           const rowChanges = reconciledState.changesById[getRowId(node.data)];
           if (!rowChanges) continue;
 
-          // Reapply even when the refreshed server row has become read-only. The local value remains the
-          // user's visible unsaved work; feature mutation guards decide what can subsequently be persisted.
           for (const field of editableFields) {
             if (!hasTrackedGridField(rowChanges, field)) continue;
             const trackedValue = rowChanges[field] as TValue;
             if (!Object.is(getFieldValue(node.data, field), trackedValue)) {
               node.setDataValue(field, trackedValue, TRACKED_GRID_WRITE_SOURCE);
             }
+            markLocalOverlay(node, field);
           }
         }
       } finally {
         applyingProgrammaticChange.current = false;
       }
     },
-    [editableFields, getFieldValue, getRowId, state],
+    [editableFields, getFieldValue, getRowId, markLocalOverlay, state],
   );
 
   const acknowledgeChanges = useCallback(
@@ -196,11 +189,6 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
 
   const restoreAuthoritativeValuesForRows = useCallback(
     (api: GridApi<TData>, rowIds: ReadonlySet<string>) => {
-      /**
-       * Discard means "forget my local work". If a field has already detected a REMOTE value, that value
-       * is more authoritative than the old BASE and must be restored. Otherwise BASE is still the latest
-       * known server value for the ordinary dirty field.
-       */
       applyingProgrammaticChange.current = true;
       try {
         api.forEachNode((node) => {
@@ -241,7 +229,6 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
       if (rowIds.length === 0) return;
       const ids = new Set(rowIds);
       restoreAuthoritativeValuesForRows(api, ids);
-
       setState((current) => {
         let next = current;
         for (const rowId of ids) next = discardTrackedGridRow(next, rowId);
