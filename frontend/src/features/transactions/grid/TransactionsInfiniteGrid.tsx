@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 import type {
+  CellClickedEvent,
   GetRowIdParams,
   GridApi,
   GridReadyEvent,
@@ -9,7 +10,13 @@ import type {
 import { AgGridReact } from 'ag-grid-react';
 import type { GridRowsLoader } from '@/shared/grid/data/gridData.types';
 import { useInfiniteRowLoading } from '@/shared/grid/data/infinite/useInfiniteRowLoading';
-import { buildSelectedTrackedGridUpdatePayload } from '@/shared/grid/editing/trackedGridEditing';
+import {
+  buildSelectedTrackedGridUpdatePayload,
+  hasSelectedTrackedGridFieldConflict,
+  hasTrackedGridFieldConflict,
+  hasTrackedGridRowConflict,
+  hasTrackedGridUpdateConflict,
+} from '@/shared/grid/editing/trackedGridEditing';
 import { useCurrentPageEditActions } from '@/shared/grid/editing/useCurrentPageEditActions';
 import { useTrackedGridEditing } from '@/shared/grid/editing/useTrackedGridEditing';
 import { GridErrorOverlay } from '@/shared/grid/overlays/GridErrorOverlay';
@@ -25,10 +32,16 @@ import {
   transactionsGridConfig,
   type TransactionsInfiniteGridOptions,
 } from '../transactionsGrid.config';
+import { TransactionEditConflictPopover } from './TransactionEditConflictPopover';
 import { TransactionEditingControls } from './TransactionEditingControls';
 import type { TransactionRowEditActionsContext } from './TransactionRowEditActions';
 import { TransactionSelectionActions } from './TransactionSelectionActions';
-import { transactionEditingConfig } from './transactionEditing';
+import {
+  isTransactionEditableField,
+  transactionEditingConfig,
+  TRANSACTION_EDITABLE_FIELDS,
+  type TransactionEditableField,
+} from './transactionEditing';
 import { transactionColumns } from './transactionColumns';
 import { mapTransactionGridRequest } from './transactionRequest.mapper';
 import {
@@ -46,13 +59,14 @@ const INFINITE_STATE_KEY = 'transactions:infinite';
 const getTransactionId = (row: Transaction) => row.id;
 const getRowId = ({ data }: GetRowIdParams<Transaction>) => getTransactionId(data);
 
-/**
- * AG Grid's Infinite datasource asks for row ranges later through `getRows`. The feature translates
- * those native requests into the Transactions backend contract; the shared Infinite loader owns
- * cancellation/error/cache-lifecycle mechanics.
- */
 const loadTransactionRows: GridRowsLoader<Transaction> = (request, context) =>
   listTransactions(mapTransactionGridRequest(request), context.signal);
+
+interface ConflictTarget {
+  rowId: string;
+  field: TransactionEditableField;
+  anchorEl: HTMLElement;
+}
 
 export interface TransactionsInfiniteGridProps {
   selectionScope?: InfiniteSelectionMode;
@@ -60,13 +74,7 @@ export interface TransactionsInfiniteGridProps {
   onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
 }
 
-/**
- * Concrete Transactions Infinite Row Model root.
- *
- * Important AG Grid lifecycle wiring remains visible here on purpose. We share cohesive mechanics in
- * hooks/helpers, but we do not hide the real `AgGridReact`, GridApi, datasource, events or row-model
- * choices behind a generic wrapper.
- */
+/** Concrete Transactions Infinite Row Model root. */
 export function TransactionsInfiniteGrid({
   selectionScope: selectionScopeOverride,
   gridOptions: gridOptionsOverride,
@@ -74,16 +82,9 @@ export function TransactionsInfiniteGrid({
 }: TransactionsInfiniteGridProps) {
   const selectionScope = selectionScopeOverride ?? transactionsGridConfig.infinite.selectionScope;
   const gridOptions = gridOptionsOverride ?? transactionsGridConfig.infinite.gridOptions;
-
-  // One authoritative AG Grid API ref belongs to the grid root. Hooks/actions all consume this same
-  // native API instead of creating wrapper APIs or mirrored React state for grid operations.
   const gridApi = useRef<GridApi<Transaction> | null>(null);
-
-  /**
-   * Checkbox state stays in AG Grid / compact selection state. This revision counter exists only to
-   * make external MUI controls recompute derived values when a native selection event occurs.
-   */
   const [, setSelectionRevision] = useState(0);
+  const [conflictTarget, setConflictTarget] = useState<ConflictTarget | null>(null);
 
   const {
     datasource,
@@ -112,6 +113,7 @@ export function TransactionsInfiniteGrid({
     state,
     payload,
     editedRowCount,
+    conflictCount,
     lastEdit,
     applyChangesToNodes,
     restoreTrackedEdits,
@@ -119,6 +121,8 @@ export function TransactionsInfiniteGrid({
     acknowledgeChanges,
     discardRow,
     discardRows,
+    resolveConflictWithRemote,
+    resolveConflictWithLocal,
   } = useTrackedGridEditing(transactionEditingConfig);
 
   const {
@@ -127,17 +131,6 @@ export function TransactionsInfiniteGrid({
     applyBulkChanges,
   } = useCurrentPageEditActions({ lastEdit, applyChangesToNodes }, gridApi);
 
-  /**
-   * Backend writes are authoritative, so ask Infinite Row Model to refresh the cache blocks AG Grid
-   * CURRENTLY keeps in memory.
-   *
-   * `refreshInfiniteCache()` does NOT enumerate/fetch the whole backend dataset. Evicted or never-loaded
-   * blocks remain unloaded and are fetched fresh only if the user later navigates to them. Therefore a
-   * dataset-wide action can update thousands of backend rows without forcing the browser to load them.
-   *
-   * If several blocks are resident, one mutation can legitimately be followed by several row-query
-   * requests at different offsets. Those are cache refreshes, not repeated mutation calls.
-   */
   const handlePersistedRows = useCallback(() => {
     gridApi.current?.refreshInfiniteCache();
   }, []);
@@ -157,17 +150,25 @@ export function TransactionsInfiniteGrid({
   const handleDiscardRow = useCallback(
     (rowId: string) => {
       const api = gridApi.current;
-      if (api) discardRow(api, rowId);
+      if (!api) return;
+      discardRow(api, rowId);
+      if (conflictTarget?.rowId === rowId) setConflictTarget(null);
     },
-    [discardRow],
+    [conflictTarget?.rowId, discardRow],
   );
 
-  /** Bulk Save/Discard acts only on rows that are both dirty and currently selected. */
   const selectionIntent = readSelectionIntent();
   const selectedDirtyUpdates = buildSelectedTrackedGridUpdatePayload(state, selectionIntent).updates;
+  const selectedEditsHaveConflict = hasTrackedGridUpdateConflict(state, selectedDirtyUpdates);
+  const statusActionBlockedByConflict = hasSelectedTrackedGridFieldConflict(
+    state,
+    selectionIntent,
+    ['status'],
+  );
 
   const handleSaveSelected = useCallback(() => {
     const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
+    if (hasTrackedGridUpdateConflict(state, updates)) return;
     saveBulk(updates);
   }, [readSelectionIntent, saveBulk, state]);
 
@@ -176,58 +177,64 @@ export function TransactionsInfiniteGrid({
     if (!api) return;
 
     const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
-    discardRows(
-      api,
-      updates.map((update) => update.id),
-    );
-  }, [discardRows, readSelectionIntent, state]);
+    discardRows(api, updates.map((update) => update.id));
+    if (conflictTarget && updates.some((update) => update.id === conflictTarget.rowId)) {
+      setConflictTarget(null);
+    }
+  }, [conflictTarget, discardRows, readSelectionIntent, state]);
 
   const handleSetSelectedStatus = useCallback(
     (status: TransactionStatus) => {
       const api = gridApi.current;
       if (!api) return;
 
-      // Read the logical selection when the user clicks the action. Dataset-wide Infinite selection can
-      // describe rows that have no RowNode, so loaded `getSelectedRows()` is not the business boundary.
       const currentSelection = readSelectionIntent();
-      if (!hasTransactionSelection(currentSelection)) return;
+      if (
+        !hasTransactionSelection(currentSelection) ||
+        hasSelectedTrackedGridFieldConflict(state, currentSelection, ['status'])
+      ) {
+        return;
+      }
 
       applySelectionAction(
         buildTransactionSelectionActionRequest(
           currentSelection,
-          // Only Select All Filtered attaches the current translated filter universe. Page/manual and
-          // All Records do not let the visible filter redefine their membership.
           selectionScope === 'filtered' ? 'filtered' : 'all',
           api.getFilterModel(),
           { status },
         ),
       );
     },
-    [applySelectionAction, readSelectionIntent, selectionScope],
+    [applySelectionAction, readSelectionIntent, selectionScope, state],
   );
 
-  /** The Actions cell checks this same draft state, so a clean row should not show Save/Discard. */
   const rowEditActionsContext = useMemo<TransactionRowEditActionsContext>(
     () => ({
       isRowDirty: (rowId) => Boolean(state.changesById[rowId]),
+      isRowConflicted: (rowId) => hasTrackedGridRowConflict(state, rowId),
+      isCellConflicted: (rowId, field) => hasTrackedGridFieldConflict(state, rowId, field),
+      getCellConflict: (rowId, field) => {
+        const conflict = state.conflictsById[rowId]?.[field];
+        const localValue = state.changesById[rowId]?.[field];
+        return conflict && localValue !== undefined
+          ? { localValue, remoteValue: conflict.remoteValue }
+          : undefined;
+      },
       isSaving,
-      onSaveRow: saveRow,
+      onSaveRow: (rowId) => {
+        if (!hasTrackedGridRowConflict(state, rowId)) saveRow(rowId);
+      },
       onDiscardRow: handleDiscardRow,
     }),
-    [handleDiscardRow, isSaving, saveRow, state.changesById],
+    [handleDiscardRow, isSaving, saveRow, state],
   );
 
-  /**
-   * Cell renderers consume AG Grid `context`, which sits outside normal React props. Update the native
-   * context with current callbacks/state and refresh only the Actions column rather than redrawing the
-   * whole grid.
-   */
   useEffect(() => {
     const api = gridApi.current;
     if (!api) return;
 
     api.setGridOption('context', rowEditActionsContext);
-    api.refreshCells({ columns: ['editActions'], force: true });
+    api.refreshCells({ columns: [...TRANSACTION_EDITABLE_FIELDS, 'editActions'], force: true });
   }, [rowEditActionsContext]);
 
   const { initialState, onStateUpdated } = useGridStatePersistence<Transaction>({
@@ -236,20 +243,12 @@ export function TransactionsInfiniteGrid({
 
   const handleGridReady = useCallback(
     (event: GridReadyEvent<Transaction>) => {
-      // Capture exactly the GridApi AG Grid created. This root remains the API owner.
       gridApi.current = event.api;
-
-      // GridReady can happen before Infinite RowNodes finish materialising. Defer one turn so custom
-      // dataset selection can reconcile against whatever AG Grid has loaded immediately afterward.
       window.setTimeout(syncSelectionAfterRowsChange, 0);
     },
     [syncSelectionAfterRowsChange],
   );
 
-  /**
-   * Infinite can recreate RowNodes after model updates, pagination and cache refreshes. Reconcile
-   * checkbox presentation and restore still-unsaved drafts each time those loaded nodes change.
-   */
   const handleRowsChanged = useCallback(() => {
     syncSelectionAfterRowsChange();
     const api = gridApi.current;
@@ -259,9 +258,6 @@ export function TransactionsInfiniteGrid({
   const handleSelectionChanged = useCallback(
     (event: SelectionChangedEvent<Transaction>) => {
       onSelectionChanged(event);
-
-      // Only force external controls to recalculate. Native selection remains in AG Grid / logical
-      // selection controller rather than being copied into React component state.
       setSelectionRevision((revision) => revision + 1);
     },
     [onSelectionChanged],
@@ -269,24 +265,44 @@ export function TransactionsInfiniteGrid({
 
   const handleFilterChanged = useCallback(() => {
     clearLoadError();
-
-    // Only filter-dependent dataset selection is reset. Explicit IDs and All Records keep their
-    // original meaning when the visible filter changes.
     resetFilterDependentSelection();
   }, [clearLoadError, resetFilterDependentSelection]);
+
+  const handleCellClicked = useCallback(
+    (event: CellClickedEvent<Transaction>) => {
+      if (!event.data) return;
+      const candidateField = event.colDef.field as string | undefined;
+      if (!isTransactionEditableField(candidateField)) return;
+      if (!hasTrackedGridFieldConflict(state, event.data.id, candidateField)) return;
+
+      const target = event.event?.target;
+      const anchorEl = target instanceof Element ? target.closest('.ag-cell') : null;
+      if (!(anchorEl instanceof HTMLElement)) return;
+
+      setConflictTarget({ rowId: event.data.id, field: candidateField, anchorEl });
+    },
+    [state],
+  );
+
+  const activeConflict = conflictTarget
+    ? rowEditActionsContext.getCellConflict(conflictTarget.rowId, conflictTarget.field)
+    : undefined;
 
   return (
     <Stack spacing={2}>
       <TransactionSelectionActions
         hasSelection={hasTransactionSelection(selectionIntent)}
         isApplying={isApplyingSelectionAction}
+        statusActionBlockedByConflict={statusActionBlockedByConflict}
         error={selectionActionError}
         onSetStatus={handleSetSelectedStatus}
       />
 
       <TransactionEditingControls
         editedRowCount={editedRowCount}
+        conflictCount={conflictCount}
         selectedEditedRowCount={selectedDirtyUpdates.length}
+        selectedEditsHaveConflict={selectedEditsHaveConflict}
         lastEdit={lastEdit}
         isSaving={isSaving}
         saveError={saveError}
@@ -309,44 +325,48 @@ export function TransactionsInfiniteGrid({
           datasource={datasource}
           columnDefs={transactionColumns}
           context={rowEditActionsContext}
-          // Stable backend identity lets native selection + draft restoration survive RowNode recreation.
           getRowId={getRowId}
-          // Presentation only: shared helper maps interaction mode to default/overridden CSS classes.
           getRowClass={getTransactionRowClass}
           initialState={initialState}
           rowSelection={{
             mode: 'multiRow',
-
-            // Infinite header behaviour depends on our configured page/filtered/all semantic, so the
-            // selection column supplies its own header instead of enabling AG Grid's default header.
             headerCheckbox: false,
-
-            // Selection is checkbox/action driven in this demo. Clicking arbitrary row content should
-            // not silently toggle business selection.
             enableClickSelection: false,
-
-            // Native loaded-row eligibility boundary. AG Grid evaluates this callback and stores the
-            // result in `RowNode.selectable`. Both the custom page header and filtered/all reconciliation
-            // read that native flag, so restricted rows are never passed to selection APIs and never
-            // manufactured into logical exclude IDs.
             isRowSelectable: isTransactionRowSelectable,
           }}
           selectionColumnDef={selectionColumnDef}
           activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={loadError ? { message: loadError, onRetry: retryLoad } : undefined}
           onGridReady={handleGridReady}
-          // Both events can materialise/recreate Infinite RowNodes that need selection/draft reconciliation.
           onModelUpdated={handleRowsChanged}
           onPaginationChanged={handleRowsChanged}
           onRowSelected={onRowSelected}
           onSelectionChanged={handleSelectionChanged}
           onFilterChanged={handleFilterChanged}
-          // AG Grid emits this after a committed value change; tracked editing filters out its own
-          // programmatic `setDataValue` writes using a source tag + synchronous ref guard.
+          onCellClicked={handleCellClicked}
           onCellValueChanged={handleCellValueChanged}
           onStateUpdated={onStateUpdated}
         />
       </Box>
+
+      <TransactionEditConflictPopover
+        anchorEl={activeConflict ? conflictTarget?.anchorEl ?? null : null}
+        field={conflictTarget?.field}
+        localValue={activeConflict?.localValue}
+        remoteValue={activeConflict?.remoteValue}
+        onClose={() => setConflictTarget(null)}
+        onUseServer={() => {
+          const api = gridApi.current;
+          if (!api || !conflictTarget) return;
+          resolveConflictWithRemote(api, conflictTarget.rowId, conflictTarget.field);
+          setConflictTarget(null);
+        }}
+        onKeepLocal={() => {
+          if (!conflictTarget) return;
+          resolveConflictWithLocal(conflictTarget.rowId, conflictTarget.field);
+          setConflictTarget(null);
+        }}
+      />
     </Stack>
   );
 }
