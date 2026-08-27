@@ -36,14 +36,14 @@ The two restricted states should look different because they mean different thin
 ```text
 selectionDisabled
 → checkbox disabled
-→ row lightly muted
+→ light warm restricted-row background/marker
 → visible "Selection disabled" indicator
 → reason available in the UI
 → editing and row-level modifying actions still allowed
 
 readOnly
 → checkbox disabled
-→ row more strongly muted
+→ stronger neutral-grey locked-row treatment
 → visible lock/read-only indicator
 → reason available in the UI
 → editing and modifying row-level actions blocked
@@ -51,7 +51,27 @@ readOnly
 
 Presentation is still not enforcement. Native AG Grid selectability/editability callbacks and backend validation remain authoritative.
 
-The current Transactions demo backend uses deterministic sample policies only so the capability is easy to test locally. A real feature should replace those demo reasons with its actual domain/business reasons.
+## Current Transactions demo policy
+
+The reusable grid capability does **not** know Transaction fields. For local/demo data, the Transactions backend currently derives the generic modes from Transaction business data so developers can understand why a row is restricted by looking at the row itself:
+
+```text
+status = Completed
+→ readOnly
+→ reason: completed transactions are locked from selection and editing
+
+status = Pending AND account = Treasury
+→ selectionDisabled
+→ reason: Pending Treasury transactions require individual review,
+          so selection-based bulk actions are disabled
+
+otherwise
+→ enabled
+```
+
+This policy intentionally lives in `backend/apps/transactions/services.py`, not under `shared/grid`.
+
+The policy is recomputed after authoritative writes. For example, if an enabled Transaction is legitimately changed to `Completed`, the returned/refreshed row becomes `readOnly`. A future Payables table could use completely different fields and rules while reusing the same three generic interaction modes.
 
 ## Selection-disabled rows are outside the selectable universe
 
