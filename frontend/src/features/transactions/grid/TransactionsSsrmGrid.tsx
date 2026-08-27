@@ -29,6 +29,10 @@ import { transactionEditingConfig } from './transactionEditing';
 import { transactionColumns } from './transactionColumns';
 import { mapTransactionGridRequest } from './transactionRequest.mapper';
 import {
+  getTransactionRowClass,
+  isTransactionRowSelectable,
+} from './transactionRowInteraction';
+import {
   buildTransactionSelectionActionRequest,
   hasTransactionSelection,
 } from './transactionSelectionAction';
@@ -281,12 +285,15 @@ export function TransactionsSsrmGrid({
           columnDefs={transactionColumns}
           context={rowEditActionsContext}
           getRowId={getRowId}
+          getRowClass={getTransactionRowClass}
           initialState={initialState}
           rowSelection={{
             mode: 'multiRow',
             headerCheckbox: true,
             selectAll: 'all',
             groupSelects: 'self',
+            // Native SSRM selection remains authoritative; disabled loaded rows are non-selectable.
+            isRowSelectable: isTransactionRowSelectable,
           }}
           activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={loadError ? { message: loadError, onRetry: retryLoad } : undefined}
