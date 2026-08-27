@@ -86,7 +86,7 @@ This answers: **what has the user changed in the UI?**
 
 ### Backend bulk-edit payload
 
-A future backend Bulk Update action uses:
+The implemented backend Bulk Update action uses:
 
 ```text
 accumulated edited rows
@@ -106,12 +106,34 @@ Rules:
 
 The resulting update contract remains concrete IDs plus concrete changed fields. It does not send the selection `include/exclude` object as the edit payload.
 
+## Persistence endpoints
+
+Editing persistence and logical selection business actions intentionally use different backend contracts:
+
+```text
+PATCH /api/transactions/{id}/
+-> save one explicit dirty row
+
+PATCH /api/transactions/bulk/
+-> save many explicit dirty-row patches
+
+PATCH /api/transactions/selection/
+-> apply one business change to the logical include/exclude selection,
+   including unloaded server-backed rows
+```
+
+`/bulk/` persists concrete edits already present in `changesById`; it does not reinterpret `include/exclude` selection as a dataset-wide edit instruction.
+
+`/selection/` is a separate business-action path. It receives the compact logical selection plus translated filters when the target is Select All Filtered.
+
+Keeping these contracts separate prevents local draft persistence from being confused with dataset-wide selection actions.
+
 ## Selection relationship
 
 Selection and editing remain separate concerns:
 
 - selection tells Flow 1/2 which current-page rows receive an explicit propagated change;
-- selection also determines which accumulated edited rows are eligible for a future backend bulk action;
+- selection also determines which accumulated edited rows are eligible for backend bulk persistence;
 - editing a row does not automatically select it;
 - selecting a row does not automatically create an edit.
 
@@ -152,4 +174,6 @@ The current `browserGridStateStore` uses `localStorage`, but that is only the cu
 
 ## Current implementation checkpoint
 
-The native/state/reuse/root-ownership cleanup is complete for the current foundation. The final Flow 1 / Flow 2 presentation and future backend Bulk Update endpoint remain intentionally deferred until the editing UX discussion resumes.
+The native/state/reuse/root-ownership cleanup and current editing persistence paths are implemented for the grid foundation. Single-row Save uses the detail endpoint and aggregate Save uses the explicit bulk endpoint described above. The final Flow 1 / Flow 2 presentation remains intentionally undecided.
+
+The remaining product-level editing question is how a server-side logical-selection action should interact with conflicting unsaved local drafts. That policy must be chosen deliberately rather than hidden inside shared grid code.
