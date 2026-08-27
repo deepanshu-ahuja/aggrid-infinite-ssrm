@@ -113,6 +113,51 @@ export type TransactionSort = GridQuerySort<TransactionField>;
  */
 export type TransactionFilter = GridQueryFilter<TransactionField>;
 
+/** Exact selected ids. Filters are intentionally irrelevant once the ids are known. */
+export interface TransactionExplicitSelection {
+  scope: 'explicit';
+  mode: 'include';
+  ids: Transaction['id'][];
+}
+
+/** Every row matching the current backend filters except these ids. */
+export interface TransactionFilteredSelection {
+  scope: 'filtered';
+  mode: 'exclude';
+  ids: Transaction['id'][];
+}
+
+/** Every Transaction record except these ids. */
+export interface TransactionAllSelection {
+  scope: 'all';
+  mode: 'exclude';
+  ids: Transaction['id'][];
+}
+
+/**
+ * One action initiated above the table, such as changing the status of the current logical selection.
+ * Explicit selection never sends filters; filtered selection must use the same translated filters as
+ * row loading; all-record selection is independent of the visible filter.
+ */
+export type TransactionSelectionActionRequest =
+  | {
+      selection: TransactionExplicitSelection;
+      changes: TransactionUpdateChanges;
+    }
+  | {
+      selection: TransactionFilteredSelection;
+      filters: TransactionFilter[];
+      changes: TransactionUpdateChanges;
+    }
+  | {
+      selection: TransactionAllSelection;
+      changes: TransactionUpdateChanges;
+    };
+
+export interface TransactionSelectionActionResponse {
+  updatedCount: number;
+}
+
 /**
  * Backend request for a flat Transactions grid query.
  *
