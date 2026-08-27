@@ -5,8 +5,12 @@ import {
   buildTrackedGridUpdatePayload,
   createEmptyTrackedGridEditingState,
   discardTrackedGridRow,
+  getTrackedGridConflictCount,
   hasTrackedGridField,
+  reconcileTrackedGridRemoteValues,
   recordTrackedGridCellChange,
+  resolveTrackedGridConflictWithLocal,
+  resolveTrackedGridConflictWithRemote,
   type TrackedGridChanges,
   type TrackedGridEditingState,
   type TrackedGridLastEdit,
@@ -17,8 +21,8 @@ import {
  * Source tag passed to AG Grid when THIS hook writes a value with `RowNode.setDataValue`.
  *
  * AG Grid fires `cellValueChanged` for both a real user edit and many programmatic value changes. If
- * we did not tag our own writes, restoring/discarding a draft could be mistaken for a brand-new user
- * edit and recreate dirty state immediately after we tried to clear it.
+ * we did not tag our own writes, restoring/discarding/resolving a draft could be mistaken for a brand-new
+ * user edit and recreate dirty state immediately after we tried to reconcile it.
  */
 const TRACKED_GRID_WRITE_SOURCE = 'data';
 
@@ -39,8 +43,7 @@ export interface UseTrackedGridEditingOptions<TData, TField extends string, TVal
    * Optional row-level edit policy supplied by the feature.
    *
    * AG Grid's column `editable` callback blocks normal UI editing, but our own current-page/bulk edit
-   * helpers and draft restoration call RowNode APIs directly. Those programmatic paths must obey the
-   * SAME read-only policy or application code could bypass the UI restriction.
+   * helpers call RowNode APIs directly. Those programmatic edit paths must obey the SAME read-only policy.
    */
   isRowEditable?: (row: TData) => boolean;
 }
@@ -48,11 +51,9 @@ export interface UseTrackedGridEditingOptions<TData, TField extends string, TVal
 /**
  * Keeps unsaved edits outside AG Grid RowNodes so drafts survive server-backed row recreation.
  *
- * WHY NOT STORE DRAFTS ONLY IN THE ROWNODE?
- * -----------------------------------------
- * Infinite/SSRM are allowed to evict, reload and recreate RowNodes. A local unsaved edit would vanish
- * with the old RowNode. The small state machine here stores drafts by stable backend row ID and then
- * reapplies them when that row materialises again.
+ * RowNodes are presentation/cache objects and may disappear. The durable editing state is therefore
+ * keyed by backend row ID. When fresh rows materialise, this hook performs three-way field reconciliation
+ * (BASE/LOCAL/REMOTE) before reapplying any still-valid local value to the new RowNode.
  */
 export function useTrackedGridEditing<TData, TField extends string, TValue>({
   getRowId,
@@ -61,69 +62,27 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
   getFieldValue,
   isRowEditable,
 }: UseTrackedGridEditingOptions<TData, TField, TValue>) {
-  // `state` is business-relevant draft state (original + changed values), not a mirror of AG Grid's
-  // entire row model. That distinction keeps React state small and survives cache churn.
   const [state, setState] = useState<TrackedGridEditingState<TField, TValue>>(() =>
     createEmptyTrackedGridEditingState<TField, TValue>(),
   );
-
-  // The latest user edit is used by the "apply last edit" convenience action. It is separate from
-  // dirty-row state because one edit can later be copied to many current-page rows.
   const [lastEdit, setLastEdit] = useState<TrackedGridLastEdit<TField, TValue>>();
 
-  // This ref is deliberately NOT React state. It is a synchronous re-entrancy guard around AG Grid
-  // API writes; changing it must not trigger a render.
+  // Synchronous re-entrancy guard only; changing it must never cause React rendering.
   const applyingProgrammaticChange = useRef(false);
 
   const handleCellValueChanged = useCallback(
     (event: CellValueChangedEvent<TData>) => {
-      /**
-       * `cellValueChanged` is AG Grid's committed-value event. It can be raised by:
-       * 1. a real user editor commit;
-       * 2. our own `setDataValue` calls;
-       * 3. a delayed event from a restore/discard operation.
-       *
-       * Only case 1 should create/update a user draft.
-       */
-      if (applyingProgrammaticChange.current) {
-        // We are inside one of our own synchronous write loops below. Draft state was already handled
-        // explicitly before the AG Grid value write, so recording it again would double-process it.
-        return;
-      }
-
-      if (event.source === TRACKED_GRID_WRITE_SOURCE) {
-        // The source tag also protects us if AG Grid delivers the event after the synchronous guard
-        // has already been cleared (the discard idempotency race we explicitly test).
-        return;
-      }
-
-      if (!event.data) {
-        // Server-backed RowNodes can exist briefly without row data. There is no stable row ID/value
-        // to record yet, so such an event is not a valid draft.
-        return;
-      }
-
-      if (isRowEditable && !isRowEditable(event.data)) {
-        // Defence in depth: the column's native AG Grid `editable` callback should stop the user from
-        // entering an editor, but this shared hook also refuses a stale/programmatic event for a row
-        // that the feature now considers read-only.
-        return;
-      }
+      if (applyingProgrammaticChange.current || event.source === TRACKED_GRID_WRITE_SOURCE) return;
+      if (!event.data || (isRowEditable && !isRowEditable(event.data))) return;
 
       const candidateField = event.colDef.field as string | undefined;
-      if (!isEditableField(candidateField)) {
-        // Ignore changes from display/read-only columns. Shared code trusts the feature's explicit
-        // editable-field contract rather than assuming every AG Grid column is persistable.
-        return;
-      }
+      if (!isEditableField(candidateField)) return;
 
       const field: TField = candidateField;
       const oldValue = event.oldValue as TValue;
       const newValue = event.newValue as TValue;
       const rowId = getRowId(event.data);
 
-      // `recordTrackedGridCellChange` owns the important dirty-state rules, including reverting the
-      // field back to its original value and removing a no-longer-dirty draft.
       setState((current) => recordTrackedGridCellChange(current, rowId, field, oldValue, newValue));
       setLastEdit({ field, value: newValue });
     },
@@ -132,28 +91,15 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
 
   const applyChangesToNodes = useCallback(
     (nodes: readonly IRowNode<TData>[], changes: TrackedGridChanges<TField, TValue>) => {
-      /**
-       * There are TWO intentionally separate phases below:
-       *
-       * 1. update our durable draft state by stable row ID;
-       * 2. write the same values into currently loaded AG Grid RowNodes so the UI changes immediately.
-       *
-       * Keeping draft state first means the edit survives even if AG Grid later evicts/recreates the
-       * node. Both phases apply the same row-editable check so read-only rows are untouched.
-       */
       setState((current) => {
         let next = current;
 
         for (const node of nodes) {
-          // A missing-data node is still loading. A read-only node is a real row but is not a legal
-          // target for this programmatic edit action.
           if (!node.data || (isRowEditable && !isRowEditable(node.data))) continue;
-
           const rowId = getRowId(node.data);
 
           for (const field of editableFields) {
             if (!hasTrackedGridField(changes, field)) continue;
-
             next = recordTrackedGridCellChange(
               next,
               rowId,
@@ -167,8 +113,6 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
         return next;
       });
 
-      // The RowNode write below is presentation/synchronisation with AG Grid. The real unsaved draft
-      // has already been captured above by stable row ID.
       applyingProgrammaticChange.current = true;
       try {
         for (const node of nodes) {
@@ -176,18 +120,13 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
 
           for (const field of editableFields) {
             if (!hasTrackedGridField(changes, field)) continue;
-
             const nextValue = changes[field] as TValue;
-
-            // Avoid unnecessary `setDataValue` calls because AG Grid can emit events/redraw even when
-            // application code writes the same value again.
             if (!Object.is(getFieldValue(node.data, field), nextValue)) {
               node.setDataValue(field, nextValue, TRACKED_GRID_WRITE_SOURCE);
             }
           }
         }
       } finally {
-        // Always clear the synchronous guard even if a custom value setter/editor throws.
         applyingProgrammaticChange.current = false;
       }
     },
@@ -197,42 +136,57 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
   const restoreTrackedEdits = useCallback(
     (api: GridApi<TData>) => {
       /**
-       * AG Grid calls our roots after model/page/cache changes. Newly created RowNodes contain fresh
-       * backend data, so we reapply any still-unsaved draft for that stable row ID.
-       *
-       * We deliberately iterate ONLY currently loaded RowNodes. We never load missing server rows just
-       * to restore drafts; when such a row appears later, this function will handle it then.
+       * This is intentionally reconciliation, not blind restoration. Each loaded row currently contains
+       * fresh authoritative server values. Before overlaying LOCAL drafts we compare them with their BASE
+       * values and these REMOTE values so a backend change can never be silently hidden by cache refresh.
        */
+      let reconciledState = state;
+      const loadedNodes: IRowNode<TData>[] = [];
+
+      api.forEachNode((node) => {
+        if (!node.data) return;
+        loadedNodes.push(node);
+
+        const rowId = getRowId(node.data);
+        const rowChanges = reconciledState.changesById[rowId];
+        if (!rowChanges) return;
+
+        const remoteValues: TrackedGridChanges<TField, TValue> = {};
+        for (const field of editableFields) {
+          if (hasTrackedGridField(rowChanges, field)) {
+            remoteValues[field] = getFieldValue(node.data, field);
+          }
+        }
+
+        reconciledState = reconcileTrackedGridRemoteValues(reconciledState, rowId, remoteValues);
+      });
+
+      if (reconciledState !== state) setState(reconciledState);
+
       applyingProgrammaticChange.current = true;
       try {
-        api.forEachNode((node) => {
-          if (!node.data || (isRowEditable && !isRowEditable(node.data))) return;
+        for (const node of loadedNodes) {
+          if (!node.data) continue;
+          const rowChanges = reconciledState.changesById[getRowId(node.data)];
+          if (!rowChanges) continue;
 
-          const rowChanges = state.changesById[getRowId(node.data)];
-          if (!rowChanges) return;
-
+          // Reapply even when the refreshed server row has become read-only. The local value remains the
+          // user's visible unsaved work; feature mutation guards decide what can subsequently be persisted.
           for (const field of editableFields) {
             if (!hasTrackedGridField(rowChanges, field)) continue;
-
             const trackedValue = rowChanges[field] as TValue;
             if (!Object.is(getFieldValue(node.data, field), trackedValue)) {
               node.setDataValue(field, trackedValue, TRACKED_GRID_WRITE_SOURCE);
             }
           }
-        });
+        }
       } finally {
         applyingProgrammaticChange.current = false;
       }
     },
-    [editableFields, getFieldValue, getRowId, isRowEditable, state.changesById],
+    [editableFields, getFieldValue, getRowId, state],
   );
 
-  /**
-   * Clear only the exact values that were successfully saved.
-   *
-   * If the user changes the same field again while a request is in flight, acknowledgement of the
-   * older snapshot must NOT wipe out the newer draft.
-   */
   const acknowledgeChanges = useCallback(
     (updates: TrackedGridUpdatePayload<TField, TValue>['updates']) => {
       setState((current) => acknowledgeTrackedGridChanges(current, updates));
@@ -240,27 +194,29 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     [],
   );
 
-  const restoreOriginalsForRows = useCallback(
+  const restoreAuthoritativeValuesForRows = useCallback(
     (api: GridApi<TData>, rowIds: ReadonlySet<string>) => {
-      // Discard is another programmatic AG Grid write, so it uses the same guard/source mechanism as
-      // bulk editing and restoration. Otherwise the restored original could become a new draft.
+      /**
+       * Discard means "forget my local work". If a field has already detected a REMOTE value, that value
+       * is more authoritative than the old BASE and must be restored. Otherwise BASE is still the latest
+       * known server value for the ordinary dirty field.
+       */
       applyingProgrammaticChange.current = true;
       try {
         api.forEachNode((node) => {
           if (!node.data) return;
-
           const rowId = getRowId(node.data);
           if (!rowIds.has(rowId)) return;
 
           const originals = state.originalsById[rowId];
           if (!originals) return;
+          const conflicts = state.conflictsById[rowId] ?? {};
 
           for (const field of editableFields) {
             if (!hasTrackedGridField(originals, field)) continue;
-
-            const originalValue = originals[field] as TValue;
-            if (!Object.is(getFieldValue(node.data, field), originalValue)) {
-              node.setDataValue(field, originalValue, TRACKED_GRID_WRITE_SOURCE);
+            const nextValue = conflicts[field]?.remoteValue ?? (originals[field] as TValue);
+            if (!Object.is(getFieldValue(node.data, field), nextValue)) {
+              node.setDataValue(field, nextValue, TRACKED_GRID_WRITE_SOURCE);
             }
           }
         });
@@ -268,49 +224,67 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
         applyingProgrammaticChange.current = false;
       }
     },
-    [editableFields, getFieldValue, getRowId, state.originalsById],
+    [editableFields, getFieldValue, getRowId, state.conflictsById, state.originalsById],
   );
 
-  /** Discard one row: restore loaded-cell values, then remove that row's durable draft. */
   const discardRow = useCallback(
     (api: GridApi<TData>, rowId: string) => {
-      // Idempotency: once the row has no originals/draft left, a repeated Discard is a no-op.
       if (!state.originalsById[rowId]) return;
-
-      restoreOriginalsForRows(api, new Set([rowId]));
+      restoreAuthoritativeValuesForRows(api, new Set([rowId]));
       setState((current) => discardTrackedGridRow(current, rowId));
     },
-    [restoreOriginalsForRows, state.originalsById],
+    [restoreAuthoritativeValuesForRows, state.originalsById],
   );
 
-  /** Discard only the requested dirty rows. Other unsaved rows remain untouched. */
   const discardRows = useCallback(
     (api: GridApi<TData>, rowIds: readonly string[]) => {
       if (rowIds.length === 0) return;
-
-      // Set gives cheap membership tests while iterating loaded AG Grid nodes and also naturally
-      // collapses accidental duplicate row IDs from a caller.
       const ids = new Set(rowIds);
-      restoreOriginalsForRows(api, ids);
+      restoreAuthoritativeValuesForRows(api, ids);
 
       setState((current) => {
         let next = current;
-        for (const rowId of ids) {
-          next = discardTrackedGridRow(next, rowId);
-        }
+        for (const rowId of ids) next = discardTrackedGridRow(next, rowId);
         return next;
       });
     },
-    [restoreOriginalsForRows],
+    [restoreAuthoritativeValuesForRows],
   );
 
-  // Build the backend-friendly explicit update list only when draft state changes.
+  const resolveConflictWithRemote = useCallback(
+    (api: GridApi<TData>, rowId: string, field: TField) => {
+      const conflict = state.conflictsById[rowId]?.[field];
+      if (!conflict) return;
+
+      applyingProgrammaticChange.current = true;
+      try {
+        api.forEachNode((node) => {
+          if (!node.data || getRowId(node.data) !== rowId) return;
+          if (!Object.is(getFieldValue(node.data, field), conflict.remoteValue)) {
+            node.setDataValue(field, conflict.remoteValue, TRACKED_GRID_WRITE_SOURCE);
+          }
+        });
+      } finally {
+        applyingProgrammaticChange.current = false;
+      }
+
+      setState((current) => resolveTrackedGridConflictWithRemote(current, rowId, field));
+    },
+    [getFieldValue, getRowId, state.conflictsById],
+  );
+
+  const resolveConflictWithLocal = useCallback((rowId: string, field: TField) => {
+    setState((current) => resolveTrackedGridConflictWithLocal(current, rowId, field));
+  }, []);
+
   const payload = useMemo(() => buildTrackedGridUpdatePayload(state), [state]);
+  const conflictCount = useMemo(() => getTrackedGridConflictCount(state), [state]);
 
   return {
     state,
     payload,
     editedRowCount: payload.updates.length,
+    conflictCount,
     lastEdit,
     handleCellValueChanged,
     applyChangesToNodes,
@@ -318,5 +292,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     acknowledgeChanges,
     discardRow,
     discardRows,
+    resolveConflictWithRemote,
+    resolveConflictWithLocal,
   };
 }
