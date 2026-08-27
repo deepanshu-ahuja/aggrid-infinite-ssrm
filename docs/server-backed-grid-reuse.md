@@ -94,8 +94,8 @@ Important: page size and block size are different concepts.
 With page size 25 and block size 50:
 
 ```text
-Block 0 -> rows 0-49   -> pages 1 and 2
-Block 1 -> rows 50-99  -> pages 3 and 4
+Block 0 -> rows 0-49    -> pages 1 and 2
+Block 1 -> rows 50-99   -> pages 3 and 4
 Block 2 -> rows 100-149 -> pages 5 and 6
 ```
 
@@ -206,7 +206,56 @@ exclude + exception ids
 
 but there is no backend filter context.
 
-The shared helper `buildGridSelectionActionTarget(...)` owns the reusable selection meaning. A feature adds its own translated filters and business payload around it.
+### Backend wire contract: no serialized `scope`
+
+Do not send an extra `scope: explicit | filtered | all` field to the backend. The request already carries enough information:
+
+```text
+include + ids
+-> exactly those ids
+
+exclude + filters
+-> rows matching those filters, minus the exception ids
+
+exclude without filters
+-> all records, minus the exception ids
+```
+
+Examples:
+
+```json
+{
+  "selection": {
+    "mode": "include",
+    "ids": ["row-1", "row-2"]
+  }
+}
+```
+
+```json
+{
+  "selection": {
+    "mode": "exclude",
+    "ids": ["row-10"]
+  },
+  "filters": [
+    { "field": "status", "operator": "equals", "value": "Pending" }
+  ]
+}
+```
+
+```json
+{
+  "selection": {
+    "mode": "exclude",
+    "ids": ["row-10"]
+  }
+}
+```
+
+The frontend still needs internal row-model/action context to know whether an `exclude` selection currently means filtered rows or all records. `buildGridSelectionActionTarget(...)` receives that internal context and converts it into the simpler wire shape above.
+
+If Select All Filtered is used while there are no active filters, its dataset is the same as all records, so an empty filter list and no filter list have the same backend meaning.
 
 ## 7. Reuse one filter translation path
 
@@ -265,6 +314,8 @@ return {
 };
 ```
 
+`excludeScope` above is frontend-only construction context. It is not serialized in `target.selection`.
+
 Transactions may instead add:
 
 ```ts
@@ -317,9 +368,9 @@ For a new feature such as Payables:
 3. Reuse `serverBackedGridDefaults`.
 4. Create one feature query/filter mapper.
 5. Reuse the Infinite or SSRM datasource/loading helper.
-6. Reuse the appropriate selection controller.
+6. Reuse the appropriate row-model-specific selection controller.
 7. Reuse `buildGridSelectionActionTarget(...)` for selection-based actions.
-8. Add only the Payables-specific action payload/API call in the feature.
+8. Add only the feature-specific action payload/API call in the feature.
 9. Reuse Grid State persistence if the table needs saved preferences.
 10. Add tests for feature translation/business behavior; do not re-test AG Grid internals.
 
