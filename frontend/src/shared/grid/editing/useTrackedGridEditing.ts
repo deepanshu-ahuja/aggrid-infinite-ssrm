@@ -12,6 +12,7 @@ import {
   resolveTrackedGridConflictWithLocal,
   resolveTrackedGridConflictWithRemote,
   type TrackedGridChanges,
+  type TrackedGridConflicts,
   type TrackedGridEditingState,
   type TrackedGridLastEdit,
   type TrackedGridUpdatePayload,
@@ -56,8 +57,11 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
   const applyingProgrammaticChange = useRef(false);
   const localOverlayByNode = useRef(new WeakMap<IRowNode<TData>, LocalOverlayMarker<TData, TField>>());
 
-  const markLocalOverlay = useCallback((node: IRowNode<TData>, field: TField) => {
-    if (!node.data) return;
+  const markLocalOverlay = useCallback((node: IRowNode<TData> | undefined, field: TField) => {
+    // AG Grid supplies `event.node` in production. Some focused hook tests intentionally construct the
+    // smallest possible CellValueChangedEvent; missing node bookkeeping is safe because reconciliation
+    // still works when a later real RowNode materialises.
+    if (!node?.data) return;
     const current = localOverlayByNode.current.get(node);
     if (current?.data === node.data) {
       current.fields.add(field);
@@ -198,7 +202,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
 
           const originals = state.originalsById[rowId];
           if (!originals) return;
-          const conflicts = state.conflictsById[rowId] ?? {};
+          const conflicts: TrackedGridConflicts<TField, TValue> = state.conflictsById[rowId] ?? {};
 
           for (const field of editableFields) {
             if (!hasTrackedGridField(originals, field)) continue;
