@@ -1,20 +1,18 @@
 # Infinite Row Model Selection Contract
 
-This document is the final source of truth for selection behaviour in our AG Grid **Infinite Row Model** tables.
+This document is the source of truth for selection when a server-backed table uses AG Grid's **Infinite Row Model**.
 
-It is intentionally scenario-based. A future developer should be able to answer:
+The core rule is:
 
-> What did the user do, what does AG Grid do, what state do we keep, and what should the backend eventually receive?
+> Keep AG Grid responsible for loaded RowNodes and native checkbox rendering, while application state represents only the logical selection that must survive unloaded rows/cache eviction.
 
-without needing to reverse-engineer the implementation first.
+Transactions is the current example feature, but the selection mechanics here are intended to be reusable.
 
 ---
 
-## 1. Keep these two concepts separate
+## 1. Separate UI strategy from logical selection
 
-### UI selection mode
-
-The UI configuration controls what the custom header checkbox does:
+The Infinite header strategy can be:
 
 ```text
 page
@@ -22,18 +20,11 @@ filtered
 all
 ```
 
-### Logical selection representation
+That answers:
 
-Application selection state contains only:
+> What should the header checkbox mean?
 
-```text
-include
-exclude
-```
-
-with IDs.
-
-The logical selection object is:
+Logical selection is always only:
 
 ```ts
 {
@@ -42,634 +33,269 @@ The logical selection object is:
 }
 ```
 
-Do **not** put `page`, `filtered`, `all`, or `explicit` into that logical selection object.
+Do not copy `page | filtered | all` into the logical selection object or backend payload.
 
 ---
 
-## 2. The two neutral-looking states mean very different things
-
-This distinction is critical.
-
-### `include + []`
-
-```ts
-{
-  mode: 'include',
-  ids: [],
-}
-```
-
-means:
-
-> Nothing is selected.
-
-### `exclude + []`
-
-```ts
-{
-  mode: 'exclude',
-  ids: [],
-}
-```
-
-means:
-
-> Select All is active; there are currently no exceptions.
-
-These states must never be treated as interchangeable.
-
----
-
-## 3. `include` means exact selected IDs
-
-Example:
-
-```text
-include [A, B, E]
-```
-
-means:
-
-```text
-A selected
-B selected
-E selected
-everything else not selected
-```
-
-Use `include` for:
-
-- one row checkbox;
-- multiple manually selected rows;
-- current-page header selection;
-- explicit selections accumulated across pagination pages;
-- manual selection while the UI is configured as `filtered`;
-- manual selection while the UI is configured as `all`.
-
-The UI configuration does not change the meaning of manual selection.
-
----
-
-## 4. `exclude` means dataset Select All is active
-
-Example:
-
-```text
-exclude []
-```
-
-means every record in the owning Select-All dataset is selected.
-
-Example:
-
-```text
-exclude [A]
-```
-
-means every record in that dataset except A is selected.
-
-The owning UI strategy tells us which dataset Select All represents:
-
-```text
-filtered
-→ all rows matching the defining backend filter
-
-all
-→ all records
-```
-
-We deliberately do not duplicate that UI strategy inside the logical selection object.
-
----
-
-# 5. Page mode
-
-UI configuration:
-
-```text
-selectionScope = 'page'
-```
-
-The word `page` describes only the header checkbox.
-
-Example:
-
-```text
-Page 1 contains A B C D
-user clicks page header
-→ include [A, B, C, D]
-```
-
-User moves to Page 2 and manually selects E:
-
-```text
-→ include [A, B, C, D, E]
-```
-
-Selection can therefore contain IDs from many pages.
-
-If Page 2 contains E F G H and the user unchecks the Page 2 header:
-
-```text
-remove selected IDs belonging to Page 2
-preserve selected IDs from other pages
-```
-
-There is no dataset-level `exclude` representation in page mode.
-
-`page + exclude` is considered an invalid application state.
-
----
-
-# 6. Filtered mode without Select All
-
-UI configuration:
-
-```text
-selectionScope = 'filtered'
-```
-
-User applies:
-
-```text
-Status = Completed
-```
-
-Then manually selects A and B.
-
-Logical selection:
+## 2. Include means exact IDs
 
 ```text
 include [A, B]
 ```
 
-If the user changes the visible filter:
+means exactly A and B are selected.
+
+Use include for:
+
+- one manual row;
+- many manual rows;
+- Current Page selection;
+- IDs accumulated across pages;
+- IDs accumulated while different filters were visible.
+
+The filter visible when an ID was selected does not become part of that explicit selection.
+
+Example:
 
 ```text
-preserve A and B
+Filter A -> select A, B
+Filter B -> select C, D
+
+final logical selection:
+include [A, B, C, D]
 ```
-
-Why?
-
-Because the user explicitly selected those IDs. They did not select an entire filtered dataset.
 
 ---
 
-# 7. Select All Filtered
-
-Active applied filter:
-
-```text
-Status = Completed
-Amount > 5000
-```
-
-User clicks Select All Filtered.
-
-Logical state becomes:
+## 3. Exclude means dataset Select All plus exceptions
 
 ```text
 exclude []
 ```
 
-Meaning:
-
-> All rows matching the applied backend filter are selected.
-
-If the user unchecks A:
+means everything in the current Select-All dataset is selected.
 
 ```text
 exclude [A]
 ```
 
-Meaning:
+means everything in that dataset except A.
 
-> All rows matching the defining filter except A.
+Which dataset is meant is owned by the Infinite UI strategy:
 
-The browser does not need to download every selected ID.
+```text
+filtered strategy -> all rows matching the defining filter
+all strategy      -> all records
+```
+
+That context is intentionally not duplicated into logical selection.
 
 ---
 
-# 8. Filter changes after Select All Filtered
+## 4. Page strategy
 
-Old state:
+The page header is only a shortcut over concrete IDs on the current page.
 
-```text
-filter = Status = Completed
-selection = exclude [A]
-```
-
-The user changes the filter to:
+Example:
 
 ```text
-Status = Failed
+Page 1: select header -> include [A, B, C, D]
+Page 2: manually select E
+-> include [A, B, C, D, E]
 ```
 
-The correct reset is:
+Unchecking a page header removes only the current-page IDs and preserves explicit IDs selected elsewhere.
+
+Page is never a backend action scope.
+
+---
+
+## 5. Filtered strategy before Select All
+
+Manual selection under a filtered UI strategy remains exact IDs.
 
 ```text
-include []
+filter = Pending
+select A, B
+-> include [A, B]
 ```
 
-Meaning:
+If the filter changes, preserve A and B.
 
-> Nothing is selected.
+Why: the user selected those IDs explicitly; the filter was only how they found them.
 
-It must **not** reset to:
+---
+
+## 6. Select All Filtered
+
+When Select All Filtered is activated:
 
 ```text
 exclude []
 ```
 
-because `exclude []` means Select All is active. That would automatically select the entire new filtered dataset even though the user did not click Select All again.
+means all rows matching the current defining filter.
 
-Therefore:
-
-```text
-filtered + include
-filter changes
-→ preserve explicit IDs
-
-filtered + exclude
-filter changes
-→ reset to include []
-```
-
-The user must click Select All Filtered again if they want the new filtered dataset selected.
-
----
-
-# 9. All-records mode
-
-UI configuration:
-
-```text
-selectionScope = 'all'
-```
-
-Manual selection still uses:
-
-```text
-include [A, B]
-```
-
-User clicks Select All Records:
-
-```text
-exclude []
-```
-
-User unchecks A:
+If A is unchecked:
 
 ```text
 exclude [A]
 ```
 
-Changing the visible filter must preserve this selection.
+means all matching rows except A.
 
-Why?
-
-The visible filter changes what the user is looking at. It does not redefine the meaning of "all records".
+The AG Grid filter model remains AG Grid-owned. When a real action is invoked, the root reads `api.getFilterModel()` and the feature maps it to the backend filter contract.
 
 ---
 
-# 10. Individual row checkbox behaviour
+## 7. Filter lifecycle
 
-## Include mode
+Do not use one blanket reset rule.
+
+```text
+page/include
+-> preserve on filter change
+
+filtered/include
+-> preserve on filter change
+
+filtered/exclude
+-> reset to include [] when defining filter changes
+
+all/include
+-> preserve on filter change
+
+all/exclude
+-> preserve on filter change
+```
+
+Only filtered-wide exclude is tied to one specific filter query.
+
+---
+
+## 8. All Records strategy
+
+Manual selection is still include.
 
 ```text
 include [A, B]
-
-check C
-→ include [A, B, C]
-
-uncheck A
-→ include [B, C]
 ```
 
-## Exclude mode
+Select All Records switches to:
 
 ```text
 exclude []
-
-uncheck A
-→ exclude [A]
-
-check A again
-→ exclude []
 ```
 
-In exclude mode the IDs are exceptions, not selected IDs.
+Unchecking A becomes:
+
+```text
+exclude [A]
+```
+
+Visible filter changes do not clear all-record selection because the filter changes what the user sees, not what “all records” means.
 
 ---
 
-# 11. Sorting
+## 9. Sorting and pagination
 
-Sorting never clears selection.
+Sorting changes position, not identity, so it does not clear selection.
 
-We give AG Grid stable row identity:
+Pagination changes visibility, not logical selection, so it does not clear selection.
+
+Stable backend identity is mandatory:
 
 ```ts
 getRowId={({ data }) => data.id}
 ```
 
-Sorting changes position, not identity.
-
-Therefore:
-
-```text
-include → preserve
-exclude → preserve
-```
-
 ---
 
-# 12. Pagination
+## 10. Cache eviction and row recreation
 
-Pagination never clears logical selection.
+Infinite Row Model keeps only a bounded set of blocks/RowNodes in browser memory.
+
+Selection lifetime must not depend on that cache lifetime.
 
 Example:
 
 ```text
-Page 1: select A
-Page 2: select E
-→ include [A, E]
+A selected
+-> its block is evicted
+-> logical selection still remembers A
+-> block later reloads
+-> new RowNode for A is synced back to selected
 ```
 
-When A appears again, its checkbox is restored from application selection state.
+Newly loaded rows are always reconciled against logical selection.
+
+Programmatic checkbox sync must be marked/handled as API-originated so it does not feed back into selection state.
 
 ---
 
-# 13. Infinite cache eviction and block reload
+## 11. Infinite cache configuration and refresh
 
-AG Grid Infinite Row Model does not keep every RowNode forever.
-
-Example:
+Current shared defaults are:
 
 ```text
-TX-100 is selected
-AG Grid evicts its block from browser memory
+pagination page size = 25
+cache block size     = 50
+max cached blocks    = 5
 ```
 
-Application selection still remembers TX-100.
+One 50-row block can serve two 25-row pages.
 
-Later:
+`maxBlocksInCache: 5` means AG Grid retains only a bounded set of recently needed blocks. If old blocks are evicted, visiting them later causes a fresh backend query.
 
-```text
-AG Grid reloads block containing TX-100
-→ new RowNode appears
-→ table asks isRowSelected('TX-100')
-→ checkbox is restored
-```
-
-Selection lifetime is intentionally independent from RowNode/cache lifetime.
-
----
-
-# 14. Newly loaded rows after dataset Select All
-
-Example:
-
-```text
-Select All Filtered
-→ exclude []
-```
-
-Only a small number of rows may currently be loaded.
-
-When another Infinite block arrives:
-
-```text
-new RowNode
-→ ask logical selection whether ID is selected
-→ programmatically sync checkbox
-```
-
-A new matching row therefore appears selected even though it did not exist in browser memory when the user clicked Select All.
-
----
-
-# 15. Programmatic checkbox synchronisation
-
-Application state sometimes needs to restore AG Grid checkbox state.
-
-Conceptually:
-
-```text
-application selection
-→ node.setSelected(..., 'api')
-→ AG Grid emits rowSelected with source='api'
-→ our rowSelected handler ignores it
-```
-
-Why ignore it?
-
-Otherwise:
-
-```text
-application state
-→ checkbox sync
-→ AG Grid event
-→ application state update
-→ checkbox sync
-→ ...
-```
-
-could become a feedback loop.
-
-Real user checkbox events are still processed normally.
-
----
-
-# 16. Initial Infinite lifecycle
-
-Simplified flow:
-
-```text
-React renders table
-→ AG Grid initializes
-→ onGridReady stores GridApi
-→ Infinite datasource requests block
-→ backend returns rows + totalCount
-→ AG Grid creates/updates RowNodes
-→ onModelUpdated
-→ update current-page IDs
-→ restore loaded checkbox state
-```
-
-Normal grid loading does not clear logical selection.
-
----
-
-# 17. Filtered total
-
-Filtered Select All needs the number of rows in AG Grid's current accepted Infinite model.
-
-We do not let arbitrary overlapping datasource responses directly define this selection total.
-
-On filter change:
-
-```text
-old total is no longer valid
-→ temporarily reset filtered total
-→ new Infinite model loads
-→ AG Grid knows current last row
-→ publish current total
-```
-
-This prevents an older request from making the header describe the wrong filtered dataset.
-
----
-
-# 18. Error and retry behaviour
-
-Grid row-loading failure uses AG Grid's grid-level error presentation.
-
-For Infinite Row Model retry, the application calls:
+After a successful backend write, the Infinite root currently calls:
 
 ```ts
 api.refreshInfiniteCache();
 ```
 
-Expected user flow:
+That re-queries the Infinite blocks currently resident in the browser cache. It does **not** load every backend block affected by a dataset-wide action.
+
+Example:
 
 ```text
-backend/data request fails
-→ grid shows error overlay
-→ user restores connectivity/backend
-→ user clicks Retry
-→ Infinite cache reloads
-→ rows render again
-→ error state clears
+Only Block 0 is resident
+-> action succeeds
+-> Block 0 refreshes
+
+Later user visits rows requiring Block 1
+-> Block 1 loads then
+-> backend already contains the action result
 ```
 
-Selection must not be blindly cleared merely because a request failed or a block reloads.
-
-Supporting selection requests can fail independently from row loading. For example, the all-record total-count request can fail while visible grid rows still load. That supporting error is therefore presented separately rather than replacing the entire grid.
+Cache residency is a browser performance concern, never the business-action scope.
 
 ---
 
-# 19. Clear-selection lifecycle table
+## 12. Backend action wire contract
 
-| Event                   | Page/include        | Filtered/include     | Filtered/exclude        | All/include          | All/exclude        |
-| ----------------------- | ------------------- | -------------------- | ----------------------- | -------------------- | ------------------ |
-| Individual row click    | update ID           | update ID            | update exception        | update ID            | update exception   |
-| Current-page header     | add/remove page IDs | n/a                  | n/a                     | n/a                  | n/a                |
-| Select All Filtered     | n/a                 | switch to exclude [] | already Select All      | n/a                  | n/a                |
-| Select All Records      | n/a                 | n/a                  | n/a                     | switch to exclude [] | already Select All |
-| Pagination              | preserve            | preserve             | preserve                | preserve             | preserve           |
-| Sort change             | preserve            | preserve             | preserve                | preserve             | preserve           |
-| Filter change           | preserve            | preserve             | **reset to include []** | preserve             | preserve           |
-| Cache eviction          | preserve            | preserve             | preserve                | preserve             | preserve           |
-| Block reload            | preserve            | preserve             | preserve                | preserve             | preserve           |
-| Data retry              | preserve            | preserve             | preserve                | preserve             | preserve           |
-| New block loads         | sync checkbox       | sync checkbox        | sync checkbox           | sync checkbox        | sync checkbox      |
-| Deliberate clear action | clear               | clear                | clear                   | clear                | clear              |
+The backend action payload has no serialized `scope`.
 
----
-
-# 20. Backend action timing
-
-Selection changes do not themselves execute a backend bulk action.
-
-```text
-select row
-→ no bulk action call
-
-change page
-→ no bulk action call
-
-click Select All
-→ no bulk action call
-
-exclude a row
-→ no bulk action call
-```
-
-The real backend action happens only when the user explicitly invokes something such as:
-
-```text
-Export
-Delete
-Approve
-Update
-```
-
----
-
-# 21. Shared bulk-selection builder
-
-Shared code provides:
-
-```ts
-buildGridBulkSelection(...)
-```
-
-This produces the selection/query portion of a future backend action request.
-
-The builder requires filters to be supplied explicitly for exclude selection.
-
-That is a safety requirement.
-
-We do not silently default missing filters to `[]`, because:
-
-```text
-filters = []
-```
-
-has a real meaning:
-
-> the complete unfiltered dataset.
-
-A forgotten filtered query must never accidentally widen an action from "all filtered rows" to "all records".
-
----
-
-# 22. Transactions-specific bulk-selection builder
-
-Transactions code provides:
-
-```ts
-buildTransactionBulkSelection(...)
-```
-
-It applies these rules:
-
-## Manual/current-page/include
+### Explicit/manual/current-page/cross-page
 
 ```json
 {
-  "mode": "include",
-  "ids": ["A", "B"]
+  "selection": {
+    "mode": "include",
+    "ids": ["A", "B", "E"]
+  }
 }
 ```
 
-Exact IDs define membership. Filters are not attached.
+Meaning: exactly A, B and E. Do not attach visible filters.
 
-## Select All Filtered
-
-Logical selection:
-
-```text
-exclude [A]
-```
-
-plus AG Grid's applied filter model.
-
-The filter model is translated through:
-
-```ts
-mapTransactionFilterModel(...)
-```
-
-which is the same mapper used by normal row loading.
-
-Result:
+### Select All Filtered
 
 ```json
 {
-  "mode": "exclude",
-  "ids": ["A"],
+  "selection": {
+    "mode": "exclude",
+    "ids": ["A"]
+  },
   "filters": [
     {
       "field": "status",
@@ -680,196 +306,84 @@ Result:
 }
 ```
 
-Meaning:
+Meaning: all backend rows matching the translated filters except A.
 
-> all matching backend rows except A.
-
-## Select All Records
+### Select All Records
 
 ```json
 {
-  "mode": "exclude",
-  "ids": ["A"],
-  "filters": []
+  "selection": {
+    "mode": "exclude",
+    "ids": ["A"]
+  }
 }
 ```
 
-Meaning:
+Meaning: all records except A.
 
-> all records except A.
-
-## Invalid page + exclude
-
-Page mode cannot legitimately produce dataset-level exclude selection.
-
-If this state somehow reaches the Transactions builder, it fails loudly instead of silently interpreting it as a dataset-wide action.
+The frontend still uses internal `filtered | all` context while building an exclude request; that context only decides whether translated filters are attached.
 
 ---
 
-# 23. Reusing the Transaction filter mapper
+## 13. Filter translation must be reused
 
-Never create a second filter translator for bulk actions.
+Normal row loading and Select All Filtered actions must use the same feature filter mapper.
 
-Normal row loading:
+For Transactions:
 
 ```text
 AG Grid FilterModel
-→ mapTransactionFilterModel(...)
-→ backend TransactionFilter[]
+-> mapTransactionFilterModel(...)
+-> TransactionFilter[]
 ```
 
-Filtered bulk action:
-
-```text
-AG Grid FilterModel
-→ mapTransactionFilterModel(...)
-→ backend TransactionFilter[]
-```
-
-Both must use the exact same mapping code.
-
-This prevents normal grid results and bulk-action membership from disagreeing.
+Do not create a second action-only translator.
 
 ---
 
-# 24. Temporary Preview bulk payload control
+## 14. Actions happen only on explicit user commands
 
-During development we keep a validation control:
-
-```text
-Preview bulk payload
-```
-
-Its purpose is to prove the complete browser flow before a real bulk-action endpoint exists.
-
-Clicking it:
+Selection changes themselves do not call the backend action endpoint.
 
 ```text
-current logical selection
-+
-current UI strategy
-+
-current applied AG Grid filter model
-→ buildTransactionBulkSelection(...)
-→ display JSON
+select row       -> no action call
+change page      -> no action call
+Select All       -> no action call
+uncheck exception -> no action call
 ```
 
-It does **not**:
-
-```text
-delete anything
-update anything
-export anything
-call a bulk backend endpoint
-```
-
-The preview is a snapshot.
-
-If the user changes selection or filters after previewing, the old preview is cleared so stale JSON cannot be mistaken for current state.
-
-This control can remain while bulk-action development is ongoing. Remove or hide it once real product actions replace its validation purpose.
+A mutation happens only when the user invokes a real feature action such as Mark Failed/Completed/Pending.
 
 ---
 
-# 25. Browser scenarios already expected
+## 15. Lifecycle matrix
 
-## Page
-
-```text
-select rows across multiple pages
-→ preview = include + all exact selected IDs
-```
-
-## Filtered/manual
-
-```text
-apply filter
-manually select rows
-change filter
-→ explicit IDs remain
-→ preview = include + IDs
-```
-
-## Filtered Select All
-
-```text
-apply filter
-click Select All Filtered
-uncheck A
-→ preview = exclude [A] + mapped filters
-```
-
-## Filter changes after filtered Select All
-
-```text
-filtered exclude active
-change filter
-→ reset to include []
-→ user must click Select All again for the new filter
-```
-
-## All Records
-
-```text
-click Select All Records
-uncheck A
-change visible filter
-→ selection remains
-→ preview = exclude [A] + filters []
-```
-
-## Sort/pagination/cache reload
-
-Selection remains logically intact and loaded checkboxes are restored from stable row IDs.
+| Event | Page/include | Filtered/include | Filtered/exclude | All/include | All/exclude |
+| --- | --- | --- | --- | --- | --- |
+| Row checkbox | update exact ID | update exact ID | update exception | update exact ID | update exception |
+| Page header | add/remove page IDs | n/a | n/a | n/a | n/a |
+| Select All Filtered | n/a | switch to exclude [] | remain exclude | n/a | n/a |
+| Select All Records | n/a | n/a | n/a | switch to exclude [] | remain exclude |
+| Pagination | preserve | preserve | preserve | preserve | preserve |
+| Sort | preserve | preserve | preserve | preserve | preserve |
+| Filter change | preserve | preserve | **reset** | preserve | preserve |
+| Cache eviction | preserve | preserve | preserve | preserve | preserve |
+| Block reload | sync | sync | sync | sync | sync |
+| Deliberate clear | clear | clear | clear | clear | clear |
 
 ---
 
-# 26. Required regression coverage
+## 16. Rules for future developers and coding assistants
 
-The Infinite selection work is expected to cover:
-
-1. Manual row selection emits include + exact IDs.
-2. Current-page header changes only current-page IDs.
-3. Selections accumulate across pages.
-4. Pagination preserves selection.
-5. Sorting preserves selection.
-6. Filtered/include preserves explicit selection when filters change.
-7. Select All Filtered switches to exclude [].
-8. Unchecking under Select All Filtered adds an exception.
-9. Filtered/exclude filter change emits exactly include + [].
-10. Select All Records switches to exclude [].
-11. All/exclude survives visible filter changes.
-12. Logical selection contains no redundant UI scope.
-13. Newly loaded blocks restore checkbox state.
-14. Cache eviction/reload does not destroy logical selection.
-15. API-originated checkbox sync does not feed back into selection state.
-16. Filtered total follows AG Grid's current accepted model.
-17. Shared bulk-selection builder distinguishes include from exclude/query selection.
-18. Transactions bulk builder reuses the normal backend filter mapper.
-19. Page + exclude is rejected as invalid.
-20. Payload preview composes real selection + filter context without calling a bulk endpoint.
-
----
-
-# 27. Rules for future developers and coding assistants
-
-When modifying Infinite selection:
-
-1. Separate UI mode (`page | filtered | all`) from logical selection (`include | exclude`).
-2. Remember: `include []` means nothing selected.
-3. Remember: `exclude []` means Select All active.
-4. Manual row selection is always include.
-5. Current-page header is only an include shortcut over visible page IDs.
-6. Dataset Select All uses exclude.
-7. Never clear selection merely because sorting changed.
-8. Never clear explicit include selection merely because filtering changed.
-9. Reset filtered/exclude to include [] when its defining filter changes.
-10. Preserve all/exclude across visible filter changes.
-11. Preserve logical selection across pagination, cache eviction, block reload, and retry.
-12. Use stable row IDs.
-13. Let AG Grid own loaded RowNodes and checkbox rendering.
-14. Keep application state only for selection intent Infinite Row Model cannot represent across unloaded rows.
-15. Reuse the same backend filter mapper for normal loading and filtered bulk actions.
-16. Do not silently default missing exclude-query filters to an unfiltered dataset.
-17. Prefer native AG Grid APIs/events before adding custom lifecycle state.
-18. Document WHY any new reset or lifecycle rule exists.
+1. Separate Infinite UI strategy (`page | filtered | all`) from logical selection (`include | exclude`).
+2. Never serialize UI strategy as backend `scope`.
+3. Manual/current-page selection is always exact include IDs.
+4. Preserve explicit IDs across pagination, sorting and filter changes.
+5. Dataset Select All uses exclude + exception IDs.
+6. Reset only filtered-wide exclude when its defining filter changes.
+7. Preserve all-record exclude across visible filter changes.
+8. Keep selection independent from RowNode/cache lifetime.
+9. Use stable backend row IDs.
+10. Reuse the same feature filter mapper for row loading and filtered actions.
+11. Use Infinite-native cache APIs; do not copy SSRM refresh/retry behavior.
+12. Explain cache/selection lifecycle in comments when behavior is non-obvious.
