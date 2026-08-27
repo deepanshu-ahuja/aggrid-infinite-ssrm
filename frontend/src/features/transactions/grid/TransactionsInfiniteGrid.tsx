@@ -20,17 +20,23 @@ import type {
 } from '@/shared/grid/selection/serverSelection';
 import { useGridStatePersistence } from '@/shared/grid/state/useGridStatePersistence';
 import { listTransactions } from '../api/transactions.api';
-import type { Transaction } from '../api/transactions.contracts';
+import type { Transaction, TransactionStatus } from '../api/transactions.contracts';
 import {
   transactionsGridConfig,
   type TransactionsInfiniteGridOptions,
 } from '../transactionsGrid.config';
 import { TransactionEditingControls } from './TransactionEditingControls';
 import type { TransactionRowEditActionsContext } from './TransactionRowEditActions';
+import { TransactionSelectionActions } from './TransactionSelectionActions';
 import { transactionEditingConfig } from './transactionEditing';
 import { transactionColumns } from './transactionColumns';
 import { mapTransactionGridRequest } from './transactionRequest.mapper';
+import {
+  buildTransactionSelectionActionRequest,
+  hasTransactionSelection,
+} from './transactionSelectionAction';
 import { useTransactionEditPersistence } from './useTransactionEditPersistence';
+import { useTransactionSelectionAction } from './useTransactionSelectionAction';
 
 const INFINITE_STATE_KEY = 'transactions:infinite';
 const getTransactionId = (row: Transaction) => row.id;
@@ -101,7 +107,7 @@ export function TransactionsInfiniteGrid({
     applyBulkChanges,
   } = useCurrentPageEditActions({ lastEdit, applyChangesToNodes }, gridApi);
 
-  /** After Save, ask Infinite Row Model to reload cached rows from the backend. */
+  /** Backend writes are authoritative; Infinite reloads cached rows after any successful persistence. */
   const handlePersistedRows = useCallback(() => {
     gridApi.current?.refreshInfiniteCache();
   }, []);
@@ -112,6 +118,12 @@ export function TransactionsInfiniteGrid({
     onPersistedRows: handlePersistedRows,
   });
 
+  const {
+    applySelectionAction,
+    isApplyingSelectionAction,
+    selectionActionError,
+  } = useTransactionSelectionAction({ onApplied: handlePersistedRows });
+
   const handleDiscardRow = useCallback(
     (rowId: string) => {
       const api = gridApi.current;
@@ -121,10 +133,8 @@ export function TransactionsInfiniteGrid({
   );
 
   /** Bulk Save/Discard acts only on rows that are both dirty and currently selected. */
-  const selectedDirtyUpdates = buildSelectedTrackedGridUpdatePayload(
-    state,
-    readSelectionIntent(),
-  ).updates;
+  const selectionIntent = readSelectionIntent();
+  const selectedDirtyUpdates = buildSelectedTrackedGridUpdatePayload(state, selectionIntent).updates;
 
   const handleSaveSelected = useCallback(() => {
     const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
@@ -141,6 +151,26 @@ export function TransactionsInfiniteGrid({
       updates.map((update) => update.id),
     );
   }, [discardRows, readSelectionIntent, state]);
+
+  const handleSetSelectedStatus = useCallback(
+    (status: TransactionStatus) => {
+      const api = gridApi.current;
+      if (!api) return;
+
+      const currentSelection = readSelectionIntent();
+      if (!hasTransactionSelection(currentSelection)) return;
+
+      applySelectionAction(
+        buildTransactionSelectionActionRequest(
+          currentSelection,
+          selectionScope === 'filtered' ? 'filtered' : 'all',
+          api.getFilterModel(),
+          { status },
+        ),
+      );
+    },
+    [applySelectionAction, readSelectionIntent, selectionScope],
+  );
 
   /** The Actions cell checks this same draft state, so a clean row should not show Save/Discard. */
   const rowEditActionsContext = useMemo<TransactionRowEditActionsContext>(
@@ -196,6 +226,13 @@ export function TransactionsInfiniteGrid({
 
   return (
     <Stack spacing={2}>
+      <TransactionSelectionActions
+        hasSelection={hasTransactionSelection(selectionIntent)}
+        isApplying={isApplyingSelectionAction}
+        error={selectionActionError}
+        onSetStatus={handleSetSelectedStatus}
+      />
+
       <TransactionEditingControls
         editedRowCount={editedRowCount}
         selectedEditedRowCount={selectedDirtyUpdates.length}
