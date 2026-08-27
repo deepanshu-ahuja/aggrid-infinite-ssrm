@@ -1,4 +1,4 @@
-import type { ColDef } from 'ag-grid-community';
+import type { ColDef, EditableCallbackParams } from 'ag-grid-community';
 import {
   serverDateFilterParams,
   serverNumberFilterParams,
@@ -8,17 +8,55 @@ import { formatCurrency } from '@/shared/grid/formatters/formatCurrency';
 import { formatDate } from '@/shared/grid/formatters/formatDate';
 import type { Transaction } from '../api/transactions.contracts';
 import { TransactionInteractionCell } from './TransactionInteractionCell';
-import { TransactionRowEditActions } from './TransactionRowEditActions';
+import {
+  TransactionRowEditActions,
+  type TransactionRowEditActionsContext,
+} from './TransactionRowEditActions';
+import type { TransactionEditableField } from './transactionEditing';
 import { isTransactionCellEditable } from './transactionRowInteraction';
 import { TransactionStatusCell } from './TransactionStatusCell';
 import { TransactionStatusEditor } from './TransactionStatusEditor';
 
+function getConflictContext(params: { context?: unknown }) {
+  return params.context as TransactionRowEditActionsContext | undefined;
+}
+
+/**
+ * Compose the normal row editability rule with conflict state. A conflicted field cannot open its editor
+ * until the user explicitly chooses the server value or keeps the local value from the conflict popover.
+ */
+function isConflictAwareEditable(
+  params: EditableCallbackParams<Transaction>,
+  field: TransactionEditableField,
+) {
+  if (!isTransactionCellEditable(params) || !params.data) return false;
+  return !getConflictContext(params)?.isCellConflicted(params.data.id, field);
+}
+
+/** Shared presentation callbacks for the four Transaction fields that participate in tracked editing. */
+function conflictPresentation(field: TransactionEditableField): Pick<
+  ColDef<Transaction>,
+  'cellClassRules' | 'tooltipValueGetter'
+> {
+  return {
+    cellClassRules: {
+      'grid-cell--edit-conflict': (params) =>
+        Boolean(params.data && getConflictContext(params)?.isCellConflicted(params.data.id, field)),
+    },
+    tooltipValueGetter: (params) => {
+      if (!params.data) return undefined;
+      const conflict = getConflictContext(params)?.getCellConflict(params.data.id, field);
+      if (!conflict) return undefined;
+      return `Your edit: ${String(conflict.localValue)}. Server value: ${String(conflict.remoteValue)}. Click to resolve.`;
+    },
+  };
+}
+
 /**
  * Column definitions for the Transactions feature.
  *
- * Editing is feature-owned. Reference/date remain read-only; account/amount/currency/status are
- * editable only when the backend-provided row interaction policy allows editing. Selection-disabled
- * rows can still be edited; fully read-only rows cannot.
+ * Editing remains feature-owned. Conflict detection/state lives in shared tracked editing, while these
+ * columns compose Transaction-specific editability and visual treatment without duplicating the state machine.
  */
 export const transactionColumns: ColDef<Transaction>[] = [
   {
@@ -44,7 +82,8 @@ export const transactionColumns: ColDef<Transaction>[] = [
     minWidth: 150,
     filter: 'agTextColumnFilter',
     filterParams: serverTextFilterParams,
-    editable: isTransactionCellEditable,
+    editable: (params) => isConflictAwareEditable(params, 'account'),
+    ...conflictPresentation('account'),
   },
   {
     field: 'amount',
@@ -53,10 +92,11 @@ export const transactionColumns: ColDef<Transaction>[] = [
     minWidth: 140,
     filter: 'agNumberColumnFilter',
     filterParams: serverNumberFilterParams,
-    editable: isTransactionCellEditable,
+    editable: (params) => isConflictAwareEditable(params, 'amount'),
     cellEditor: 'agNumberCellEditor',
     valueFormatter: ({ value, data }) =>
       typeof value === 'number' ? formatCurrency(value, data?.currency ?? 'USD') : '',
+    ...conflictPresentation('amount'),
   },
   {
     field: 'currency',
@@ -64,7 +104,8 @@ export const transactionColumns: ColDef<Transaction>[] = [
     maxWidth: 120,
     filter: 'agTextColumnFilter',
     filterParams: serverTextFilterParams,
-    editable: isTransactionCellEditable,
+    editable: (params) => isConflictAwareEditable(params, 'currency'),
+    ...conflictPresentation('currency'),
   },
   {
     field: 'status',
@@ -73,8 +114,9 @@ export const transactionColumns: ColDef<Transaction>[] = [
     filter: 'agTextColumnFilter',
     filterParams: serverTextFilterParams,
     cellRenderer: TransactionStatusCell,
-    editable: isTransactionCellEditable,
+    editable: (params) => isConflictAwareEditable(params, 'status'),
     cellEditor: TransactionStatusEditor,
+    ...conflictPresentation('status'),
   },
   {
     field: 'transactionDate',
