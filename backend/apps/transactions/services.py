@@ -11,6 +11,21 @@ class TransactionNotFoundError(LookupError):
     """Raised when an update targets a Transaction id that is not in the current data source."""
 
 
+class TransactionReadOnlyError(PermissionError):
+    """Raised when a direct/edit persistence request targets a backend read-only Transaction."""
+
+
+def _interaction_mode_for_index(index: int) -> str:
+    """Deterministic sample policy used only to exercise generic grid interaction states locally."""
+
+    row_number = index + 1
+    if row_number % 17 == 0:
+        return "readOnly"
+    if row_number % 11 == 0:
+        return "selectionDisabled"
+    return "enabled"
+
+
 def _build_transactions(count: int = 750) -> List[Dict[str, Any]]:
     today = date.today()
     rows: List[Dict[str, Any]] = []
@@ -25,6 +40,7 @@ def _build_transactions(count: int = 750) -> List[Dict[str, Any]]:
                 "currency": CURRENCIES[index % len(CURRENCIES)],
                 "status": STATUSES[index % len(STATUSES)],
                 "transactionDate": today - timedelta(days=index % 365),
+                "interactionMode": _interaction_mode_for_index(index),
             }
         )
 
@@ -102,6 +118,24 @@ def _find_transaction(transaction_id: str) -> Dict[str, Any]:
     raise TransactionNotFoundError(transaction_id)
 
 
+def _is_selection_eligible(row: Dict[str, Any]) -> bool:
+    """
+    Backend-authoritative selection eligibility.
+
+    Missing metadata defaults to enabled so older fixtures remain valid, while real query responses
+    always include `interactionMode`. Both selection-disabled and read-only rows live outside the
+    selectable universe and therefore never need to be manufactured as include/exclude exceptions.
+    """
+
+    return row.get("interactionMode", "enabled") == "enabled"
+
+
+def _is_editable(row: Dict[str, Any]) -> bool:
+    """Selection-disabled rows may still be edited; only the stronger read-only mode blocks writes."""
+
+    return row.get("interactionMode", "enabled") != "readOnly"
+
+
 def update_transaction(
     transaction_id: str,
     changes: Dict[str, Any],
@@ -109,6 +143,9 @@ def update_transaction(
     """Apply one already-validated patch and return the authoritative updated row."""
 
     row = _find_transaction(transaction_id)
+    if not _is_editable(row):
+        raise TransactionReadOnlyError(transaction_id)
+
     row.update(changes)
     return row
 
@@ -119,16 +156,18 @@ def bulk_update_transactions(
     """
     Apply an already-validated group of row patches as one logical operation.
 
-    Resolve every id before mutating anything. With the current in-memory source this gives the API
-    atomic not-found behavior: if any requested Transaction is missing, none of the valid rows are
-    changed. A future database/repository implementation should preserve that contract with a real
-    transaction boundary.
+    Resolve every id and verify edit eligibility before mutating anything. With the current in-memory
+    source this gives atomic not-found/read-only behavior. A future database/repository implementation
+    should preserve that contract with a real transaction boundary.
     """
 
     resolved = [
         (_find_transaction(item["id"]), item["changes"])
         for item in updates
     ]
+
+    if any(not _is_editable(row) for row, _changes in resolved):
+        raise TransactionReadOnlyError()
 
     for row, changes in resolved:
         row.update(changes)
@@ -142,29 +181,32 @@ def update_transactions_by_selection(
     changes: Dict[str, Any],
 ) -> int:
     """
-    Apply one patch to the logical selection represented by the server-backed grid.
+    Apply one patch to the eligible logical selection represented by the server-backed grid.
 
-    The backend deliberately infers dataset meaning from the compact wire contract:
+    The compact include/exclude contract is unchanged by row eligibility:
 
-    - include + ids -> resolve and update exactly those ids;
-    - exclude + non-empty filters -> matching rows minus exception ids;
-    - exclude + no filters -> all rows minus exception ids.
+    - include + ids -> resolve those exact ids, then keep only backend-eligible rows;
+    - exclude + non-empty filters -> matching eligible rows minus user exception ids;
+    - exclude + no filters -> all eligible rows minus user exception ids.
 
-    A separate `scope` field is unnecessary because filters already distinguish filtered-wide from
-    all-record selection. If a filtered Select All has no active filters, its dataset is mathematically
-    the same as all records.
+    Disabled rows are not encoded as exclusions. They are outside the selectable universe entirely,
+    including when they were never loaded by the browser.
     """
 
     selected_ids = selection.get("ids", [])
 
     if selection["mode"] == "include":
-        # Exact selection is atomic: resolve every id before changing any row so a stale/missing id
-        # cannot leave a partially updated explicit batch.
-        selected_rows = [_find_transaction(transaction_id) for transaction_id in selected_ids]
+        # Resolve every requested id first so a stale/missing explicit id cannot leave a partial batch.
+        resolved_rows = [_find_transaction(transaction_id) for transaction_id in selected_ids]
+        selected_rows = [row for row in resolved_rows if _is_selection_eligible(row)]
     else:
         candidates = _apply_filters(TRANSACTIONS, filters) if filters else list(TRANSACTIONS)
         excluded_ids = set(selected_ids)
-        selected_rows = [row for row in candidates if row["id"] not in excluded_ids]
+        selected_rows = [
+            row
+            for row in candidates
+            if _is_selection_eligible(row) and row["id"] not in excluded_ids
+        ]
 
     for row in selected_rows:
         row.update(changes)
