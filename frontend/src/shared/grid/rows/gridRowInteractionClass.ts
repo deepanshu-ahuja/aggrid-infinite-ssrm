@@ -65,6 +65,12 @@ export type GridRowInteractionAdaptedClassGetterOptions<TData> =
     getMode: (row: TData) => GridRowInteractionMode;
   };
 
+/** Internal broad shape used only after the public overloads have done their compile-time checks. */
+interface GridRowInteractionClassGetterImplementationOptions<TData>
+  extends GridRowInteractionClassGetterBaseOptions<TData> {
+  getMode?: (row: TData) => GridRowInteractionMode;
+}
+
 /**
  * Build an AG Grid `getRowClass` callback for rows that expose the recommended `interactionMode`
  * property directly.
@@ -99,9 +105,7 @@ export function createGridRowInteractionClassGetter<TData extends object>(
  * switch, and merge extra classes correctly. That is genuine reusable grid mechanics, not domain logic.
  */
 export function createGridRowInteractionClassGetter<TData extends object>(
-  options:
-    | GridRowInteractionDefaultClassGetterOptions<TData & GridRowWithInteractionMode>
-    | GridRowInteractionAdaptedClassGetterOptions<TData> = {},
+  options: GridRowInteractionClassGetterImplementationOptions<TData> = {},
 ): (params: RowClassParams<TData>) => string | undefined {
   // Resolve defaults once when the callback is created, not for every row render. Using `??` instead
   // of object-spreading a Partial also guarantees the final values are always real strings.
@@ -120,12 +124,11 @@ export function createGridRowInteractionClassGetter<TData extends object>(
     const row = params.data;
 
     // Prefer the explicit adapter when supplied. Otherwise use the recommended common API property.
-    // The overloads above make this cast safe for callers: a row without `interactionMode` cannot use
-    // the no-adapter signature.
-    const mode =
-      'getMode' in options && options.getMode
-        ? options.getMode(row)
-        : (row as TData & GridRowWithInteractionMode).interactionMode;
+    // The public overloads above make this cast safe for callers: a row without `interactionMode`
+    // cannot use the no-adapter signature.
+    const mode = options.getMode
+      ? options.getMode(row)
+      : (row as TData & GridRowWithInteractionMode).interactionMode;
 
     let interactionClass: string | undefined;
 
