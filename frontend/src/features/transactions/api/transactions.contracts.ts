@@ -5,6 +5,7 @@ import type {
   GridQueryFilter,
   GridQuerySort,
 } from '@/shared/grid/query/gridQuery.contracts';
+import type { GridSelectionActionTarget } from '@/shared/grid/selection/gridSelectionActionTarget';
 
 /**
  * Transaction statuses returned by the Transactions backend.
@@ -113,46 +114,17 @@ export type TransactionSort = GridQuerySort<TransactionField>;
  */
 export type TransactionFilter = GridQueryFilter<TransactionField>;
 
-/** Exact selected ids. Filters are intentionally irrelevant once the ids are known. */
-export interface TransactionExplicitSelection {
-  scope: 'explicit';
-  mode: 'include';
-  ids: Transaction['id'][];
-}
-
-/** Every row matching the current backend filters except these ids. */
-export interface TransactionFilteredSelection {
-  scope: 'filtered';
-  mode: 'exclude';
-  ids: Transaction['id'][];
-}
-
-/** Every Transaction record except these ids. */
-export interface TransactionAllSelection {
-  scope: 'all';
-  mode: 'exclude';
-  ids: Transaction['id'][];
-}
-
 /**
- * One action initiated above the table, such as changing the status of the current logical selection.
- * Explicit selection never sends filters; filtered selection must use the same translated filters as
- * row loading; all-record selection is independent of the visible filter.
+ * Transactions adds only its domain mutation payload to the shared server-backed selection target.
+ * Explicit / filtered / all selection semantics remain shared so another table can reuse them with a
+ * different action payload and different filter translator.
  */
-export type TransactionSelectionActionRequest =
-  | {
-      selection: TransactionExplicitSelection;
-      changes: TransactionUpdateChanges;
-    }
-  | {
-      selection: TransactionFilteredSelection;
-      filters: TransactionFilter[];
-      changes: TransactionUpdateChanges;
-    }
-  | {
-      selection: TransactionAllSelection;
-      changes: TransactionUpdateChanges;
-    };
+export type TransactionSelectionActionRequest = GridSelectionActionTarget<
+  Transaction['id'],
+  TransactionFilter
+> & {
+  changes: TransactionUpdateChanges;
+};
 
 export interface TransactionSelectionActionResponse {
   updatedCount: number;
