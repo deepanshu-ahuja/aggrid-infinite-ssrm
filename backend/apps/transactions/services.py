@@ -141,25 +141,30 @@ def update_transactions_by_selection(
     filters: List[Dict[str, Any]],
     changes: Dict[str, Any],
 ) -> int:
-    """Apply one patch to the logical selection represented by the server-backed grid."""
+    """
+    Apply one patch to the logical selection represented by the server-backed grid.
 
-    scope = selection["scope"]
+    The backend deliberately infers dataset meaning from the compact wire contract:
+
+    - include + ids -> resolve and update exactly those ids;
+    - exclude + non-empty filters -> matching rows minus exception ids;
+    - exclude + no filters -> all rows minus exception ids.
+
+    A separate `scope` field is unnecessary because filters already distinguish filtered-wide from
+    all-record selection. If a filtered Select All has no active filters, its dataset is mathematically
+    the same as all records.
+    """
+
     selected_ids = selection.get("ids", [])
 
-    if scope == "explicit":
-        # Explicit selection must be exact and atomic: resolve every id before changing any row so a
-        # stale/missing selected id cannot leave a partially updated batch.
+    if selection["mode"] == "include":
+        # Exact selection is atomic: resolve every id before changing any row so a stale/missing id
+        # cannot leave a partially updated explicit batch.
         selected_rows = [_find_transaction(transaction_id) for transaction_id in selected_ids]
     else:
-        candidates = (
-            _apply_filters(TRANSACTIONS, filters)
-            if scope == "filtered"
-            else list(TRANSACTIONS)
-        )
+        candidates = _apply_filters(TRANSACTIONS, filters) if filters else list(TRANSACTIONS)
         excluded_ids = set(selected_ids)
-        selected_rows = [
-            row for row in candidates if row["id"] not in excluded_ids
-        ]
+        selected_rows = [row for row in candidates if row["id"] not in excluded_ids]
 
     for row in selected_rows:
         row.update(changes)
