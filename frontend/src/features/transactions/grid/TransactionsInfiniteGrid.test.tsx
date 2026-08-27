@@ -19,6 +19,7 @@ const gridCapture = vi.hoisted(() => ({ props: undefined as unknown }));
 const transactionApi = vi.hoisted(() => ({
   updateTransaction: vi.fn(),
   bulkUpdateTransactions: vi.fn(),
+  updateTransactionsBySelection: vi.fn(),
   listTransactions: vi.fn(),
 }));
 
@@ -80,9 +81,11 @@ function createRowNode(row: Transaction): RowNode<Transaction> {
 function createApi(options?: {
   rowSelection?: string[];
   rows?: RowNode<Transaction>[];
+  filterModel?: object;
 }): GridApi<Transaction> {
   return {
     getState: vi.fn(() => ({ rowSelection: options?.rowSelection ?? [] })),
+    getFilterModel: vi.fn(() => options?.filterModel ?? {}),
     isLastRowIndexKnown: vi.fn(() => false),
     getDisplayedRowCount: vi.fn(() => 0),
     forEachNode: vi.fn((callback: (node: RowNode<Transaction>) => void) => {
@@ -124,6 +127,37 @@ describe('TransactionsInfiniteGrid production wiring', () => {
     expect(onSelectionChange).toHaveBeenLastCalledWith({
       mode: 'include',
       ids: ['txn-a', 'txn-b'],
+    });
+  });
+
+  it('updates explicit selected rows through the action bar and refreshes Infinite data', async () => {
+    const api = createApi({
+      rowSelection: ['txn-a', 'txn-b'],
+      filterModel: {
+        status: { type: 'equals', filter: 'Pending' },
+      },
+    });
+    transactionApi.updateTransactionsBySelection.mockResolvedValue({ updatedCount: 2 });
+
+    renderGrid(<TransactionsInfiniteGrid selectionScope="page" />);
+
+    act(() => {
+      getGridProps().onGridReady?.(gridReady(api));
+      getGridProps().onSelectionChanged?.({ api } as unknown as SelectionChangedEvent<Transaction>);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark Failed' }));
+
+    await waitFor(() => {
+      expect(transactionApi.updateTransactionsBySelection).toHaveBeenCalledWith({
+        selection: {
+          scope: 'explicit',
+          mode: 'include',
+          ids: ['txn-a', 'txn-b'],
+        },
+        changes: { status: 'Failed' },
+      });
+      expect(api.refreshInfiniteCache).toHaveBeenCalledTimes(1);
     });
   });
 
