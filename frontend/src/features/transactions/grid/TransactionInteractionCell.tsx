@@ -1,6 +1,14 @@
-import { Chip, Tooltip } from '@mui/material';
+import { Chip, SvgIcon, Tooltip } from '@mui/material';
 import type { CustomCellRendererProps } from 'ag-grid-react';
 import type { Transaction } from '../api/transactions.contracts';
+
+function LockIcon() {
+  return (
+    <SvgIcon fontSize="small" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M17 8h-1V6a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2Zm-7-2a2 2 0 0 1 4 0v2h-4V6Zm7 13H7v-9h10v9Z" />
+    </SvgIcon>
+  );
+}
 
 /**
  * Visible explanation for backend-provided row restrictions.
@@ -12,7 +20,7 @@ export function TransactionInteractionCell({ data }: CustomCellRendererProps<Tra
   if (!data || data.interactionMode === 'enabled') return null;
 
   const isReadOnly = data.interactionMode === 'readOnly';
-  const label = isReadOnly ? '🔒 Read only' : 'Selection disabled';
+  const label = isReadOnly ? 'Read only' : 'Selection disabled';
   const reason =
     data.interactionReason ??
     (isReadOnly
@@ -22,6 +30,7 @@ export function TransactionInteractionCell({ data }: CustomCellRendererProps<Tra
   return (
     <Tooltip title={reason} arrow>
       <Chip
+        icon={isReadOnly ? <LockIcon /> : undefined}
         label={label}
         size="small"
         variant={isReadOnly ? 'filled' : 'outlined'}
