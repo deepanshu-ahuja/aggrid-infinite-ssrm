@@ -24,16 +24,16 @@ def _interaction_policy_for_row(row: Dict[str, Any]) -> Tuple[str, Optional[str]
     different fields and rules.
     """
 
-    if row["status"] == "Completed":
+    if row["status"] == "Completed" and row["account"] == "Settlement":
         return (
             "readOnly",
-            "Completed transactions are locked from selection and editing.",
+            "Completed Settlement transactions are locked from selection and editing.",
         )
 
     if row["status"] == "Pending" and row["account"] == "Treasury":
         return (
             "selectionDisabled",
-            "Pending Treasury transactions require individual review, so bulk selection is disabled.",
+            "Pending Treasury transactions require individual review, so selection-based bulk actions are disabled.",
         )
 
     return "enabled", None
