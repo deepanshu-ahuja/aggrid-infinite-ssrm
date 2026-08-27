@@ -14,23 +14,31 @@ import { useCurrentPageEditActions } from '@/shared/grid/editing/useCurrentPageE
 import { useTrackedGridEditing } from '@/shared/grid/editing/useTrackedGridEditing';
 import { GridErrorOverlay } from '@/shared/grid/overlays/GridErrorOverlay';
 import { useSsrmSelectionController } from '@/shared/grid/selection/server-side/useSsrmSelectionController';
+import type { ServerSelectionIntent } from '@/shared/grid/selection/serverSelection';
 import { useGridStatePersistence } from '@/shared/grid/state/useGridStatePersistence';
 import { listTransactions } from '../api/transactions.api';
-import type { Transaction } from '../api/transactions.contracts';
+import type { Transaction, TransactionStatus } from '../api/transactions.contracts';
 import {
   transactionsGridConfig,
   type TransactionsSsrmGridOptions,
 } from '../transactionsGrid.config';
 import { TransactionEditingControls } from './TransactionEditingControls';
 import type { TransactionRowEditActionsContext } from './TransactionRowEditActions';
+import { TransactionSelectionActions } from './TransactionSelectionActions';
 import { transactionEditingConfig } from './transactionEditing';
 import { transactionColumns } from './transactionColumns';
 import { mapTransactionGridRequest } from './transactionRequest.mapper';
+import {
+  buildTransactionSelectionActionRequest,
+  hasTransactionSelection,
+} from './transactionSelectionAction';
 import { useTransactionEditPersistence } from './useTransactionEditPersistence';
+import { useTransactionSelectionAction } from './useTransactionSelectionAction';
 
 const SSRM_STATE_KEY = 'transactions:ssrm';
 const getTransactionId = (row: Transaction) => row.id;
 const getRowId = ({ data }: GetRowIdParams<Transaction>) => getTransactionId(data);
+const EMPTY_SELECTION: ServerSelectionIntent<string> = { mode: 'include', ids: [] };
 
 /** AG Grid asks the server for row blocks. This function converts that request to our Transactions API shape. */
 const loadTransactionRows: GridRowsLoader<Transaction> = (request, context) =>
@@ -53,6 +61,7 @@ export function TransactionsSsrmGrid({
 
   const {
     error: selectionError,
+    isFilteredSelectAllActive,
     readSelectionIntent,
     selectCurrentPage,
     selectAllFiltered,
@@ -96,7 +105,7 @@ export function TransactionsSsrmGrid({
     applyBulkChanges,
   } = useCurrentPageEditActions({ lastEdit, applyChangesToNodes }, gridApi);
 
-  /** After Save, ask SSRM to reload its rows from the backend. */
+  /** Backend writes are authoritative; SSRM reloads its server-side rows after successful persistence. */
   const handlePersistedRows = useCallback(() => {
     gridApi.current?.refreshServerSide();
   }, []);
@@ -107,6 +116,12 @@ export function TransactionsSsrmGrid({
     onPersistedRows: handlePersistedRows,
   });
 
+  const {
+    applySelectionAction,
+    isApplyingSelectionAction,
+    selectionActionError,
+  } = useTransactionSelectionAction({ onApplied: handlePersistedRows });
+
   const handleDiscardRow = useCallback(
     (rowId: string) => {
       const api = gridApi.current;
@@ -116,8 +131,9 @@ export function TransactionsSsrmGrid({
   );
 
   /** Bulk Save/Discard acts only on rows that are both dirty and currently selected. */
+  const selectionIntent = isGridReady ? readSelectionIntent() : EMPTY_SELECTION;
   const selectedDirtyUpdates = isGridReady
-    ? buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates
+    ? buildSelectedTrackedGridUpdatePayload(state, selectionIntent).updates
     : [];
 
   const handleSaveSelected = useCallback(() => {
@@ -137,6 +153,26 @@ export function TransactionsSsrmGrid({
       updates.map((update) => update.id),
     );
   }, [discardRows, readSelectionIntent, state]);
+
+  const handleSetSelectedStatus = useCallback(
+    (status: TransactionStatus) => {
+      const api = gridApi.current;
+      if (!api) return;
+
+      const currentSelection = readSelectionIntent();
+      if (!hasTransactionSelection(currentSelection)) return;
+
+      applySelectionAction(
+        buildTransactionSelectionActionRequest(
+          currentSelection,
+          isFilteredSelectAllActive ? 'filtered' : 'all',
+          api.getFilterModel(),
+          { status },
+        ),
+      );
+    },
+    [applySelectionAction, isFilteredSelectAllActive, readSelectionIntent],
+  );
 
   /** The Actions cell checks this same draft state, so a clean row should not show Save/Discard. */
   const rowEditActionsContext = useMemo<TransactionRowEditActionsContext>(
@@ -189,6 +225,13 @@ export function TransactionsSsrmGrid({
 
   return (
     <Stack spacing={2}>
+      <TransactionSelectionActions
+        hasSelection={hasTransactionSelection(selectionIntent)}
+        isApplying={isApplyingSelectionAction}
+        error={selectionActionError}
+        onSetStatus={handleSetSelectedStatus}
+      />
+
       <TransactionEditingControls
         editedRowCount={editedRowCount}
         selectedEditedRowCount={selectedDirtyUpdates.length}
