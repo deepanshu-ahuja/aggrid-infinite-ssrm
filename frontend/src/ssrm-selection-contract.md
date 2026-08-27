@@ -24,9 +24,9 @@ Sorting, filtering, pagination and store refresh can move/recreate RowNodes. Ide
 
 ## 2. Native SSRM selection remains native
 
-The native SSRM header checkbox represents **All Records**.
+The native SSRM header checkbox represents **All Records inside the selection-eligible universe**.
 
-Native server-side selection state can represent unloaded rows:
+Native server-side selection state can represent unloaded rows compactly:
 
 ```ts
 {
@@ -35,11 +35,13 @@ Native server-side selection state can represent unloaded rows:
 }
 ```
 
-Meaning:
+Meaning for a backend action:
 
 ```text
-all records except A
+all eligible records except user-deselected A
 ```
+
+Backend-disabled/read-only rows are outside the selectable universe; they are not added to `toggledNodes` merely because Select All is active.
 
 Use native APIs such as:
 
@@ -77,7 +79,9 @@ selectAll true + toggledNodes [A]
 -> exclude [A]
 ```
 
-This logical shape contains no serialized `scope`.
+This logical shape contains no serialized `scope` and no disabled-row ID list.
+
+`exclude` IDs are user exceptions, not rows that backend policy made ineligible.
 
 ---
 
@@ -85,26 +89,37 @@ This logical shape contains no serialized `scope`.
 
 Ordinary row checkboxes use native SSRM selection.
 
+The concrete grid supplies the feature's row policy through native `rowSelection.isRowSelectable`.
+
 Example:
 
 ```text
-select A and B
--> include [A, B]
+A enabled -> can select
+B selectionDisabled -> cannot select
+C readOnly -> cannot select
 ```
 
-Sorting and visible filter changes do not automatically clear explicit IDs.
+Selecting A produces:
+
+```text
+include [A]
+```
+
+B and C do not become exclusions. Sorting and visible filter changes do not automatically clear explicit eligible IDs.
 
 ---
 
 ## 5. Select Current Page
 
-Current Page is an explicit command over the RowNodes for the current page.
+Current Page is an explicit command over the **selectable** RowNodes for the current page.
 
 It ultimately produces ordinary explicit selection:
 
 ```text
-include [ids on current page plus any preserved explicit ids]
+include [eligible ids on current page plus any preserved explicit ids]
 ```
+
+Disabled RowNodes are not passed into `setNodesSelected()` and are not recorded as exclusions.
 
 Page is how the user selected the IDs; it is not a backend selection scope.
 
@@ -127,10 +142,10 @@ exclude []
 means:
 
 ```text
-all backend rows matching that filter
+all selection-eligible backend rows matching that filter
 ```
 
-If the user unchecks A:
+If the user unchecks eligible A:
 
 ```text
 exclude [A]
@@ -139,8 +154,10 @@ exclude [A]
 means:
 
 ```text
-all matching rows except A
+all eligible matching rows except A
 ```
+
+Loaded disabled rows are not programmatically selected during custom filtered reconciliation. Unloaded disabled rows are removed by backend eligibility when the action executes; their IDs are never enumerated into `exclude`.
 
 The filter itself remains AG Grid-owned. When the real action is built, the root reads `api.getFilterModel()` and the feature translates it through the same mapper used by normal row loading.
 
@@ -173,7 +190,7 @@ Sorting changes order, not identity, so it does not clear selection.
 
 Pagination changes visibility, not logical selection, so it does not clear native explicit or All Records selection.
 
-Current Page acts only on the page visible when the command is invoked.
+Current Page acts only on the page visible when the command is invoked and only on selectable rows in that page.
 
 ---
 
@@ -181,7 +198,7 @@ Current Page acts only on the page visible when the command is invoked.
 
 Custom filtered selection exists beyond currently loaded RowNodes.
 
-When SSRM materialises/replaces rows:
+When SSRM materialises/replaces an eligible row:
 
 ```text
 logical filtered selection
@@ -189,13 +206,15 @@ logical filtered selection
 -> sync RowNode checkbox programmatically
 ```
 
+When the loaded row is disabled (`node.selectable === false`), custom reconciliation leaves that RowNode untouched.
+
 Programmatic checkbox restoration must not feed back into the logical exception state.
 
 ---
 
 ## 10. Backend action wire contract
 
-The backend does not need `scope`.
+The backend does not need `scope` or disabled-row IDs.
 
 ### Explicit/manual/current-page
 
@@ -208,7 +227,7 @@ The backend does not need `scope`.
 }
 ```
 
-Meaning: exactly A and B.
+Meaning: selection-eligible rows among exact A and B. Native UI selection should already prevent disabled rows, but backend eligibility remains authoritative for stale/crafted requests.
 
 ### Select All Filtered
 
@@ -228,7 +247,7 @@ Meaning: exactly A and B.
 }
 ```
 
-Meaning: all matching backend rows except A.
+Meaning: eligible matching backend rows except user-deselected A.
 
 ### All Records
 
@@ -241,7 +260,7 @@ Meaning: all matching backend rows except A.
 }
 ```
 
-Meaning: all records except A.
+Meaning: all eligible records except user-deselected A.
 
 The frontend still knows internally whether exclude currently represents filtered-wide or all-record selection. That internal row-model context is used only to decide whether translated filters are attached.
 
@@ -252,6 +271,8 @@ The frontend still knows internally whether exclude currently represents filtere
 Selection changes do not call the action endpoint by themselves.
 
 A backend mutation occurs only when the user invokes a real feature action such as the current Transaction status actions.
+
+Before mutation, Python applies the authoritative row eligibility rule to the logical target. This is what protects disabled rows that SSRM never loaded into the browser.
 
 After success, SSRM uses its own native refresh path:
 
@@ -289,14 +310,16 @@ If grouping/tree selection is introduced later, do not flatten hierarchical sele
 
 | Behaviour | Owner |
 | --- | --- |
-| Individual rows | Native AG Grid SSRM |
+| Individual eligible rows | Native AG Grid SSRM |
+| Loaded-row selectability | Native AG Grid callback + feature row policy |
 | Explicit multi-row selection | Native AG Grid SSRM |
 | Header All Records | Native AG Grid SSRM |
-| Unloaded all-record selection | Native SSRM selection state |
-| Current Page command | Small command over native RowNodes |
+| Unloaded all-record selection | Native SSRM selection state + backend eligibility at action time |
+| Current Page command | Small command over selectable native RowNodes |
 | All Filtered logical intent | Application state |
-| Filtered exclusions | Application state |
-| Loaded-row sync during All Filtered | Application -> AG Grid RowNodes |
+| Filtered user exclusions | Application state |
+| Loaded-row sync during All Filtered | Application -> eligible AG Grid RowNodes |
+| Disabled unloaded rows | Backend eligibility |
 | Action target construction | Shared grid helper + feature mapper |
 | Retry/refresh | Native SSRM APIs |
 
@@ -308,12 +331,16 @@ If grouping/tree selection is introduced later, do not flatten hierarchical sele
 2. Prefer native SSRM selection before adding custom state.
 3. Keep the native header meaning as All Records unless product requirements deliberately change it.
 4. Use native server-side selection state for explicit/all-record selection.
-5. Treat Current Page as exact IDs, not a backend page scope.
-6. Keep custom state only where native SSRM cannot represent the required product meaning.
-7. Reset custom All Filtered when its defining filter changes.
-8. Preserve native explicit and All Records selection across visible filter changes.
-9. Preserve selection across sorting/pagination.
-10. Reuse the same feature filter mapper for row loading and filtered actions.
-11. Do not serialize redundant `scope` in action payloads.
-12. Use SSRM-native retry/refresh APIs; do not copy Infinite lifecycle blindly.
-13. Review grouped/hierarchical selection separately if grouping is introduced.
+5. Treat Current Page as exact selectable IDs, not a backend page scope.
+6. Disabled rows are outside the selection universe; never manufacture their IDs as include/exclude bookkeeping.
+7. Use native `isRowSelectable` for loaded rows and backend eligibility for unloaded rows.
+8. Keep custom state only where native SSRM cannot represent the required product meaning.
+9. Reset custom All Filtered when its defining filter changes.
+10. Preserve native explicit and All Records selection across visible filter changes.
+11. Preserve selection across sorting/pagination.
+12. Reuse the same feature filter mapper for row loading and filtered actions.
+13. Do not serialize redundant `scope` in action payloads.
+14. Use SSRM-native retry/refresh APIs; do not copy Infinite lifecycle blindly.
+15. Review grouped/hierarchical selection separately if grouping is introduced.
+
+See `docs/row-interaction.md` for the reusable selection-disabled/read-only policy.
