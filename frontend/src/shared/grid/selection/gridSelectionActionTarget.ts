@@ -1,47 +1,49 @@
 import type { GridSelectionId, ServerSelectionIntent } from './serverSelection';
 
 /**
- * Dataset represented when an `exclude` logical selection is converted into a server action target.
+ * Dataset represented while an `exclude` logical selection is being converted into an action.
  *
- * `page` is intentionally absent: selecting a page produces concrete ids and therefore becomes an
- * ordinary explicit/include target before a feature action reaches the backend.
+ * This is intentionally frontend-only context. It is NOT serialized to the backend:
+ *
+ * - filtered exclude -> send translated filters;
+ * - all-record exclude -> do not send filters.
+ *
+ * `page` is intentionally absent because selecting a page produces concrete ids and therefore ends
+ * up as ordinary `include + ids` before an action request is built.
  */
 export type GridSelectionExcludeScope = 'filtered' | 'all';
 
 export interface GridExplicitSelectionTarget<TId extends GridSelectionId = string> {
-  scope: 'explicit';
   mode: 'include';
   ids: TId[];
 }
 
-export interface GridFilteredSelectionTarget<TId extends GridSelectionId = string> {
-  scope: 'filtered';
-  mode: 'exclude';
-  ids: TId[];
-}
-
-export interface GridAllSelectionTarget<TId extends GridSelectionId = string> {
-  scope: 'all';
+export interface GridExcludeSelectionTarget<TId extends GridSelectionId = string> {
   mode: 'exclude';
   ids: TId[];
 }
 
 /**
- * Generic server-action selection context shared by every server-backed table.
+ * Generic backend-facing selection target shared by server-backed tables.
  *
- * Features still own their filter translation. Pass already-translated backend filters here; this
- * helper only combines those filters with the generic selection meaning.
+ * The wire contract intentionally does not carry a separate `scope` field. The meaning is already
+ * encoded by the combination of selection mode and filters:
+ *
+ * - `include + ids` -> exactly those rows;
+ * - `exclude + filters` -> rows matching the filters, minus the exception ids;
+ * - `exclude` without filters -> all records, minus the exception ids.
+ *
+ * Features own their filter translation and domain action payload. For example, Transactions adds
+ * `{ changes: { status: 'Failed' } }`, while another table could add a completely different action.
  */
 export type GridSelectionActionTarget<TId extends GridSelectionId, TFilter> =
   | {
       selection: GridExplicitSelectionTarget<TId>;
+      filters?: never;
     }
   | {
-      selection: GridFilteredSelectionTarget<TId>;
-      filters: TFilter[];
-    }
-  | {
-      selection: GridAllSelectionTarget<TId>;
+      selection: GridExcludeSelectionTarget<TId>;
+      filters?: TFilter[];
     };
 
 /** `exclude` always represents a dataset; `include` is actionable only when it contains ids. */
@@ -52,12 +54,12 @@ export function hasGridSelection<TId extends GridSelectionId>(
 }
 
 /**
- * Converts logical include/exclude selection into the generic target a feature can attach its own
+ * Converts logical include/exclude state into the generic wire target a feature can attach its own
  * action payload to.
  *
- * - include -> exact ids; visible filters are irrelevant;
- * - filtered exclude -> current translated filters + exception ids;
- * - all exclude -> complete dataset + exception ids; visible filters are irrelevant.
+ * `excludeScope` remains an internal input because Infinite/SSRM UI selection strategies know whether
+ * Select All means filtered rows or all records. The backend does not need that duplicated label:
+ * filters on an exclude request already express filtered selection.
  */
 export function buildGridSelectionActionTarget<TId extends GridSelectionId, TFilter>(
   selection: ServerSelectionIntent<TId>,
@@ -67,7 +69,6 @@ export function buildGridSelectionActionTarget<TId extends GridSelectionId, TFil
   if (selection.mode === 'include') {
     return {
       selection: {
-        scope: 'explicit',
         mode: 'include',
         ids: [...selection.ids],
       },
@@ -77,7 +78,6 @@ export function buildGridSelectionActionTarget<TId extends GridSelectionId, TFil
   if (excludeScope === 'filtered') {
     return {
       selection: {
-        scope: 'filtered',
         mode: 'exclude',
         ids: [...selection.ids],
       },
@@ -87,7 +87,6 @@ export function buildGridSelectionActionTarget<TId extends GridSelectionId, TFil
 
   return {
     selection: {
-      scope: 'all',
       mode: 'exclude',
       ids: [...selection.ids],
     },

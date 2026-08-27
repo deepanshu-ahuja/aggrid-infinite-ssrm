@@ -1,41 +1,32 @@
 # SSRM Selection Contract
 
-This document is the source of truth for Transactions selection when AG Grid uses the **Server-Side Row Model (SSRM)**.
+This document is the source of truth for selection when a server-backed table uses AG Grid's **Server-Side Row Model (SSRM)**.
 
-The rule is simple:
+The core rule is:
 
-> Use AG Grid's native SSRM selection state wherever it can represent the requirement. Add custom application state only for behaviour SSRM does not support.
+> Use native SSRM selection wherever AG Grid can represent the product requirement. Add application state only for the missing semantic gap.
+
+Transactions is the current example feature, but the selection mechanics here are intended to be reusable.
 
 ---
 
 ## 1. Stable row IDs are mandatory
 
-Transactions uses the backend ID:
+Every row must have stable backend identity:
 
 ```ts
 getRowId={({ data }) => data.id}
 ```
 
-Sorting, filtering, pagination and store reloads can move/recreate RowNodes, but the Transaction ID remains stable.
+Sorting, filtering, pagination and store refresh can move/recreate RowNodes. Identity must not depend on row position.
 
 ---
 
-## 2. Native SSRM header checkbox = All Records
+## 2. Native SSRM selection remains native
 
-The grid is configured explicitly as:
+The native SSRM header checkbox represents **All Records**.
 
-```ts
-rowSelection={{
-  mode: 'multiRow',
-  headerCheckbox: true,
-  selectAll: 'all',
-  groupSelects: 'self',
-}}
-```
-
-For SSRM, native `currentPage` and `filtered` Select-All modes are not supported. The native header therefore remains the **All Records** control.
-
-Native SSRM state can represent unloaded rows:
+Native server-side selection state can represent unloaded rows:
 
 ```ts
 {
@@ -44,202 +35,189 @@ Native SSRM state can represent unloaded rows:
 }
 ```
 
-means:
+Meaning:
 
 ```text
 all records except A
 ```
 
-Use:
+Use native APIs such as:
 
 ```ts
 api.getServerSideSelectionState()
 api.setServerSideSelectionState(...)
 ```
 
-rather than `getSelectedRows()` as the source of truth for dataset-wide selection.
+Do not use `getSelectedRows()` as the source of truth for unloaded dataset selection.
 
 ---
 
-## 3. Individual/manual selection
+## 3. Logical selection published to shared/application code
 
-Normal row checkboxes remain native AG Grid SSRM selection.
+The reusable logical shape is always:
 
-```text
-select A and B
-→ selectAll = false
-→ toggledNodes = [A, B]
+```ts
+{
+  mode: 'include' | 'exclude',
+  ids: string[],
+}
 ```
 
-Our adapter maps that to:
+Native explicit state maps to:
 
 ```text
-include [A, B]
+selectAll false + toggledNodes [A, B]
+-> include [A, B]
 ```
 
-Sorting/filtering do not automatically clear this selection.
+Native All Records maps to:
+
+```text
+selectAll true + toggledNodes [A]
+-> exclude [A]
+```
+
+This logical shape contains no serialized `scope`.
 
 ---
 
-## 4. Select Current Page
+## 4. Individual/manual selection
 
-Because SSRM has no native current-page Select-All mode, the explicit button:
-
-```text
-Select current page
-```
-
-uses the pagination API to identify the current page and calls native `setNodesSelected()` for those RowNodes.
-
-Ordinary explicit selections are preserved and page IDs are added.
-
-If native All Records or custom All Filtered is active, clicking Current Page intentionally switches back to explicit selection first.
-
-If the expected page RowNodes are still unresolved/loading, the command does **not** partially select the page. It shows a warning and leaves selection unchanged.
-
----
-
-## 5. Select All Filtered
-
-This is the one custom SSRM dataset-selection mode.
-
-When the user clicks:
-
-```text
-Select all filtered
-```
-
-the application:
-
-1. clears competing native selection;
-2. captures AG Grid's currently applied filter model;
-3. stores logical `exclude + []`;
-4. synchronises currently loaded matching RowNodes for checkbox feedback.
+Ordinary row checkboxes use native SSRM selection.
 
 Example:
 
 ```text
-filter = Status = Completed
-Select all filtered
-→ exclude []
+select A and B
+-> include [A, B]
 ```
 
-User unchecks A:
-
-```text
-→ exclude [A]
-```
-
-Future bulk-action meaning:
-
-```text
-all backend rows matching Status = Completed except A
-```
-
-The same `mapTransactionFilterModel()` used by normal row loading maps the filter for bulk actions.
+Sorting and visible filter changes do not automatically clear explicit IDs.
 
 ---
 
-## 6. Newly loaded SSRM rows during filtered Select All
+## 5. Select Current Page
 
-Unloaded matching rows are represented logically by `exclude`.
+Current Page is an explicit command over the RowNodes for the current page.
 
-When SSRM later loads/reloads RowNodes:
+It ultimately produces ordinary explicit selection:
 
 ```text
-onModelUpdated
-→ iterate loaded RowNodes
-→ resolve selection by ID
-→ node.setSelected(..., 'api')
+include [ids on current page plus any preserved explicit ids]
 ```
 
-`onRowSelected` ignores `source='api'` so checkbox restoration does not feed back into the exception list.
+Page is how the user selected the IDs; it is not a backend selection scope.
+
+If the expected page rows are not available yet, do not partially select an incomplete page. Surface the existing warning/error behavior and leave selection consistent.
+
+---
+
+## 6. Select All Filtered
+
+Select All Filtered is the custom SSRM selection mode in the current product design.
+
+When activated:
+
+```text
+current applied filter
++
+exclude []
+```
+
+means:
+
+```text
+all backend rows matching that filter
+```
+
+If the user unchecks A:
+
+```text
+exclude [A]
+```
+
+means:
+
+```text
+all matching rows except A
+```
+
+The filter itself remains AG Grid-owned. When the real action is built, the root reads `api.getFilterModel()` and the feature translates it through the same mapper used by normal row loading.
+
+Do not maintain a second action-only filter interpretation.
 
 ---
 
 ## 7. Filter lifecycle
 
-### Native manual selection
-
-Preserve.
-
-### Native All Records
-
-Preserve. A visible filter does not redefine “all records”.
-
-### Custom All Filtered
-
-Clear when the defining filter changes:
+Use the selection meaning, not one blanket reset rule.
 
 ```text
-Status = Completed
-exclude [A]
+native explicit/include
+-> preserve on visible filter change
 
-change filter to Failed
-→ include []
+native All Records/exclude
+-> preserve on visible filter change
+
+custom Select All Filtered/exclude
+-> reset when the defining filter changes
 ```
 
-The user must click Select All Filtered again for the new query.
+The filtered exclusion list belongs to one specific query and must not silently move to a different query.
 
 ---
 
 ## 8. Sorting and pagination
 
-Sorting never clears selection because it changes order, not identity.
+Sorting changes order, not identity, so it does not clear selection.
 
-Pagination never clears native explicit or native All Records selection.
+Pagination changes visibility, not logical selection, so it does not clear native explicit or All Records selection.
 
-The Current Page button acts only on the page visible when the user clicks it.
+Current Page acts only on the page visible when the command is invoked.
 
 ---
 
-## 9. Native SSRM state adapter
+## 9. Newly loaded/reloaded rows during custom filtered selection
 
-Flat native SSRM state maps to the same logical contract used by bulk builders:
+Custom filtered selection exists beyond currently loaded RowNodes.
+
+When SSRM materialises/replaces rows:
 
 ```text
-selectAll false + toggledNodes [A,B]
-→ include [A,B]
-
-selectAll true + toggledNodes [A]
-→ exclude [A]
+logical filtered selection
+-> resolve loaded row ID
+-> sync RowNode checkbox programmatically
 ```
 
-Transactions explicitly uses `groupSelects: 'self'` so this adapter expects flat selection state.
-
-If grouping/tree selection is introduced later, do not flatten hierarchical SSRM state. Review the selection/backend contract deliberately.
+Programmatic checkbox restoration must not feed back into the logical exception state.
 
 ---
 
-## 10. Payload preview
+## 10. Backend action wire contract
 
-The temporary `Preview selection payload` button performs no backend bulk action.
+The backend does not need `scope`.
 
-Native explicit/current-page:
+### Explicit/manual/current-page
 
 ```json
 {
-  "mode": "include",
-  "ids": ["A", "B"]
+  "selection": {
+    "mode": "include",
+    "ids": ["A", "B"]
+  }
 }
 ```
 
-Native All Records:
+Meaning: exactly A and B.
+
+### Select All Filtered
 
 ```json
 {
-  "mode": "exclude",
-  "ids": ["A"],
-  "filters": []
-}
-```
-
-Custom All Filtered:
-
-```json
-{
-  "mode": "exclude",
-  "ids": ["A"],
+  "selection": {
+    "mode": "exclude",
+    "ids": ["A"]
+  },
   "filters": [
     {
       "field": "status",
@@ -250,11 +228,44 @@ Custom All Filtered:
 }
 ```
 
+Meaning: all matching backend rows except A.
+
+### All Records
+
+```json
+{
+  "selection": {
+    "mode": "exclude",
+    "ids": ["A"]
+  }
+}
+```
+
+Meaning: all records except A.
+
+The frontend still knows internally whether exclude currently represents filtered-wide or all-record selection. That internal row-model context is used only to decide whether translated filters are attached.
+
 ---
 
-## 11. Retry
+## 11. Actions and refresh
 
-Datasource failure continues to use SSRM-native failure bookkeeping (`params.fail()`).
+Selection changes do not call the action endpoint by themselves.
+
+A backend mutation occurs only when the user invokes a real feature action such as the current Transaction status actions.
+
+After success, SSRM uses its own native refresh path:
+
+```ts
+api.refreshServerSide();
+```
+
+Do not force SSRM to copy Infinite cache behavior just because both use the same backend query contract.
+
+---
+
+## 12. Retry
+
+Datasource failure uses SSRM-native failure bookkeeping.
 
 Retry uses:
 
@@ -262,41 +273,47 @@ Retry uses:
 api.retryServerSideLoads();
 ```
 
-Do not rebuild the datasource or maintain a second failed-block registry.
-
-Selection is not cleared merely because a server-side load fails/retries.
+Selection is not cleared merely because a server-side load fails or retries.
 
 ---
 
-## 12. Native vs custom boundary
+## 13. Flat-state assumption
 
-| Behaviour                           | Owner                              |
-| ----------------------------------- | ---------------------------------- |
-| Individual rows                     | Native AG Grid SSRM                |
-| Explicit multi-row selection        | Native AG Grid SSRM                |
-| Header Select All Records           | Native AG Grid SSRM                |
-| Unloaded all-record selection       | Native SSRM selection state        |
-| Current-page button                 | Small command over native RowNodes |
-| All-filtered dataset intent         | Application state                  |
-| Filtered exclusions                 | Application state                  |
-| Loaded-row sync during All Filtered | Application → AG Grid RowNodes     |
-| Failed-load retry                   | Native SSRM                        |
+The current selection adapter assumes flat SSRM selection with `groupSelects: 'self'`.
+
+If grouping/tree selection is introduced later, do not flatten hierarchical selection into this contract without deliberate backend/product semantics.
 
 ---
 
-## 13. Rules for future developers and coding assistants
+## 14. Native vs custom ownership
+
+| Behaviour | Owner |
+| --- | --- |
+| Individual rows | Native AG Grid SSRM |
+| Explicit multi-row selection | Native AG Grid SSRM |
+| Header All Records | Native AG Grid SSRM |
+| Unloaded all-record selection | Native SSRM selection state |
+| Current Page command | Small command over native RowNodes |
+| All Filtered logical intent | Application state |
+| Filtered exclusions | Application state |
+| Loaded-row sync during All Filtered | Application -> AG Grid RowNodes |
+| Action target construction | Shared grid helper + feature mapper |
+| Retry/refresh | Native SSRM APIs |
+
+---
+
+## 15. Rules for future developers and coding assistants
 
 1. Keep stable backend Row IDs.
-2. Keep the native SSRM header as All Records.
-3. Do not configure SSRM header Select All as `currentPage` or `filtered`.
-4. Use native SSRM selection state for manual/all-record selection.
-5. Use current-page RowNodes for the explicit page command.
-6. Keep custom state only for All Filtered.
-7. Capture the defining filter model when All Filtered is activated.
-8. Reset custom All Filtered when that filter changes.
-9. Preserve native All Records across visible filter changes.
-10. Preserve selection on sorting/pagination.
-11. Reuse `mapTransactionFilterModel()` for filtered bulk actions.
-12. Use `retryServerSideLoads()` for SSRM retry.
-13. Reject hierarchical SSRM state until grouping semantics are deliberately supported.
-14. Prefer AG Grid native APIs before adding custom state.
+2. Prefer native SSRM selection before adding custom state.
+3. Keep the native header meaning as All Records unless product requirements deliberately change it.
+4. Use native server-side selection state for explicit/all-record selection.
+5. Treat Current Page as exact IDs, not a backend page scope.
+6. Keep custom state only where native SSRM cannot represent the required product meaning.
+7. Reset custom All Filtered when its defining filter changes.
+8. Preserve native explicit and All Records selection across visible filter changes.
+9. Preserve selection across sorting/pagination.
+10. Reuse the same feature filter mapper for row loading and filtered actions.
+11. Do not serialize redundant `scope` in action payloads.
+12. Use SSRM-native retry/refresh APIs; do not copy Infinite lifecycle blindly.
+13. Review grouped/hierarchical selection separately if grouping is introduced.

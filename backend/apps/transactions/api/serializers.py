@@ -109,9 +109,19 @@ class TransactionBulkUpdateSerializer(serializers.Serializer):
 
 
 class TransactionSelectionSerializer(serializers.Serializer):
-    """Logical server-backed selection used by actions above the grid."""
+    """
+    Compact logical selection used by server-backed actions.
 
-    scope = serializers.ChoiceField(choices=("explicit", "filtered", "all"))
+    The selection itself intentionally contains only `mode + ids`:
+
+    - include + ids -> exactly those rows;
+    - exclude + ids -> dataset-wide selection with those ids as exceptions.
+
+    For exclude mode, the top-level action filters decide which dataset is meant. Non-empty filters
+    mean the filtered dataset; no filters means all records. A separate serialized `scope` would only
+    duplicate information already present in the request.
+    """
+
     mode = serializers.ChoiceField(choices=("include", "exclude"))
     ids = serializers.ListField(
         child=serializers.CharField(),
@@ -119,32 +129,31 @@ class TransactionSelectionSerializer(serializers.Serializer):
         default=list,
     )
 
+    def to_internal_value(self, data):
+        # Reject old/unknown fields (especially the removed `scope`) rather than silently accepting a
+        # request whose sender believes those fields still affect backend selection semantics.
+        if isinstance(data, dict):
+            unknown_fields = set(data) - set(self.fields)
+            if unknown_fields:
+                raise serializers.ValidationError(
+                    {
+                        field: ["Unknown selection field."]
+                        for field in sorted(unknown_fields)
+                    }
+                )
+
+        return super().to_internal_value(data)
+
     def validate_ids(self, ids):
         if len(ids) != len(set(ids)):
             raise serializers.ValidationError("Selection ids must be unique.")
         return ids
 
     def validate(self, attrs):
-        scope = attrs["scope"]
-        mode = attrs["mode"]
-        ids = attrs.get("ids", [])
-
-        # Explicit/manual/current-page selection already knows every selected id. Dataset-wide
-        # selection is the opposite representation: everything in that scope except the listed ids.
-        if scope == "explicit":
-            if mode != "include":
-                raise serializers.ValidationError(
-                    "Explicit selection must use include mode."
-                )
-            if not ids:
-                raise serializers.ValidationError(
-                    "Explicit selection requires at least one id."
-                )
-        elif mode != "exclude":
+        if attrs["mode"] == "include" and not attrs.get("ids", []):
             raise serializers.ValidationError(
-                "Filtered and all-record selection must use exclude mode."
+                "Include selection requires at least one id."
             )
-
         return attrs
 
 
@@ -154,14 +163,14 @@ class TransactionSelectionUpdateSerializer(serializers.Serializer):
     changes = TransactionChangesSerializer()
 
     def validate(self, attrs):
-        scope = attrs["selection"]["scope"]
+        selection = attrs["selection"]
         filters = attrs.get("filters", [])
 
-        # Filters define the dataset only for Select All Filtered. Explicit ids remain exact even if
-        # the user changes filters before acting, and Select All Records is intentionally filter-free.
-        if scope != "filtered" and filters:
+        # Exact include ids are the whole selection, so visible filters must never constrain them.
+        # Exclude mode uses non-empty filters for Select All Filtered and no filters for All Records.
+        if selection["mode"] == "include" and filters:
             raise serializers.ValidationError(
-                {"filters": "Filters are only valid for filtered selection."}
+                {"filters": "Filters are not valid for include selection."}
             )
 
         return attrs

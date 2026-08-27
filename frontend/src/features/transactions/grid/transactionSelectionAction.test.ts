@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildTransactionSelectionActionRequest } from './transactionSelectionAction';
 
 describe('buildTransactionSelectionActionRequest', () => {
-  it('keeps include ids explicit and does not attach visible filters', () => {
+  it('keeps include ids exact and does not attach visible filters', () => {
     expect(
       buildTransactionSelectionActionRequest(
         { mode: 'include', ids: ['txn-a', 'txn-b'] },
@@ -12,7 +12,6 @@ describe('buildTransactionSelectionActionRequest', () => {
       ),
     ).toEqual({
       selection: {
-        scope: 'explicit',
         mode: 'include',
         ids: ['txn-a', 'txn-b'],
       },
@@ -30,7 +29,6 @@ describe('buildTransactionSelectionActionRequest', () => {
       ),
     ).toEqual({
       selection: {
-        scope: 'filtered',
         mode: 'exclude',
         ids: ['txn-b'],
       },
@@ -49,7 +47,6 @@ describe('buildTransactionSelectionActionRequest', () => {
       ),
     ).toEqual({
       selection: {
-        scope: 'all',
         mode: 'exclude',
         ids: ['txn-c'],
       },
