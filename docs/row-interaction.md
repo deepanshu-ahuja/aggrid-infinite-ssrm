@@ -35,43 +35,45 @@ The two restricted states should look different because they mean different thin
 
 ```text
 selectionDisabled
-→ checkbox disabled
-→ light warm restricted-row background/marker
+→ native checkbox is disabled and rendered with a clear neutral-grey disabled treatment
+→ row gets a light warning/review background and marker
 → visible "Selection disabled" indicator
 → reason available in the UI
 → editing and row-level modifying actions still allowed
 
 readOnly
-→ checkbox disabled
-→ stronger neutral-grey locked-row treatment
-→ visible lock/read-only indicator
+→ native checkbox is disabled and rendered with a clear neutral-grey disabled treatment
+→ whole row gets a stronger neutral-grey locked treatment
+→ visible lock + "Read only" indicator
 → reason available in the UI
 → editing and modifying row-level actions blocked
 ```
+
+Selected rows use the normal AG Grid selection/accent treatment and must remain visually distinct from either restricted state.
 
 Presentation is still not enforcement. Native AG Grid selectability/editability callbacks and backend validation remain authoritative.
 
 ## Current Transactions demo policy
 
-The reusable grid capability does **not** know Transaction fields. For local/demo data, the Transactions backend currently derives the generic modes from Transaction business data so developers can understand why a row is restricted by looking at the row itself:
+The reusable grid capability does **not** know Transaction fields. For local/demo data, the Transactions backend derives the generic modes from Transaction business data so developers can understand why a row is restricted by looking at the row itself:
 
 ```text
-status = Completed
-→ readOnly
-→ reason: completed transactions are locked from selection and editing
-
 status = Pending AND account = Treasury
 → selectionDisabled
 → reason: Pending Treasury transactions require individual review,
           so selection-based bulk actions are disabled
 
+status = Completed AND account = Settlement
+→ readOnly
+→ reason: Completed Settlement transactions are locked from selection and editing
+
 otherwise
 → enabled
 ```
 
-This policy intentionally lives in `backend/apps/transactions/services.py`, not under `shared/grid`.
+This policy intentionally lives in `backend/apps/transactions/services.py`, not under `shared/grid`. It is only an example Transaction policy; another feature should derive the generic modes from its own fields and business rules.
 
-The policy is recomputed after authoritative writes. For example, if an enabled Transaction is legitimately changed to `Completed`, the returned/refreshed row becomes `readOnly`. A future Payables table could use completely different fields and rules while reusing the same three generic interaction modes.
+The policy is recomputed after authoritative writes. For example, if an enabled Settlement Transaction is legitimately changed to `Completed`, the returned/refreshed row becomes `readOnly`. A future Payables table could use completely different fields and rules while reusing the same three generic interaction modes.
 
 ## Selection-disabled rows are outside the selectable universe
 
