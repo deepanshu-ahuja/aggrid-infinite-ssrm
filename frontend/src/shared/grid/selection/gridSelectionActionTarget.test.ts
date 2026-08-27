@@ -5,7 +5,7 @@ import {
 } from './gridSelectionActionTarget';
 
 describe('gridSelectionActionTarget', () => {
-  it('turns include ids into an explicit target without filters', () => {
+  it('turns include ids into an exact target without visible filters', () => {
     expect(
       buildGridSelectionActionTarget(
         { mode: 'include', ids: ['row-a', 'row-b'] },
@@ -14,7 +14,6 @@ describe('gridSelectionActionTarget', () => {
       ),
     ).toEqual({
       selection: {
-        scope: 'explicit',
         mode: 'include',
         ids: ['row-a', 'row-b'],
       },
@@ -30,7 +29,6 @@ describe('gridSelectionActionTarget', () => {
       ),
     ).toEqual({
       selection: {
-        scope: 'filtered',
         mode: 'exclude',
         ids: ['row-b'],
       },
@@ -47,7 +45,6 @@ describe('gridSelectionActionTarget', () => {
       ),
     ).toEqual({
       selection: {
-        scope: 'all',
         mode: 'exclude',
         ids: ['row-c'],
       },
