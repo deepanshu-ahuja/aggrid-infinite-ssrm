@@ -277,9 +277,14 @@ export function TransactionsSsrmGrid({
     [state],
   );
 
-  const activeConflict = conflictTarget
-    ? rowEditActionsContext.getCellConflict(conflictTarget.rowId, conflictTarget.field)
-    : undefined;
+  const activeConflict = useMemo(() => {
+    if (!conflictTarget) return undefined;
+    const conflict = state.conflictsById[conflictTarget.rowId]?.[conflictTarget.field];
+    const localValue = state.changesById[conflictTarget.rowId]?.[conflictTarget.field];
+    return conflict && localValue !== undefined
+      ? { localValue, remoteValue: conflict.remoteValue }
+      : undefined;
+  }, [conflictTarget, state.changesById, state.conflictsById]);
 
   return (
     <Stack spacing={2}>
@@ -305,16 +310,31 @@ export function TransactionsSsrmGrid({
         onDiscardSelected={handleDiscardSelected}
       />
 
-      {editActionError ? <Typography variant="body2" color="warning.main">{editActionError}</Typography> : null}
+      {editActionError ? (
+        <Typography variant="body2" color="warning.main">
+          {editActionError}
+        </Typography>
+      ) : null}
 
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
-        <Button variant="outlined" size="small" onClick={selectCurrentPage}>Select current page</Button>
-        <Button variant="outlined" size="small" onClick={selectAllFiltered}>Select all filtered</Button>
-        <Button variant="outlined" size="small" onClick={clearSelection}>Clear selection</Button>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={1}
+        alignItems={{ xs: 'stretch', sm: 'center' }}
+      >
+        <Button variant="outlined" size="small" onClick={selectCurrentPage}>
+          Select current page
+        </Button>
+        <Button variant="outlined" size="small" onClick={selectAllFiltered}>
+          Select all filtered
+        </Button>
+        <Button variant="outlined" size="small" onClick={clearSelection}>
+          Clear selection
+        </Button>
       </Stack>
 
       <Typography variant="caption" color="text.secondary">
-        SSRM header checkbox selects all records. Current Page and All Filtered are explicit controls because SSRM does not support those native Select-All modes.
+        SSRM header checkbox selects all records. Current Page and All Filtered are explicit controls
+        because SSRM does not support those native Select-All modes.
       </Typography>
 
       {selectionError ? <Alert severity="warning">{selectionError}</Alert> : null}
@@ -339,6 +359,11 @@ export function TransactionsSsrmGrid({
           activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={loadError ? { message: loadError, onRetry: retryLoad } : undefined}
           onGridReady={handleGridReady}
+          // The concrete root owns the GridApi ref. Clearing it in AG Grid's pre-destroy lifecycle
+          // prevents shared callbacks from observing a destroyed API during React component cleanup.
+          onGridPreDestroyed={() => {
+            gridApi.current = null;
+          }}
           onModelUpdated={handleModelUpdated}
           onRowSelected={onRowSelected}
           onSelectionChanged={handleSelectionChanged}
