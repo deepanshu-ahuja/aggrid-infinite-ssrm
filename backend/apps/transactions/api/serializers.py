@@ -188,3 +188,4 @@ class TransactionSerializer(serializers.Serializer):
     interactionMode = serializers.ChoiceField(
         choices=("enabled", "selectionDisabled", "readOnly")
     )
+    interactionReason = serializers.CharField(allow_null=True, required=False)
