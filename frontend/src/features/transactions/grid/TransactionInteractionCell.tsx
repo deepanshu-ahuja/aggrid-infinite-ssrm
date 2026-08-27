@@ -11,10 +11,11 @@ import type { Transaction } from '../api/transactions.contracts';
 export function TransactionInteractionCell({ data }: CustomCellRendererProps<Transaction>) {
   if (!data || data.interactionMode === 'enabled') return null;
 
-  const label = data.interactionMode === 'readOnly' ? 'Read only' : 'Bulk disabled';
+  const isReadOnly = data.interactionMode === 'readOnly';
+  const label = isReadOnly ? '🔒 Read only' : 'Selection disabled';
   const reason =
     data.interactionReason ??
-    (data.interactionMode === 'readOnly'
+    (isReadOnly
       ? 'This row is read-only.'
       : 'This row is not eligible for selection-based bulk actions.');
 
@@ -23,7 +24,7 @@ export function TransactionInteractionCell({ data }: CustomCellRendererProps<Tra
       <Chip
         label={label}
         size="small"
-        variant="outlined"
+        variant={isReadOnly ? 'filled' : 'outlined'}
         aria-label={`${label}: ${reason}`}
         sx={{ cursor: 'help' }}
       />
