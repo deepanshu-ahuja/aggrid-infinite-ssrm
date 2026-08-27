@@ -284,9 +284,17 @@ export function TransactionsInfiniteGrid({
     [state],
   );
 
-  const activeConflict = conflictTarget
-    ? rowEditActionsContext.getCellConflict(conflictTarget.rowId, conflictTarget.field)
-    : undefined;
+  // The popover is React presentation, so derive it directly from React editing state. Do not route
+  // render-time reads through AG Grid context callbacks: that context also contains ref-backed actions
+  // intended for grid events/cell renderers and React's refs lint correctly rejects such render access.
+  const activeConflict = useMemo(() => {
+    if (!conflictTarget) return undefined;
+    const conflict = state.conflictsById[conflictTarget.rowId]?.[conflictTarget.field];
+    const localValue = state.changesById[conflictTarget.rowId]?.[conflictTarget.field];
+    return conflict && localValue !== undefined
+      ? { localValue, remoteValue: conflict.remoteValue }
+      : undefined;
+  }, [conflictTarget, state.changesById, state.conflictsById]);
 
   return (
     <Stack spacing={2}>
@@ -338,6 +346,11 @@ export function TransactionsInfiniteGrid({
           activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={loadError ? { message: loadError, onRetry: retryLoad } : undefined}
           onGridReady={handleGridReady}
+          // The root owns this API ref. Clear it before AG Grid destroys the instance so asynchronous
+          // callbacks/effects cannot retain a stale API and accidentally call it during React teardown.
+          onGridPreDestroyed={() => {
+            gridApi.current = null;
+          }}
           onModelUpdated={handleRowsChanged}
           onPaginationChanged={handleRowsChanged}
           onRowSelected={onRowSelected}
