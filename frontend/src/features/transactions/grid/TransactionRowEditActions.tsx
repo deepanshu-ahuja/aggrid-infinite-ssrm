@@ -1,6 +1,7 @@
 import { Button, Stack } from '@mui/material';
 import type { CustomCellRendererProps } from 'ag-grid-react';
 import type { Transaction } from '../api/transactions.contracts';
+import { isTransactionRowReadOnly } from './transactionRowInteraction';
 
 /**
  * Feature context consumed only by the Transactions Actions cell.
@@ -20,7 +21,7 @@ export function TransactionRowEditActions({
   data,
   context,
 }: CustomCellRendererProps<Transaction, unknown, TransactionRowEditActionsContext>) {
-  if (!data || !context?.isRowDirty(data.id)) return null;
+  if (!data || isTransactionRowReadOnly(data) || !context?.isRowDirty(data.id)) return null;
 
   return (
     <Stack direction="row" spacing={0.5} alignItems="center" height="100%">
