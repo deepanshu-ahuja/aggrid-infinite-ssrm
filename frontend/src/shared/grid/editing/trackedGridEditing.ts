@@ -65,9 +65,15 @@ function removeTrackedGridField<TField extends string, TValue>(
   const currentChanges = state.changesById[rowId];
   if (!currentChanges || !hasTrackedGridField(currentChanges, field)) return state;
 
-  const changes = { ...currentChanges };
-  const originals = { ...(state.originalsById[rowId] ?? {}) };
-  const conflicts = { ...(state.conflictsById[rowId] ?? {}) };
+  // Keep these clones explicitly typed. Generic object spread with an empty fallback otherwise narrows
+  // to `{}` and loses the TField index signature under strict TypeScript checking.
+  const changes: TrackedGridChanges<TField, TValue> = { ...currentChanges };
+  const originals: TrackedGridChanges<TField, TValue> = {
+    ...(state.originalsById[rowId] ?? {}),
+  };
+  const conflicts: TrackedGridConflicts<TField, TValue> = {
+    ...(state.conflictsById[rowId] ?? {}),
+  };
   delete changes[field];
   delete originals[field];
   delete conflicts[field];
@@ -200,7 +206,9 @@ export function reconcileTrackedGridRemoteValues<TField extends string, TValue>(
     }
 
     const conflictsById = { ...nextState.conflictsById };
-    const rowConflicts = { ...(conflictsById[rowId] ?? {}) };
+    const rowConflicts: TrackedGridConflicts<TField, TValue> = {
+      ...(conflictsById[rowId] ?? {}),
+    };
 
     if (Object.is(remoteValue, baseValue)) {
       delete rowConflicts[candidateField];
@@ -249,7 +257,9 @@ export function resolveTrackedGridConflictWithLocal<TField extends string, TValu
   };
 
   const conflictsById = { ...state.conflictsById };
-  const rowConflicts = { ...(conflictsById[rowId] ?? {}) };
+  const rowConflicts: TrackedGridConflicts<TField, TValue> = {
+    ...(conflictsById[rowId] ?? {}),
+  };
   delete rowConflicts[field];
   if (Object.keys(rowConflicts).length === 0) delete conflictsById[rowId];
   else conflictsById[rowId] = rowConflicts;
