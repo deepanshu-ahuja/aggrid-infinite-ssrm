@@ -16,6 +16,7 @@ const gridCapture = vi.hoisted(() => ({ props: undefined as unknown }));
 const transactionApi = vi.hoisted(() => ({
   updateTransaction: vi.fn(),
   bulkUpdateTransactions: vi.fn(),
+  updateTransactionsBySelection: vi.fn(),
   listTransactions: vi.fn(),
 }));
 
@@ -60,6 +61,7 @@ function createApi(
       selectAll: false,
       toggledNodes: selectedIds,
     })),
+    getFilterModel: vi.fn(() => ({})),
     setGridOption: vi.fn(),
     refreshServerSide: vi.fn(),
     refreshCells: vi.fn(),
@@ -101,6 +103,31 @@ describe('TransactionsSsrmGrid edit persistence', () => {
       });
       expect(api.refreshServerSide).toHaveBeenCalledTimes(1);
       expect(props().context?.isRowDirty('txn-a')).toBe(false);
+    });
+  });
+
+  it('updates native explicit selection through the action bar and refreshes SSRM', async () => {
+    const api = createApi(['txn-a', 'txn-b']);
+    transactionApi.updateTransactionsBySelection.mockResolvedValue({ updatedCount: 2 });
+
+    render(<TransactionsSsrmGrid />);
+
+    act(() => {
+      props().onGridReady?.({ api } as unknown as GridReadyEvent<Transaction>);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark Failed' }));
+
+    await waitFor(() => {
+      expect(transactionApi.updateTransactionsBySelection).toHaveBeenCalledWith({
+        selection: {
+          scope: 'explicit',
+          mode: 'include',
+          ids: ['txn-a', 'txn-b'],
+        },
+        changes: { status: 'Failed' },
+      });
+      expect(api.refreshServerSide).toHaveBeenCalledTimes(1);
     });
   });
 
