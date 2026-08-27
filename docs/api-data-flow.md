@@ -28,6 +28,35 @@ Raw AG Grid request objects never cross the HTTP boundary. Both frontend mapping
 
 The response contains the current block, the complete dataset count, and the current filtered count. That flat contract works for Infinite Row Model and the current flat SSRM path. Group routes, aggregation results and pivot metadata are intentionally absent; design those only when a real SSRM feature needs them.
 
+## Editing persistence flow
+
+Tracked local edits and logical selection actions are different backend operations.
+
+Single-row Save persists one concrete dirty-row patch:
+
+```text
+tracked row changes
+  -> PATCH /api/transactions/{id}/
+  -> backend validates/applies the explicit patch
+  -> row-model-specific native refresh
+```
+
+Aggregate Save persists concrete accumulated dirty rows selected by the user:
+
+```text
+changesById
+  ∩
+current logical selection
+  -> explicit [{ id, changes }, ...] payload
+  -> PATCH /api/transactions/bulk/
+  -> backend validates/applies those concrete row patches
+  -> row-model-specific native refresh
+```
+
+The `/bulk/` endpoint is deliberately ID-based. It does not use the logical `include/exclude` selection contract to manufacture edits for unloaded or untouched rows.
+
+This is separate from `/selection/`, which applies one business change to the logical server-backed selection and can therefore target unloaded rows.
+
 ## Selection-action flow
 
 Selection actions do not enumerate loaded RowNodes to decide backend membership. They use the logical selection owned by the appropriate row-model selection controller.
@@ -85,3 +114,19 @@ SSRM     -> refreshServerSide()
 ```
 
 For Infinite, that refreshes only blocks currently resident in its bounded browser cache. Evicted or never-loaded blocks are not fetched just because a dataset-wide action changed them; when the user later visits those rows, the backend-authoritative values are fetched normally.
+
+## Current transaction write endpoints
+
+```text
+POST  /api/transactions/query/
+PATCH /api/transactions/{id}/
+PATCH /api/transactions/bulk/
+PATCH /api/transactions/selection/
+```
+
+Their responsibilities stay intentionally distinct:
+
+- `query/` loads server-backed rows;
+- `{id}/` saves one explicit dirty row;
+- `bulk/` saves explicit dirty-row patches;
+- `selection/` applies a feature action to the logical include/exclude target.
