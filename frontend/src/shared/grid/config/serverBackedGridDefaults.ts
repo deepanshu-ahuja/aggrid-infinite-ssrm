@@ -43,7 +43,17 @@ export const serverBackedGridDefaults = {
   // AG Grid fetches server-backed data in blocks. This does not have to equal the visible page size.
   cacheBlockSize: 50,
 
-  // Bound browser memory by retaining only a limited number of previously loaded blocks.
+  /**
+   * Bound browser memory by retaining only a limited number of server blocks.
+   *
+   * Cache residency follows what AG Grid recently/actively needed; it is not a business-selection
+   * scope. For example, after sequentially visiting seven blocks with a five-block limit, early
+   * blocks are normally evicted and will be fetched fresh if the user visits them again.
+   *
+   * Infinite `refreshInfiniteCache()` refreshes the blocks that are still resident. It does not load
+   * every block in the backend dataset. Unloaded/evicted blocks naturally receive fresh backend data
+   * when AG Grid requests them later.
+   */
   maxBlocksInCache: 5,
 
   // Small debounce avoids immediately firing another block request during rapid scrolling.
