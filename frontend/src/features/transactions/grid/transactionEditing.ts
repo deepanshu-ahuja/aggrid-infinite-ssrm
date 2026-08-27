@@ -7,6 +7,7 @@ import type {
 import type { UseTrackedGridEditingOptions } from '@/shared/grid/editing/useTrackedGridEditing';
 import type { CurrentPageRowTarget } from '@/shared/grid/pagination/useCurrentPageRowTarget';
 import type { Transaction } from '../api/transactions.contracts';
+import { isTransactionRowReadOnly } from './transactionRowInteraction';
 
 /** Transactions chooses WHICH fields are editable; shared/grid owns HOW edits are tracked. */
 export const TRANSACTION_EDITABLE_FIELDS = ['account', 'amount', 'currency', 'status'] as const;
@@ -52,4 +53,6 @@ export const transactionEditingConfig: UseTrackedGridEditingOptions<
   editableFields: TRANSACTION_EDITABLE_FIELDS,
   isEditableField: isTransactionEditableField,
   getFieldValue: (row, field) => row[field],
+  // Column editability and programmatic current-page edits must enforce the same backend row policy.
+  isRowEditable: (row) => !isTransactionRowReadOnly(row),
 };

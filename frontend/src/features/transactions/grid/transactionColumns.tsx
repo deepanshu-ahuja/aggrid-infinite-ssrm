@@ -7,7 +7,9 @@ import {
 import { formatCurrency } from '@/shared/grid/formatters/formatCurrency';
 import { formatDate } from '@/shared/grid/formatters/formatDate';
 import type { Transaction } from '../api/transactions.contracts';
+import { TransactionInteractionCell } from './TransactionInteractionCell';
 import { TransactionRowEditActions } from './TransactionRowEditActions';
+import { isTransactionCellEditable } from './transactionRowInteraction';
 import { TransactionStatusCell } from './TransactionStatusCell';
 import { TransactionStatusEditor } from './TransactionStatusEditor';
 
@@ -15,8 +17,8 @@ import { TransactionStatusEditor } from './TransactionStatusEditor';
  * Column definitions for the Transactions feature.
  *
  * Editing is feature-owned. Reference/date remain read-only; account/amount/currency/status are
- * editable. Single-row Save/Discard lives in the Actions column beside the row rather than in an
- * external dirty-row list.
+ * editable only when the backend-provided row interaction policy allows editing. Selection-disabled
+ * rows can still be edited; fully read-only rows cannot.
  */
 export const transactionColumns: ColDef<Transaction>[] = [
   {
@@ -27,12 +29,22 @@ export const transactionColumns: ColDef<Transaction>[] = [
     filterParams: serverTextFilterParams,
   },
   {
+    colId: 'interaction',
+    headerName: 'Access',
+    minWidth: 135,
+    maxWidth: 155,
+    sortable: false,
+    filter: false,
+    editable: false,
+    cellRenderer: TransactionInteractionCell,
+  },
+  {
     field: 'account',
     headerName: 'Account',
     minWidth: 150,
     filter: 'agTextColumnFilter',
     filterParams: serverTextFilterParams,
-    editable: true,
+    editable: isTransactionCellEditable,
   },
   {
     field: 'amount',
@@ -41,7 +53,7 @@ export const transactionColumns: ColDef<Transaction>[] = [
     minWidth: 140,
     filter: 'agNumberColumnFilter',
     filterParams: serverNumberFilterParams,
-    editable: true,
+    editable: isTransactionCellEditable,
     cellEditor: 'agNumberCellEditor',
     valueFormatter: ({ value, data }) =>
       typeof value === 'number' ? formatCurrency(value, data?.currency ?? 'USD') : '',
@@ -52,7 +64,7 @@ export const transactionColumns: ColDef<Transaction>[] = [
     maxWidth: 120,
     filter: 'agTextColumnFilter',
     filterParams: serverTextFilterParams,
-    editable: true,
+    editable: isTransactionCellEditable,
   },
   {
     field: 'status',
@@ -61,7 +73,7 @@ export const transactionColumns: ColDef<Transaction>[] = [
     filter: 'agTextColumnFilter',
     filterParams: serverTextFilterParams,
     cellRenderer: TransactionStatusCell,
-    editable: true,
+    editable: isTransactionCellEditable,
     cellEditor: TransactionStatusEditor,
   },
   {

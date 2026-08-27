@@ -2,7 +2,7 @@
 
 This document records what the project has already established around AG Grid, what remains important, and what should stay future work.
 
-For implementation guidance when adding another table, see `docs/server-backed-grid-reuse.md`. Detailed row-model selection scenarios remain in the Infinite and SSRM selection-contract documents.
+For implementation guidance when adding another table, see `docs/server-backed-grid-reuse.md`. Row eligibility/read-only behavior is documented in `docs/row-interaction.md`. Detailed row-model selection scenarios remain in the Infinite and SSRM selection-contract documents.
 
 ## Goal
 
@@ -139,6 +139,34 @@ logical selection
 
 The backend handles explicit IDs, filtered exclude, and all-record exclude without enumerating unloaded rows in the browser.
 
+### Row interaction eligibility
+
+Server-backed rows now use one domain-neutral interaction capability with three states:
+
+```text
+enabled
+-> selectable and editable
+
+selectionDisabled
+-> not selectable / not part of selection-based bulk actions
+-> still editable and usable for row-level modifying actions
+
+readOnly
+-> not selectable / not part of selection-based bulk actions
+-> not editable
+-> no modifying row-level actions
+```
+
+The feature/backend decides why a row has one of these states. Shared grid code understands only the resulting capability.
+
+Loaded rows use AG Grid's native `rowSelection.isRowSelectable` callback. Infinite and SSRM current-page/custom selection paths also avoid passing disabled `RowNode`s into selection APIs. Disabled row IDs are never manufactured as logical `exclude` exceptions.
+
+The backend independently applies the same eligibility when resolving selection actions, so disabled rows that were never loaded in the browser are skipped as well. The compact `include` / `exclude` wire contract is unchanged.
+
+For editing, `selectionDisabled` remains editable. `readOnly` uses native AG Grid `editable` callbacks and the shared tracked-edit engine receives the same row-editability predicate so programmatic current-page edits/restoration cannot bypass the UI rule. Backend detail/bulk persistence also rejects read-only targets.
+
+See `docs/row-interaction.md` for the complete reusable contract.
+
 ### Editing
 
 Tracked edits are keyed by stable backend row ID so unsaved changes can survive RowNode recreation/cache churn.
@@ -150,7 +178,7 @@ Current behavior includes:
 - latest-edit and explicit bulk apply flows;
 - row Save/Discard;
 - aggregate Save/Discard over `dirty ∩ logical selection`;
-- restoration of unsaved drafts after server-backed rows reload;
+- restoration of unsaved drafts after server-backed rows reload when the row remains editable;
 - idempotent Discard behavior.
 
 ### Documentation
@@ -158,6 +186,7 @@ Current behavior includes:
 The reusable foundation now has:
 
 - `docs/server-backed-grid-reuse.md` — simple “how to use this for another table” guide;
+- `docs/row-interaction.md` — selection-disabled/read-only frontend + backend contract;
 - `docs/ag-grid.md` — detailed architecture/ownership;
 - `frontend/src/infinite-selection-contract.md` — Infinite selection scenarios;
 - `frontend/src/ssrm-selection-contract.md` — SSRM selection scenarios;
@@ -170,7 +199,7 @@ These are the items worth resolving before calling the current grid foundation f
 
 ### 1. Run the complete executable validation
 
-The branch still needs local executable validation after the latest contract/doc changes:
+The branch still needs local executable validation after the latest row-interaction changes:
 
 ```bash
 npm run lint
@@ -230,6 +259,9 @@ Automated tests cover the contracts, but a short manual pass should still verify
 - Select All Records plus exceptions;
 - filter changes after explicit selection;
 - filter changes after filtered-wide selection;
+- selection-disabled rows stay unchecked/disabled for manual, Current Page, Filtered and All flows;
+- read-only rows are not selectable/editable and show the read-only presentation;
+- selection-disabled rows remain editable;
 - action success followed by navigation into previously unloaded/evicted data;
 - dirty edits combined with the above scenarios.
 
@@ -247,9 +279,11 @@ Automated tests cover the contracts, but a short manual pass should still verify
 10. Explicit/include selection survives filter changes; filtered-wide exclude does not silently change meaning with a new filter.
 11. Reuse the same feature filter mapper for normal row queries and filtered selection actions.
 12. Do not serialize redundant selection context such as `scope` when `mode + ids + filters` already expresses the backend target.
-13. Use native `GridState` for grid preferences; do not mirror column/filter/sort state into a second model.
-14. Explain non-obvious AG Grid lifecycle, cache, selection and ownership decisions in comments/JSDoc.
-15. Do not generalize business-grid wrappers or giant `useGrid` APIs just because concrete roots contain some similar wiring.
+13. Treat disabled rows as outside the selectable universe; never encode them as include/exclude bookkeeping.
+14. Use native `isRowSelectable` / editable callbacks for loaded-row interaction and keep backend eligibility authoritative for unloaded rows.
+15. Use native `GridState` for grid preferences; do not mirror column/filter/sort state into a second model.
+16. Explain non-obvious AG Grid lifecycle, cache, selection and ownership decisions in comments/JSDoc.
+17. Do not generalize business-grid wrappers or giant `useGrid` APIs just because concrete roots contain some similar wiring.
 
 ## Intentionally outside current foundation scope
 

@@ -12,7 +12,8 @@ TRANSACTION_FIELDS = (
 
 # These are the only fields the current Transactions editing feature allows users to change.
 # Keep this list aligned with the frontend `TRANSACTION_EDITABLE_FIELDS` configuration. Read-only
-# identity/reference/date fields must never become writable merely because they are present on a row.
+# identity/reference/date/interaction policy fields must never become writable merely because they
+# are present on a row.
 TRANSACTION_EDITABLE_FIELDS = (
     "account",
     "amount",
@@ -184,3 +185,7 @@ class TransactionSerializer(serializers.Serializer):
     currency = serializers.CharField()
     status = serializers.CharField()
     transactionDate = serializers.DateField()
+    interactionMode = serializers.ChoiceField(
+        choices=("enabled", "selectionDisabled", "readOnly")
+    )
+    interactionReason = serializers.CharField(allow_null=True, required=False)

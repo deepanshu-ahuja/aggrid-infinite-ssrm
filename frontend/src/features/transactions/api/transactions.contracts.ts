@@ -5,6 +5,7 @@ import type {
   GridQueryFilter,
   GridQuerySort,
 } from '@/shared/grid/query/gridQuery.contracts';
+import type { GridRowInteractionMode } from '@/shared/grid/rows/gridRowInteraction';
 import type { GridSelectionActionTarget } from '@/shared/grid/selection/gridSelectionActionTarget';
 
 /**
@@ -19,8 +20,9 @@ export type TransactionStatus = 'Completed' | 'Pending' | 'Failed';
 /**
  * One Transaction row as returned by the Transactions API.
  *
- * Keep this interface focused on the domain record itself. Paging, sorting, filtering, AG Grid
- * callbacks, cache settings, and selection state do not belong on the row model.
+ * `interactionMode` is backend-provided row policy, not AG Grid state. `interactionReason` is optional
+ * explanatory text for restricted rows. Shared grid code understands only the generic mode effects;
+ * the Transactions feature/backend owns why a specific row has that policy and what reason is shown.
  */
 export interface Transaction {
   id: string;
@@ -30,11 +32,13 @@ export interface Transaction {
   currency: string;
   status: TransactionStatus;
   transactionDate: string;
+  interactionMode: GridRowInteractionMode;
+  interactionReason?: string | null;
 }
 
 /**
- * Backend-writable Transaction fields. Identity/reference/date remain read-only even though they are
- * present on the row returned by the API.
+ * Backend-writable Transaction fields. Identity/reference/date/interaction policy remain read-only
+ * even though they are present on the row returned by the API.
  *
  * The backend validates the same editable surface. The grid's editing configuration remains free to
  * choose how these fields are presented/edited without leaking AG Grid concepts into this contract.

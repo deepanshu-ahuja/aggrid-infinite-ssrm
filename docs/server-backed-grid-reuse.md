@@ -32,6 +32,7 @@ Examples of reusable concerns:
 - include/exclude selection semantics;
 - current-page / filtered / all selection behavior;
 - generic selection-action target construction;
+- domain-neutral row interaction modes such as enabled / selection-disabled / read-only;
 - Grid State persistence;
 - generic tracked-edit mechanics when the behavior is truly domain-neutral.
 
@@ -41,11 +42,12 @@ Examples that should remain feature-owned:
 
 - row type (`Transaction`, `Payable`, etc.);
 - columns and editable fields;
+- the business condition that decides a row interaction mode;
 - AG Grid field -> backend field translation;
 - backend query endpoint;
 - domain action endpoint;
 - action payload such as `{ status: 'Failed' }` or `{ action: 'approve' }`;
-- business validation and backend update implementation.
+- business validation and backend update implementation, including authoritative row eligibility.
 
 ## 2. Do not create a generic `AgGridReact` wrapper
 
@@ -154,15 +156,23 @@ The reusable logical selection is:
 }
 ```
 
-Meaning:
+Meaning inside the **eligible/selectable row universe**:
 
 ```text
 include + ids
--> exactly these ids are selected
+-> exactly these eligible ids are selected
 
 exclude + ids
--> Select All is active and these ids are exceptions
+-> Select All is active and these ids are user exceptions
 ```
+
+Rows that the backend marks selection-disabled/read-only are outside that selectable universe. They are not implicit exclusions and their IDs must not be manufactured into `exclude` arrays.
+
+For loaded rows, the feature maps its row policy to AG Grid's native `rowSelection.isRowSelectable`. Current-page/custom selection helpers also avoid passing disabled `RowNode`s into selection APIs.
+
+For unloaded rows, the backend independently applies the equivalent eligibility rule when resolving a selection action. The frontend never loads the full dataset just to discover disabled IDs.
+
+See `docs/row-interaction.md` for the full frontend/backend contract.
 
 ### Manual/current-page/cross-page selection
 
@@ -184,7 +194,7 @@ final logical selection:
 include [A, B, C, D]
 ```
 
-A backend action should target those exact IDs and must not constrain them by the currently visible filter.
+A backend action should target those exact eligible IDs and must not constrain them by the currently visible filter. If a stale/crafted include request contains a row that is no longer eligible, backend eligibility still wins.
 
 ### Select All Filtered
 
@@ -196,6 +206,8 @@ exclude + exception ids
 
 and the feature also supplies its translated backend filters when building an action request.
 
+Disabled rows are still not added to the exception list. The backend applies filters, row eligibility and then the user's explicit exceptions.
+
 ### Select All Records
 
 The selection is also:
@@ -206,19 +218,21 @@ exclude + exception ids
 
 but there is no backend filter context.
 
+Again, disabled rows remain outside the selectable universe rather than becoming exception IDs.
+
 ### Backend wire contract: no serialized `scope`
 
 Do not send an extra `scope: explicit | filtered | all` field to the backend. The request already carries enough information:
 
 ```text
 include + ids
--> exactly those ids
+-> eligible rows among those exact ids
 
 exclude + filters
--> rows matching those filters, minus the exception ids
+-> eligible rows matching those filters, minus the exception ids
 
 exclude without filters
--> all records, minus the exception ids
+-> all eligible records, minus the exception ids
 ```
 
 Examples:
@@ -369,10 +383,12 @@ For a new feature such as Payables:
 4. Create one feature query/filter mapper.
 5. Reuse the Infinite or SSRM datasource/loading helper.
 6. Reuse the appropriate row-model-specific selection controller.
-7. Reuse `buildGridSelectionActionTarget(...)` for selection-based actions.
-8. Add only the feature-specific action payload/API call in the feature.
-9. Reuse Grid State persistence if the table needs saved preferences.
-10. Add tests for feature translation/business behavior; do not re-test AG Grid internals.
+7. Map the feature's row policy to shared interaction modes and native AG Grid callbacks.
+8. Enforce equivalent selection/edit eligibility in the feature backend for unloaded/stale requests.
+9. Reuse `buildGridSelectionActionTarget(...)` for selection-based actions without adding disabled IDs.
+10. Add only the feature-specific action payload/API call in the feature.
+11. Reuse Grid State persistence if the table needs saved preferences.
+12. Add tests for feature translation/business behavior and row-policy integration; do not re-test AG Grid internals.
 
 ## 13. Things not to generalize prematurely
 
@@ -395,6 +411,7 @@ A reusable helper should have one clear capability and a domain-neutral reason t
 
 - `docs/ag-grid.md` - detailed architecture and ownership rules.
 - `docs/ag-grid-foundation-status.md` - foundation status/guardrails.
+- `docs/row-interaction.md` - reusable selection-disabled/read-only row policy.
 - `frontend/src/infinite-selection-contract.md` - detailed Infinite selection scenarios.
 - `frontend/src/ssrm-selection-contract.md` - detailed SSRM selection scenarios.
 - `docs/transaction-editing.md` - current Transactions editing behavior.

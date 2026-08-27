@@ -21,17 +21,27 @@ export interface UseTrackedGridEditingOptions<TData, TField extends string, TVal
   editableFields: readonly TField[];
   isEditableField: (field: string | undefined) => field is TField;
   getFieldValue: (row: TData, field: TField) => TValue;
+
+  /**
+   * Optional row-level edit policy supplied by the feature.
+   *
+   * AG Grid's column `editable` callback prevents normal cell editing, but current-page edit flows and
+   * draft restoration write through RowNode APIs. Those application writes must obey the same row
+   * policy instead of treating programmatic writes as a way around a read-only row.
+   */
+  isRowEditable?: (row: TData) => boolean;
 }
 
 /**
  * Keeps unsaved grid edits outside AG Grid RowNodes so they survive page/cache reloads.
- * The feature still owns which fields are editable and how saves are sent to the backend.
+ * The feature still owns which fields/rows are editable and how saves are sent to the backend.
  */
 export function useTrackedGridEditing<TData, TField extends string, TValue>({
   getRowId,
   editableFields,
   isEditableField,
   getFieldValue,
+  isRowEditable,
 }: UseTrackedGridEditingOptions<TData, TField, TValue>) {
   const [state, setState] = useState<TrackedGridEditingState<TField, TValue>>(() =>
     createEmptyTrackedGridEditingState<TField, TValue>(),
@@ -49,7 +59,8 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
       if (
         applyingProgrammaticChange.current ||
         event.source === TRACKED_GRID_WRITE_SOURCE ||
-        !event.data
+        !event.data ||
+        (isRowEditable && !isRowEditable(event.data))
       ) {
         return;
       }
@@ -65,16 +76,16 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
       setState((current) => recordTrackedGridCellChange(current, rowId, field, oldValue, newValue));
       setLastEdit({ field, value: newValue });
     },
-    [getRowId, isEditableField],
+    [getRowId, isEditableField, isRowEditable],
   );
 
   const applyChangesToNodes = useCallback(
     (nodes: readonly IRowNode<TData>[], changes: TrackedGridChanges<TField, TValue>) => {
-      // Bulk actions are real drafts, so record them before writing their values into loaded RowNodes.
+      // Bulk edit controls are real drafts, but read-only rows are never valid edit targets.
       setState((current) => {
         let next = current;
         for (const node of nodes) {
-          if (!node.data) continue;
+          if (!node.data || (isRowEditable && !isRowEditable(node.data))) continue;
           const rowId = getRowId(node.data);
           for (const field of editableFields) {
             if (!hasTrackedGridField(changes, field)) continue;
@@ -93,7 +104,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
       applyingProgrammaticChange.current = true;
       try {
         for (const node of nodes) {
-          if (!node.data) continue;
+          if (!node.data || (isRowEditable && !isRowEditable(node.data))) continue;
           for (const field of editableFields) {
             if (!hasTrackedGridField(changes, field)) continue;
             const nextValue = changes[field] as TValue;
@@ -106,16 +117,16 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
         applyingProgrammaticChange.current = false;
       }
     },
-    [editableFields, getFieldValue, getRowId],
+    [editableFields, getFieldValue, getRowId, isRowEditable],
   );
 
   const restoreTrackedEdits = useCallback(
     (api: GridApi<TData>) => {
-      // A newly loaded RowNode starts with backend data. Put any still-unsaved local values back into it.
+      // A newly loaded RowNode starts with backend data. Restore a draft only if the row is still editable.
       applyingProgrammaticChange.current = true;
       try {
         api.forEachNode((node) => {
-          if (!node.data) return;
+          if (!node.data || (isRowEditable && !isRowEditable(node.data))) return;
           const rowChanges = state.changesById[getRowId(node.data)];
           if (!rowChanges) return;
           for (const field of editableFields) {
@@ -130,7 +141,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
         applyingProgrammaticChange.current = false;
       }
     },
-    [editableFields, getFieldValue, getRowId, state.changesById],
+    [editableFields, getFieldValue, getRowId, isRowEditable, state.changesById],
   );
 
   /**

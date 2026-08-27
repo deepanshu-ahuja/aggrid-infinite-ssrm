@@ -32,6 +32,10 @@ import { transactionEditingConfig } from './transactionEditing';
 import { transactionColumns } from './transactionColumns';
 import { mapTransactionGridRequest } from './transactionRequest.mapper';
 import {
+  getTransactionRowClass,
+  isTransactionRowSelectable,
+} from './transactionRowInteraction';
+import {
   buildTransactionSelectionActionRequest,
   hasTransactionSelection,
 } from './transactionSelectionAction';
@@ -266,11 +270,14 @@ export function TransactionsInfiniteGrid({
           columnDefs={transactionColumns}
           context={rowEditActionsContext}
           getRowId={getRowId}
+          getRowClass={getTransactionRowClass}
           initialState={initialState}
           rowSelection={{
             mode: 'multiRow',
             headerCheckbox: false,
             enableClickSelection: false,
+            // Native selectability protects clicks and Grid API selection; custom controllers consume RowNode.selectable.
+            isRowSelectable: isTransactionRowSelectable,
           }}
           selectionColumnDef={selectionColumnDef}
           activeOverlay={loadError ? GridErrorOverlay : undefined}

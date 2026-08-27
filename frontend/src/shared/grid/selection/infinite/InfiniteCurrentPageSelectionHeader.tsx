@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Checkbox, Tooltip } from '@mui/material';
-import type { GridApi } from 'ag-grid-community';
+import type { GridApi, IRowNode } from 'ag-grid-community';
 import { getCurrentPageNodes } from '@/shared/grid/pagination/getCurrentPageNodes';
 import type { SelectionHeaderState } from '../serverSelection';
 
@@ -15,20 +15,31 @@ const EMPTY_HEADER_STATE: SelectionHeaderState = {
   disabled: true,
 };
 
+/**
+ * AG Grid owns the actual selectability decision through `rowSelection.isRowSelectable`.
+ * Current-page helpers consume the resulting native RowNode flag instead of re-running a feature
+ * condition or building their own disabled-ID list.
+ */
+function getSelectablePageNodes<TData>(nodes: readonly IRowNode<TData>[]) {
+  return nodes.filter((node) => node.selectable);
+}
+
 /** Derive the visual checkbox state from AG Grid without creating another selection source of truth. */
 function readCurrentPageHeaderState<TData>(api: GridApi<TData>): SelectionHeaderState {
   const pageNodes = getCurrentPageNodes(api);
+  if (!pageNodes) return EMPTY_HEADER_STATE;
 
-  if (!pageNodes || pageNodes.length === 0) return EMPTY_HEADER_STATE;
+  const selectableNodes = getSelectablePageNodes(pageNodes);
+  if (selectableNodes.length === 0) return EMPTY_HEADER_STATE;
 
-  const selectedCount = pageNodes.reduce(
+  const selectedCount = selectableNodes.reduce(
     (count, node) => count + (node.isSelected() === true ? 1 : 0),
     0,
   );
 
   return {
-    checked: selectedCount === pageNodes.length,
-    indeterminate: selectedCount > 0 && selectedCount < pageNodes.length,
+    checked: selectedCount === selectableNodes.length,
+    indeterminate: selectedCount > 0 && selectedCount < selectableNodes.length,
     disabled: false,
   };
 }
@@ -36,6 +47,7 @@ function readCurrentPageHeaderState<TData>(api: GridApi<TData>): SelectionHeader
 /**
  * Infinite Row Model header shortcut for selecting/clearing the CURRENT pagination page.
  * Selected rows remain AG Grid-owned; React stores only derived checkbox presentation state.
+ * Non-selectable rows are never passed to our programmatic selection call.
  */
 export function InfiniteCurrentPageSelectionHeader<TData>({
   api,
@@ -79,8 +91,11 @@ export function InfiniteCurrentPageSelectionHeader<TData>({
             const pageNodes = getCurrentPageNodes(api);
             if (!pageNodes) return;
 
+            const selectableNodes = getSelectablePageNodes(pageNodes);
+            if (selectableNodes.length === 0) return;
+
             api.setNodesSelected({
-              nodes: pageNodes,
+              nodes: selectableNodes,
               newValue: !headerState.checked,
             });
           }}

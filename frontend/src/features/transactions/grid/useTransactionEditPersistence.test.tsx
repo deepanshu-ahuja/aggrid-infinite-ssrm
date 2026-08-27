@@ -20,6 +20,7 @@ function row(id: string): Transaction {
     currency: 'USD',
     status: 'Completed',
     transactionDate: '2026-08-24',
+    interactionMode: 'enabled',
   };
 }
 

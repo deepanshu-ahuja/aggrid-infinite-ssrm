@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 
 from apps.transactions.services import (
     TransactionNotFoundError,
+    TransactionReadOnlyError,
     bulk_update_transactions,
     query_transactions,
     update_transaction,
@@ -37,7 +38,7 @@ class TransactionQueryView(APIView):
 
 
 class TransactionDetailView(APIView):
-    """Save one row patch. A future row-level Save button can call this endpoint directly."""
+    """Save one row patch while keeping backend row-policy enforcement authoritative."""
 
     def patch(self, request, transaction_id):
         changes_serializer = TransactionChangesSerializer(data=request.data)
@@ -53,6 +54,11 @@ class TransactionDetailView(APIView):
                 {"detail": "Transaction not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        except TransactionReadOnlyError:
+            return Response(
+                {"detail": "Transaction is read-only."},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         return Response({"row": TransactionSerializer(row).data})
 
@@ -61,9 +67,9 @@ class TransactionBulkUpdateView(APIView):
     """
     Save many explicit row patches in one request.
 
-    The service resolves every id before applying changes, so a missing row rejects the operation
-    before any valid row is mutated. That is the contract a future database implementation should
-    preserve with a real transaction.
+    The service resolves every id and validates row editability before applying changes, so a missing
+    or read-only row rejects the operation before any valid row is mutated. A future database
+    implementation should preserve that contract with a real transaction.
     """
 
     def patch(self, request):
@@ -79,6 +85,11 @@ class TransactionBulkUpdateView(APIView):
                 {"detail": "One or more transactions were not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        except TransactionReadOnlyError:
+            return Response(
+                {"detail": "One or more transactions are read-only."},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         serialized_rows = TransactionSerializer(rows, many=True).data
         return Response(
@@ -90,7 +101,7 @@ class TransactionBulkUpdateView(APIView):
 
 
 class TransactionSelectionUpdateView(APIView):
-    """Apply one validated patch to the logical selection represented by the grid."""
+    """Apply one validated patch to backend-eligible rows in the grid's logical selection."""
 
     def patch(self, request):
         serializer = TransactionSelectionUpdateSerializer(data=request.data)

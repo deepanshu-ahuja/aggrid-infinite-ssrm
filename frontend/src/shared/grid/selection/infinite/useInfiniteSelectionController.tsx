@@ -85,8 +85,14 @@ export function useInfiniteSelectionController<TData>({
     if (scope === 'page') return;
 
     gridApi.current?.forEachNode((node) => {
-      if (!node.data) return;
+      if (!node.data || node.selectable === false) return;
 
+      /**
+       * `isRowSelectable` is AG Grid's authority for whether a loaded row may participate in
+       * selection. Custom Select All must never work around it by programmatically selecting a row
+       * that AG Grid has marked non-selectable. Disabled rows are not logical exclusions; they are
+       * outside the selectable universe entirely.
+       */
       const shouldBeSelected = isRowSelected(getRowId(node.data));
       if (node.isSelected() !== shouldBeSelected) {
         node.setSelected(shouldBeSelected, false, 'api');
@@ -96,8 +102,8 @@ export function useInfiniteSelectionController<TData>({
 
   /**
    * Runs after AG Grid changes the Infinite rows it currently knows about. This keeps newly loaded
-   * rows visually consistent with our custom dataset-wide selection and updates the filtered count
-   * once AG Grid knows the final size of the current filtered result.
+   * selectable rows visually consistent with our custom dataset-wide selection and updates the
+   * filtered count once AG Grid knows the final size of the current filtered result.
    */
   const onRowsChanged = useCallback(() => {
     const api = gridApi.current;
@@ -140,11 +146,6 @@ export function useInfiniteSelectionController<TData>({
         ...headerState,
         label: headerLabel,
         onChange: (checked: boolean) => {
-          const selection: ServerSelectionIntent<string> = checked
-            ? { mode: 'exclude', ids: [] }
-            : { mode: 'include', ids: [] };
-
-          console.log('HEADER SELECTION:', selection);
           setHeaderSelected(checked);
         },
       },
@@ -153,7 +154,14 @@ export function useInfiniteSelectionController<TData>({
 
   const onRowSelected = useCallback(
     (event: RowSelectedEvent<TData>) => {
-      if (scope === 'page' || event.source === 'api' || !event.data) return;
+      if (
+        scope === 'page' ||
+        event.source === 'api' ||
+        !event.data ||
+        event.node.selectable === false
+      ) {
+        return;
+      }
 
       setRowSelected(getRowId(event.data), event.node.isSelected() === true);
     },
