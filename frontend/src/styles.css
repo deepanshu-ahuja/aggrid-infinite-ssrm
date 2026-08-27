@@ -11,7 +11,7 @@ body {
 /**
  * Row interaction presentation only. Native AG Grid callbacks and backend validation enforce the
  * actual behavior; these styles make the restriction obvious without becoming another source of
- * truth. `selectionDisabled` stays otherwise interactive, so only its selection control is muted.
+ * truth.
  */
 .grid-row--selection-disabled .ag-selection-checkbox,
 .grid-row--read-only .ag-selection-checkbox {
@@ -19,7 +19,15 @@ body {
   opacity: 0.35;
 }
 
+/**
+ * Selection-disabled rows remain editable, so the whole row is only lightly muted. This distinguishes
+ * them from ordinary rows without falsely presenting them as fully read-only.
+ */
+.grid-row--selection-disabled {
+  opacity: 0.84;
+}
+
 /** Fully read-only rows get the stronger whole-row treatment because editing/actions are blocked too. */
 .grid-row--read-only {
-  opacity: 0.58;
+  opacity: 0.56;
 }
