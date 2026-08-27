@@ -1,4 +1,8 @@
+from unittest.mock import patch
+
 from rest_framework.test import APISimpleTestCase
+
+from apps.transactions.services import _build_transactions
 
 
 class TransactionQueryApiTests(APISimpleTestCase):
@@ -77,6 +81,16 @@ class TransactionQueryApiTests(APISimpleTestCase):
 
 
 class TransactionUpdateApiTests(APISimpleTestCase):
+    def setUp(self):
+        # Every mutation test gets fresh deterministic demo data. Otherwise a test that changes the
+        # fields driving interaction policy could make a later test accidentally order-dependent.
+        self.transactions_patch = patch(
+            "apps.transactions.services.TRANSACTIONS",
+            _build_transactions(),
+        )
+        self.transactions_patch.start()
+        self.addCleanup(self.transactions_patch.stop)
+
     def test_updates_one_transaction_and_returns_authoritative_row(self):
         response = self.client.patch(
             "/api/transactions/txn-00003/",
