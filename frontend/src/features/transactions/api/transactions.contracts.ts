@@ -20,8 +20,9 @@ export type TransactionStatus = 'Completed' | 'Pending' | 'Failed';
 /**
  * One Transaction row as returned by the Transactions API.
  *
- * `interactionMode` is backend-provided row policy, not AG Grid state. The shared grid layer only
- * understands its generic effects; the Transactions feature owns how that backend policy is produced.
+ * `interactionMode` is backend-provided row policy, not AG Grid state. `interactionReason` is optional
+ * explanatory text for restricted rows. Shared grid code understands only the generic mode effects;
+ * the Transactions feature/backend owns why a specific row has that policy and what reason is shown.
  */
 export interface Transaction {
   id: string;
@@ -32,6 +33,7 @@ export interface Transaction {
   status: TransactionStatus;
   transactionDate: string;
   interactionMode: GridRowInteractionMode;
+  interactionReason?: string | null;
 }
 
 /**
