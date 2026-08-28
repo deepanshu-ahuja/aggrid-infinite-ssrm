@@ -52,8 +52,9 @@ Configure `DJANGO_SECRET_KEY` and the AG Grid license key through Databricks App
 
 ## Project documentation
 
-Start with these two overview references when learning the grid foundation:
+Start with these grid-foundation entry points:
 
+- [Grid foundation backlog](docs/grid-backlog.md) — the single living TODO list for unfinished capabilities, risks, verification work, and deferred decisions. Pick future grid work from here and update it as items are completed.
 - [Grid capability catalog](docs/grid-capabilities.md) — what the current grid foundation can do logically, independent of one UI flow.
 - [AG Grid native usage reference](docs/ag-grid-native-usage.md) — which native AG Grid props, APIs, RowNode methods, events, state and modules the project currently relies on.
 
