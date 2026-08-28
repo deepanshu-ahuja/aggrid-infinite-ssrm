@@ -21,7 +21,31 @@ Export Current Page
 Export Selected
 ```
 
-The two operations have different ownership because their data availability is different.
+The two operations have different ownership because their data availability and business meaning are different.
+
+## Scope and eligibility behavior
+
+| Export action | Data source | Can include unloaded rows? | `selectionDisabled` / `readOnly` rows | Why |
+| --- | --- | --- | --- | --- |
+| Export Current Page | Loaded AG Grid RowNodes on the current pagination page | No | **Included** when present on that page | This is a page snapshot, not a selection-based business action. It exports the page as represented by the grid. |
+| Export Selected — explicit/current-page selection | Backend resolver from explicit selected IDs | Selected IDs may refer only to rows represented by the logical selection | **Excluded** | Selected export follows backend selection eligibility. |
+| Export Selected — All Filtered | Backend resolver from filtered exclude-mode selection + filters | Yes | **Excluded** | Backend resolves the entire filtered selection and applies authoritative eligibility. |
+| Export Selected — All Records | Backend resolver from all-record exclude-mode selection | Yes | **Excluded** | Backend resolves the entire dataset selection and applies authoritative eligibility. |
+
+This distinction is intentional:
+
+```text
+Current Page export
+-> "export this page snapshot"
+-> restricted rows remain part of the page and are exported
+
+Selected export
+-> "export the rows represented by the logical selection"
+-> backend selection eligibility applies
+-> selectionDisabled/readOnly rows are not exported
+```
+
+Do not make Current Page silently apply selected-row eligibility rules unless the product explicitly changes the meaning of that action. Likewise, do not make Selected export trust only loaded RowNodes because dataset-wide selection can include unloaded rows.
 
 ## Export Current Page
 
@@ -47,6 +71,12 @@ If the current page is not fully resolved yet, export is refused rather than sil
 
 This same current-page helper is used by both Infinite and SSRM because the meaning and mechanics are genuinely identical once concrete page RowNodes exist.
 
+### Current Page and restricted rows
+
+`selectionDisabled` and `readOnly` control whether a row may participate in selection/edit/business operations. They do **not** remove the row from the visible page.
+
+Therefore Current Page export intentionally includes those rows when they are present on the page. This is different from Export Selected and is not an eligibility bug.
+
 ## Export Selected
 
 Selected export is backend-owned for both server-backed row models.
@@ -64,10 +94,29 @@ POST /api/transactions/selection/export/
         ↓
 backend resolves authoritative selected rows
         ↓
+backend applies selection eligibility
+        ↓
 backend writes CSV
         ↓
 browser downloads transactions-selected.csv
 ```
+
+### Selected export and restricted rows
+
+Selected export follows the same backend eligibility contract as other selection-based operations:
+
+```text
+enabled
+-> eligible for selected export
+
+selectionDisabled
+-> excluded from selected export
+
+readOnly
+-> excluded from selected export
+```
+
+The frontend prevents restricted loaded rows from entering ordinary checkbox selection, but that is not enough for dataset-wide selection because some rows may never be loaded. The backend resolver therefore re-applies eligibility authoritatively before creating the CSV.
 
 ## Infinite and SSRM still select differently
 
@@ -198,7 +247,21 @@ actual selected export
 is backend-authoritative
 ```
 
-See [Selected-row totals](selection-counts.md) for that limitation and the future eligibility-aware count option.
+Example:
+
+```text
+totalCount = 750
+25 rows are selectionDisabled/readOnly
+
+UI Select All Records count
+-> 750 selected under the current count contract
+
+Export Selected
+-> backend resolves only 725 eligible rows
+-> restricted rows are not written to the CSV
+```
+
+This apparent difference is deliberate until the backend exposes eligibility-aware count metadata. See [Selected-row totals](selection-counts.md) for that limitation and future option.
 
 ## Current CSV fields
 
@@ -230,6 +293,8 @@ Decide these only when a real product needs them:
 
 Client-Side Row Model should later expose the same user-facing export concepts using native/local ownership where all rows are already available in browser memory. It should not inherit server-only selected-export resolution unnecessarily.
 
+Import/template/sample-upload workflows are intentionally separate from export and remain deferred until after the Client-Side foundation unless product priority changes.
+
 ## Implementation map
 
 ```text
@@ -253,4 +318,26 @@ backend/apps/transactions/api/views.py
 -> POST selected-export endpoint and CSV response
 ```
 
-See [Pre-Client manual testing](pre-client-manual-testing.md) for exact verification steps.
+## Verification expectations
+
+For both `/infinite` and `/ssrm`, verify at minimum:
+
+```text
+Export Current Page
+-> exact fully loaded page only
+-> includes selectionDisabled/readOnly rows if they are present on the page
+-> refuses partial/unresolved page export
+
+Export Selected explicit
+-> only selected backend-eligible rows
+
+Export Selected All Filtered
+-> current filtered universe minus user exceptions
+-> excludes selectionDisabled/readOnly rows
+
+Export Selected All Records
+-> complete logical selection minus user exceptions
+-> excludes selectionDisabled/readOnly rows
+```
+
+See [Pre-Client manual testing](pre-client-manual-testing.md) for step-by-step verification.
