@@ -124,6 +124,8 @@ all
 → rowSelection.selectAll = 'all'
 ```
 
+The Transactions `/client` demo currently defaults to `selectionScope: 'all'`. This makes the default route visibly exercise selection across the complete locally-held eligible dataset. `page` and `filtered` remain supported by the same controller and can be selected through the grid prop/config without a separate Client implementation.
+
 `isTransactionRowSelectable` remains the feature adapter for backend-provided interaction policy. AG Grid's header checkbox therefore selects only rows whose `interactionMode` is `enabled`.
 
 ### Why Client does not use include/exclude dataset state
@@ -176,6 +178,17 @@ selected count
 
 Because the complete working set is local and AG Grid honors `isRowSelectable`, `selectionDisabled` and `readOnly` rows do not enter native Client selection.
 
+For the current deterministic 750-row Transactions demo, the backend interaction policy produces:
+
+```text
+750 total rows
+- 63 selectionDisabled rows
+- 63 readOnly rows
+= 624 selectable rows
+```
+
+Therefore, with the Client demo's default `all` scope, selecting the header checkbox should currently show **624 selected**. If the demo interaction-policy rules change later, this expected number must be updated with them; the invariant is that Client selected count equals the exact native selectable selection, not that production systems should hard-code `624`.
+
 This differs from the documented server-wide count limitation. Infinite/SSRM All Records / All Filtered counts can include backend-ineligible unloaded rows because their normal `totalCount` / `filteredCount` metadata describes query membership rather than exact selection eligibility.
 
 The backend still re-checks eligibility for Client selected business actions as defence in depth in case policy changes between selection and mutation.
@@ -190,14 +203,13 @@ Client selected rows are sent to the same backend selected-action endpoint as ex
     "mode": "include",
     "ids": ["txn-a", "txn-b"]
   },
-  "filters": [],
   "changes": {
     "status": "Failed"
   }
 }
 ```
 
-No Client FilterModel is translated into the backend request because the Client can enumerate the exact selected IDs. This keeps local grid filtering independent from server-query translation.
+No Client FilterModel is translated into the backend request because the Client can enumerate the exact selected IDs. Exact `include` selection is the whole target, so the request deliberately omits `filters` rather than sending an empty or redundant filter payload.
 
 The backend remains authoritative for eligibility and mutation policy.
 
@@ -319,7 +331,7 @@ When testing `/client`, verify at least:
 
 1. Initial load performs one `GET /api/transactions/` and renders the full collection through Client-Side Row Model.
 2. Sorting, filtering and pagination changes do not trigger row-query API requests.
-3. Test `selectionScope: 'page'`, `'filtered'` and `'all'`; header selection matches the native scope.
+3. Default `/client` scope is `all`; selecting the header checkbox currently yields 624 selectable rows in the deterministic demo. Also test `selectionScope: 'page'` and `'filtered'`; header selection matches the corresponding native scope.
 4. `selectionDisabled` and `readOnly` rows cannot be selected; `selectionDisabled` remains individually editable and `readOnly` does not.
 5. In filtered scope, change the filter after Select All Filtered and confirm the old selection clears.
 6. Selected count equals the exact native selected rows.
