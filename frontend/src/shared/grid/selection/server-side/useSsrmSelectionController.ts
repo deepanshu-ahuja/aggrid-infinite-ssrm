@@ -1,4 +1,4 @@
-// GRIDCAP-ROWMODEL-SSRM | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-SEL-TARGET | GRIDCAP-ROW-ELIGIBILITY
+// GRIDCAP-ROWMODEL-SSRM | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-SEL-TARGET | GRIDCAP-ACTION-SELECTED | GRIDCAP-ROW-ELIGIBILITY
 import { useCallback, useState } from 'react';
 import type { RefObject } from 'react';
 import type { GridApi, RowSelectedEvent, SelectionChangedEvent } from 'ag-grid-community';
@@ -296,6 +296,7 @@ export function useSsrmSelectionController<TData>({
   }, [filteredSelection, gridApi]);
 
   /** Explicit Clear means clear both possible ownership models. */
+  // GRIDCAP-ACTION-SELECTED
   const clearSelection = useCallback(() => {
     setFilteredSelection(undefined);
     gridApi.current?.setServerSideSelectionState(createEmptyServerSideSelectionState());
