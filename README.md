@@ -44,6 +44,8 @@ source .venv/bin/activate
 python backend/manage.py test apps.transactions
 ```
 
+Pull requests also run these checks in GitHub Actions. See [GitHub Actions CI](docs/github-actions-ci.md) for a developer-oriented explanation of the workflow syntax, commands, and how to diagnose failures.
+
 ## Databricks Apps
 
 The root `package.json` build script produces `frontend/dist`. Databricks installs root Node and Python dependencies, runs the frontend build, and starts the Django WSGI application using `app.yaml`. Django and WhiteNoise serve the built SPA and hashed assets from the same process.
@@ -54,9 +56,11 @@ Configure `DJANGO_SECRET_KEY` and the AG Grid license key through Databricks App
 
 Start with these grid-foundation entry points:
 
-- [Grid foundation backlog](docs/grid-backlog.md) — the single living TODO list for unfinished capabilities, risks, verification work, and deferred decisions. Pick future grid work from here and update it as items are completed.
+- [Grid foundation backlog](docs/grid-backlog.md) — the single living TODO/control list for unfinished capabilities, risks, verification work, and deferred decisions.
 - [Grid capability catalog](docs/grid-capabilities.md) — what the current grid foundation can do logically, independent of one UI flow.
 - [AG Grid native usage reference](docs/ag-grid-native-usage.md) — which native AG Grid props, APIs, RowNode methods, events, state and modules the project currently relies on.
+- [Selection counts, edited totals, and export](docs/selection-edit-export.md) — exact/manual versus dataset-wide selected counts, dirty-row total semantics, current limitations/future backend options, export ownership, and manual scenarios.
+- [GitHub Actions CI](docs/github-actions-ci.md) — what the repository workflow does and how to read a failed run.
 
 Then use the detailed source-of-truth documents for implementation and edge cases:
 
