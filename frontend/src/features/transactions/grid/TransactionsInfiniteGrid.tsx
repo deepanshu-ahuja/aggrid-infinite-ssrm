@@ -97,6 +97,7 @@ export function TransactionsInfiniteGrid({
   const {
     selectionColumnDef,
     readSelectionIntent,
+    selectedRowCount,
     onRowsChanged: syncSelectionAfterRowsChange,
     onRowSelected,
     onSelectionChanged,
@@ -300,6 +301,7 @@ export function TransactionsInfiniteGrid({
     <Stack spacing={2}>
       <TransactionSelectionActions
         hasSelection={hasTransactionSelection(selectionIntent)}
+        selectedRowCount={selectedRowCount}
         isApplying={isApplyingSelectionAction}
         statusActionBlockedByConflict={statusActionBlockedByConflict}
         error={selectionActionError}
