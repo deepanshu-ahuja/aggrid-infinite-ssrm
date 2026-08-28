@@ -1,3 +1,4 @@
+// GRIDCAP-SEL-TARGET | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL
 /**
  * Dataset-wide Select-All meanings supported by the custom Infinite Row Model strategy.
  *
