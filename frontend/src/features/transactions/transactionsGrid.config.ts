@@ -39,9 +39,10 @@ interface TransactionsGridConfig {
 /** Static feature choices; each row-model root is otherwise independently usable. */
 export const transactionsGridConfig: TransactionsGridConfig = {
   client: {
-    // Current Page is a useful conservative default for this demo. Client-Side also supports native
-    // `filtered` and `all` header selection without changing the controller implementation.
-    selectionScope: 'page',
+    // All Records is the Client demo default so the route visibly proves native AG Grid can select the
+    // complete locally-held eligible dataset across pagination pages. The same controller still supports
+    // `page` -> `currentPage` and `filtered` -> `filtered` without a separate Client grid implementation.
+    selectionScope: 'all',
     gridOptions: {
       ...clientSideGridDefaults,
     },

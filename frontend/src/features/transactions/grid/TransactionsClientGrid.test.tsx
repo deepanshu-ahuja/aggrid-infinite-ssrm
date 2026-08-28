@@ -100,7 +100,7 @@ afterEach(() => {
 });
 
 describe('TransactionsClientGrid production wiring', () => {
-  it('fetches the complete collection once and supplies native Client-Side rowData', async () => {
+  it('fetches the complete collection once, supplies Client rowData, and defaults Select All to all records', async () => {
     const authoritativeRows = [createTransaction('txn-a'), createTransaction('txn-b')];
     transactionApi.listAllTransactions.mockResolvedValue(authoritativeRows);
 
@@ -110,6 +110,10 @@ describe('TransactionsClientGrid production wiring', () => {
 
     expect(getGridProps().rowModelType).toBe('clientSide');
     expect(getGridProps().datasource).toBeUndefined();
+    expect(getGridProps().rowSelection).toMatchObject({
+      mode: 'multiRow',
+      selectAll: 'all',
+    });
     expect(transactionApi.listAllTransactions).toHaveBeenCalledTimes(1);
     expect(transactionApi.listTransactions).not.toHaveBeenCalled();
 
@@ -118,7 +122,7 @@ describe('TransactionsClientGrid production wiring', () => {
     expect(getGridProps().rowData?.[0]).not.toBe(authoritativeRows[0]);
   });
 
-  it('uses native current-page header selection and backend row eligibility', async () => {
+  it('supports native current-page header selection as a scope override and keeps backend row eligibility', async () => {
     renderGrid(<TransactionsClientGrid selectionScope="page" />);
 
     await waitFor(() => expect(getGridProps().rowData).toHaveLength(3));
