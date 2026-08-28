@@ -93,6 +93,7 @@ export function TransactionsInfiniteGrid({
     datasource,
     error: loadError,
     totalCount,
+    filteredCount,
     retry: retryLoad,
     clearError: clearLoadError,
   } = useInfiniteRowLoading({ gridApi, loadRows: loadTransactionRows });
@@ -110,6 +111,7 @@ export function TransactionsInfiniteGrid({
     scope: selectionScope,
     getRowId: getTransactionId,
     totalCount,
+    filteredCount,
     onSelectionChange,
   });
 
