@@ -1,3 +1,4 @@
+// GRIDCAP-COUNT-SELECTED | GRIDCAP-SEL-ALL | GRIDCAP-SEL-FILTERED
 import type { GridSelectionId, ServerSelectionIntent } from './serverSelection';
 
 /**
