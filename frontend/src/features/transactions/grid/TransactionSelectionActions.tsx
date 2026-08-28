@@ -3,6 +3,8 @@ import type { TransactionStatus } from '../api/transactions.contracts';
 
 interface TransactionSelectionActionsProps {
   hasSelection: boolean;
+  /** Logical row count, including unloaded rows when dataset-wide Select All is active. */
+  selectedRowCount: number;
   isApplying: boolean;
   /** Status actions may not decide a still-unresolved LOCAL-vs-REMOTE status conflict implicitly. */
   statusActionBlockedByConflict: boolean;
@@ -13,6 +15,7 @@ interface TransactionSelectionActionsProps {
 /** Simple feature action bar for backend operations against the current logical grid selection. */
 export function TransactionSelectionActions({
   hasSelection,
+  selectedRowCount,
   isApplying,
   statusActionBlockedByConflict,
   error,
@@ -27,6 +30,9 @@ export function TransactionSelectionActions({
         spacing={1}
         alignItems={{ xs: 'stretch', sm: 'center' }}
       >
+        <Typography variant="body2" sx={{ mr: 1 }}>
+          {selectedRowCount} selected
+        </Typography>
         <Typography variant="body2" sx={{ mr: 1 }}>
           Update selected status
         </Typography>
