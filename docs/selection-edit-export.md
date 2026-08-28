@@ -42,7 +42,7 @@ Current count:
 selected = filteredCount - exceptionCount
 ```
 
-Infinite learns the accepted filtered result size from its completed row model. SSRM uses the accepted server-side displayed result size while the custom All Filtered semantic is active.
+`filteredCount` comes from the normal backend query response. SSRM publishes the count only for the newest requested filter universe, so a slower response from an older filter cannot overwrite the number for the current filter. Infinite currently learns the accepted filtered result size from its completed row model; both approaches avoid loading every matching row merely to calculate the selected total.
 
 ### Select All Records
 
