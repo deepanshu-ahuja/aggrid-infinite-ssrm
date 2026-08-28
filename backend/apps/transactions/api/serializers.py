@@ -116,11 +116,15 @@ class TransactionSelectionSerializer(serializers.Serializer):
     The selection itself intentionally contains only `mode + ids`:
 
     - include + ids -> exactly those rows;
-    - exclude + ids -> dataset-wide selection with those ids as exceptions.
+    - exclude + ids -> dataset-wide selection with those ids as USER exceptions.
 
-    For exclude mode, the top-level action filters decide which dataset is meant. Non-empty filters
+    For exclude mode, the top-level operation filters decide which dataset is meant. Non-empty filters
     mean the filtered dataset; no filters means all records. A separate serialized `scope` would only
     duplicate information already present in the request.
+
+    Business-disabled rows are deliberately NOT encoded here as exclude IDs. Selection eligibility is
+    authoritative backend domain logic, while this serializer represents only the user's logical
+    selection/deselection intent.
     """
 
     mode = serializers.ChoiceField(choices=("include", "exclude"))
@@ -158,10 +162,17 @@ class TransactionSelectionSerializer(serializers.Serializer):
         return attrs
 
 
-class TransactionSelectionUpdateSerializer(serializers.Serializer):
+class TransactionSelectionTargetSerializer(serializers.Serializer):
+    """
+    Operation-neutral server-backed selection target.
+
+    Both mutation and export inherit this validation so the same request always resolves the same
+    logical row set. Adding another selected-row operation must not create a subtly different
+    interpretation of include/exclude/filter semantics.
+    """
+
     selection = TransactionSelectionSerializer()
     filters = TransactionFilterSerializer(many=True, required=False, default=list)
-    changes = TransactionChangesSerializer()
 
     def validate(self, attrs):
         selection = attrs["selection"]
@@ -175,6 +186,11 @@ class TransactionSelectionUpdateSerializer(serializers.Serializer):
             )
 
         return attrs
+
+
+class TransactionSelectionUpdateSerializer(TransactionSelectionTargetSerializer):
+    # Mutation adds only the requested patch; selection/filter validation stays inherited above.
+    changes = TransactionChangesSerializer()
 
 
 class TransactionSerializer(serializers.Serializer):

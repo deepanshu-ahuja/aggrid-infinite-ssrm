@@ -90,6 +90,8 @@ Shared mechanics and concrete feature composition are different things: a reusab
 
 Comments should explain ownership, lifecycle, constraints and non-obvious decisions; they should not translate TypeScript syntax into English.
 
+**Preserve useful explanatory comments by default.** Refactoring or adding a feature is not a reason to shorten/remove existing rationale merely to make a file look cleaner. Remove or rewrite an existing comment only when the underlying logic/contract changed, the comment became inaccurate, or the same explanation is genuinely duplicated without adding local clarity. If removing it would make ownership, lifecycle, business rules, race handling, or future maintenance harder to understand, keep it and add the new logic-level explanation beside it.
+
 For meaningful React state, refs, effects, memoized values and callbacks, document the rationale when it is not obvious from the name alone. A useful comment answers the relevant questions:
 
 - what the value represents;
@@ -99,6 +101,8 @@ For meaningful React state, refs, effects, memoized values and callbacks, docume
 - when it resets or deliberately survives;
 - how it differs from nearby state that looks similar;
 - what race condition, ownership boundary or third-party lifecycle rule makes the implementation necessary.
+
+For async request-order logic, comment the actual freshness rule near the code that enforces it. For example, if request A starts and request B starts later, B owns renderable metadata; A may resolve afterwards for the library lifecycle but must not overwrite B. The rule must be described in terms of request order rather than assuming higher/lower page numbers, so it remains correct for both forward and backward navigation.
 
 For server-backed grids, comments should also explain non-obvious cache/refresh behavior when it can surprise a developer. For example, `refreshInfiniteCache()` refreshes currently resident Infinite blocks; it does not enumerate or load every backend block affected by a dataset-wide business action.
 

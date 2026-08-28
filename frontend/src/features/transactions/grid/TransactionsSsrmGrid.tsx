@@ -20,6 +20,7 @@ import {
 import { useCurrentPageEditActions } from '@/shared/grid/editing/useCurrentPageEditActions';
 import { useTrackedGridEditing } from '@/shared/grid/editing/useTrackedGridEditing';
 import { GridErrorOverlay } from '@/shared/grid/overlays/GridErrorOverlay';
+import { getLogicalSelectedRowCount } from '@/shared/grid/selection/selectionCount';
 import { useSsrmSelectionController } from '@/shared/grid/selection/server-side/useSsrmSelectionController';
 import type { ServerSelectionIntent } from '@/shared/grid/selection/serverSelection';
 import { useGridStatePersistence } from '@/shared/grid/state/useGridStatePersistence';
@@ -31,6 +32,7 @@ import {
 } from '../transactionsGrid.config';
 import { TransactionEditConflictPopover } from './TransactionEditConflictPopover';
 import { TransactionEditingControls } from './TransactionEditingControls';
+import { TransactionExportActions } from './TransactionExportActions';
 import type { TransactionRowEditActionsContext } from './TransactionRowEditActions';
 import { TransactionSelectionActions } from './TransactionSelectionActions';
 import {
@@ -47,9 +49,11 @@ import {
 } from './transactionRowInteraction';
 import {
   buildTransactionSelectionActionRequest,
+  buildTransactionSelectionTarget,
   hasTransactionSelection,
 } from './transactionSelectionAction';
 import { useTransactionEditPersistence } from './useTransactionEditPersistence';
+import { useTransactionExport } from './useTransactionExport';
 import { useTransactionSelectionAction } from './useTransactionSelectionAction';
 
 const SSRM_STATE_KEY = 'transactions:ssrm';
@@ -96,6 +100,8 @@ export function TransactionsSsrmGrid({
   const {
     datasource,
     error: loadError,
+    totalCount,
+    filteredCount,
     retry: retryLoad,
     clearError: clearLoadError,
   } = useServerSideRowLoading({
@@ -142,6 +148,13 @@ export function TransactionsSsrmGrid({
     selectionActionError,
   } = useTransactionSelectionAction({ onApplied: handlePersistedRows });
 
+  const {
+    error: exportError,
+    isExportingSelected,
+    exportCurrentPage,
+    exportSelected,
+  } = useTransactionExport();
+
   const handleDiscardRow = useCallback(
     (rowId: string) => {
       const api = gridApi.current;
@@ -153,6 +166,14 @@ export function TransactionsSsrmGrid({
   );
 
   const selectionIntent = isGridReady ? readSelectionIntent() : EMPTY_SELECTION;
+  const hasSelection = hasTransactionSelection(selectionIntent);
+
+  // Dataset-wide selected totals come from the same normal API response that loads the grid. Native
+  // SSRM owns the All Records selection rule, while our custom All Filtered mode owns its filter scope;
+  // neither requires enumerating unloaded RowNodes just to display a number.
+  const selectionScopeTotal = isFilteredSelectAllActive ? filteredCount : totalCount;
+  const selectedRowCount = getLogicalSelectedRowCount(selectionIntent, selectionScopeTotal);
+
   const selectedDirtyUpdates = isGridReady
     ? buildSelectedTrackedGridUpdatePayload(state, selectionIntent).updates
     : [];
@@ -173,9 +194,11 @@ export function TransactionsSsrmGrid({
   const handleDiscardSelected = useCallback(() => {
     const api = gridApi.current;
     if (!api) return;
-
     const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
-    discardRows(api, updates.map((update) => update.id));
+    discardRows(
+      api,
+      updates.map((update) => update.id),
+    );
     if (conflictTarget && updates.some((update) => update.id === conflictTarget.rowId)) {
       setConflictTarget(null);
     }
@@ -185,7 +208,6 @@ export function TransactionsSsrmGrid({
     (status: TransactionStatus) => {
       const api = gridApi.current;
       if (!api) return;
-
       const currentSelection = readSelectionIntent();
       if (
         !hasTransactionSelection(currentSelection) ||
@@ -205,6 +227,26 @@ export function TransactionsSsrmGrid({
     },
     [applySelectionAction, isFilteredSelectAllActive, readSelectionIntent, state],
   );
+
+  const handleExportCurrentPage = useCallback(() => {
+    const api = gridApi.current;
+    if (api) exportCurrentPage(api);
+  }, [exportCurrentPage]);
+
+  const handleExportSelected = useCallback(() => {
+    const api = gridApi.current;
+    if (!api) return;
+    const currentSelection = readSelectionIntent();
+    if (!hasTransactionSelection(currentSelection)) return;
+
+    void exportSelected(
+      buildTransactionSelectionTarget(
+        currentSelection,
+        isFilteredSelectAllActive ? 'filtered' : 'all',
+        api.getFilterModel(),
+      ),
+    );
+  }, [exportSelected, isFilteredSelectAllActive, readSelectionIntent]);
 
   const rowEditActionsContext = useMemo<TransactionRowEditActionsContext>(
     () => ({
@@ -230,7 +272,6 @@ export function TransactionsSsrmGrid({
   useEffect(() => {
     const api = gridApi.current;
     if (!api) return;
-
     api.setGridOption?.('context', rowEditActionsContext);
     api.refreshCells?.({ columns: [...TRANSACTION_EDITABLE_FIELDS, 'editActions'], force: true });
   }, [rowEditActionsContext]);
@@ -267,11 +308,9 @@ export function TransactionsSsrmGrid({
       const candidateField = event.colDef.field as string | undefined;
       if (!isTransactionEditableField(candidateField)) return;
       if (!hasTrackedGridFieldConflict(state, event.data.id, candidateField)) return;
-
       const target = event.event?.target;
       const anchorEl = target instanceof Element ? target.closest('.ag-cell') : null;
       if (!(anchorEl instanceof HTMLElement)) return;
-
       setConflictTarget({ rowId: event.data.id, field: candidateField, anchorEl });
     },
     [state],
@@ -289,11 +328,20 @@ export function TransactionsSsrmGrid({
   return (
     <Stack spacing={2}>
       <TransactionSelectionActions
-        hasSelection={hasTransactionSelection(selectionIntent)}
+        hasSelection={hasSelection}
+        selectedRowCount={selectedRowCount}
         isApplying={isApplyingSelectionAction}
         statusActionBlockedByConflict={statusActionBlockedByConflict}
         error={selectionActionError}
         onSetStatus={handleSetSelectedStatus}
+      />
+
+      <TransactionExportActions
+        hasSelection={hasSelection}
+        isExportingSelected={isExportingSelected}
+        error={exportError}
+        onExportCurrentPage={handleExportCurrentPage}
+        onExportSelected={handleExportSelected}
       />
 
       <TransactionEditingControls
@@ -359,8 +407,8 @@ export function TransactionsSsrmGrid({
           activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={loadError ? { message: loadError, onRetry: retryLoad } : undefined}
           onGridReady={handleGridReady}
-          // The concrete root owns the GridApi ref. Clearing it in AG Grid's pre-destroy lifecycle
-          // prevents shared callbacks from observing a destroyed API during React component cleanup.
+          // The concrete root owns the GridApi ref. Clearing it before AG Grid destroys the instance
+          // prevents later React callbacks from accidentally reaching a destroyed Enterprise API.
           onGridPreDestroyed={() => {
             gridApi.current = null;
           }}

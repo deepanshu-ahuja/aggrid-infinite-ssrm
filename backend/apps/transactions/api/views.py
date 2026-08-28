@@ -1,3 +1,7 @@
+import csv
+from io import StringIO
+
+from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -7,6 +11,7 @@ from apps.transactions.services import (
     TransactionReadOnlyError,
     bulk_update_transactions,
     query_transactions,
+    resolve_transactions_by_selection,
     update_transaction,
     update_transactions_by_selection,
 )
@@ -15,6 +20,7 @@ from .serializers import (
     TransactionBulkUpdateSerializer,
     TransactionChangesSerializer,
     TransactionQuerySerializer,
+    TransactionSelectionTargetSerializer,
     TransactionSelectionUpdateSerializer,
     TransactionSerializer,
 )
@@ -101,7 +107,13 @@ class TransactionBulkUpdateView(APIView):
 
 
 class TransactionSelectionUpdateView(APIView):
-    """Apply one validated patch to backend-eligible rows in the grid's logical selection."""
+    """
+    Apply one validated patch to backend-eligible rows in the grid's logical selection.
+
+    The service resolves include/exclude/filter semantics through the same operation-neutral resolver
+    used by selected export. This view therefore owns only HTTP validation/error mapping + mutation
+    response shape; it does not implement a second interpretation of what "selected" means.
+    """
 
     def patch(self, request):
         serializer = TransactionSelectionUpdateSerializer(data=request.data)
@@ -123,3 +135,56 @@ class TransactionSelectionUpdateView(APIView):
             )
 
         return Response({"updatedCount": updated_count})
+
+
+class TransactionSelectionExportView(APIView):
+    """
+    Resolve the logical server-backed selection and return its eligible rows as CSV.
+
+    This endpoint is intentionally backend-owned for Infinite/SSRM selected export. Dataset-wide
+    selection may represent unloaded rows, so the browser must not fetch every selected record merely
+    to construct a file. The same resolver used by selection mutation keeps export semantics aligned.
+    """
+
+    CSV_FIELDS = (
+        "id",
+        "reference",
+        "account",
+        "amount",
+        "currency",
+        "status",
+        "transactionDate",
+    )
+
+    def post(self, request):
+        serializer = TransactionSelectionTargetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            rows = resolve_transactions_by_selection(
+                data["selection"],
+                data.get("filters", []),
+            )
+        except TransactionNotFoundError:
+            # Include mode names exact rows, so stale IDs are an invalid exact export target. Exclude
+            # exception IDs never need resolving and therefore cannot trigger this branch.
+            return Response(
+                {"detail": "One or more selected transactions were not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Use Python's CSV writer rather than manual string concatenation so commas, quotes and newlines
+        # in exported values remain standards-compliant without duplicating escaping rules.
+        buffer = StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=self.CSV_FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+        # UTF-8 BOM helps spreadsheet applications detect the encoding without changing CSV values.
+        response = HttpResponse(
+            "\ufeff" + buffer.getvalue(),
+            content_type="text/csv; charset=utf-8",
+        )
+        response["Content-Disposition"] = 'attachment; filename="transactions-selected.csv"'
+        return response

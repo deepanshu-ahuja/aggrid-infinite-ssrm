@@ -34,6 +34,7 @@ import {
 } from '../transactionsGrid.config';
 import { TransactionEditConflictPopover } from './TransactionEditConflictPopover';
 import { TransactionEditingControls } from './TransactionEditingControls';
+import { TransactionExportActions } from './TransactionExportActions';
 import type { TransactionRowEditActionsContext } from './TransactionRowEditActions';
 import { TransactionSelectionActions } from './TransactionSelectionActions';
 import {
@@ -50,9 +51,11 @@ import {
 } from './transactionRowInteraction';
 import {
   buildTransactionSelectionActionRequest,
+  buildTransactionSelectionTarget,
   hasTransactionSelection,
 } from './transactionSelectionAction';
 import { useTransactionEditPersistence } from './useTransactionEditPersistence';
+import { useTransactionExport } from './useTransactionExport';
 import { useTransactionSelectionAction } from './useTransactionSelectionAction';
 
 const INFINITE_STATE_KEY = 'transactions:infinite';
@@ -90,6 +93,7 @@ export function TransactionsInfiniteGrid({
     datasource,
     error: loadError,
     totalCount,
+    filteredCount,
     retry: retryLoad,
     clearError: clearLoadError,
   } = useInfiniteRowLoading({ gridApi, loadRows: loadTransactionRows });
@@ -97,6 +101,7 @@ export function TransactionsInfiniteGrid({
   const {
     selectionColumnDef,
     readSelectionIntent,
+    selectedRowCount,
     onRowsChanged: syncSelectionAfterRowsChange,
     onRowSelected,
     onSelectionChanged,
@@ -106,6 +111,7 @@ export function TransactionsInfiniteGrid({
     scope: selectionScope,
     getRowId: getTransactionId,
     totalCount,
+    filteredCount,
     onSelectionChange,
   });
 
@@ -147,6 +153,13 @@ export function TransactionsInfiniteGrid({
     selectionActionError,
   } = useTransactionSelectionAction({ onApplied: handlePersistedRows });
 
+  const {
+    error: exportError,
+    isExportingSelected,
+    exportCurrentPage,
+    exportSelected,
+  } = useTransactionExport();
+
   const handleDiscardRow = useCallback(
     (rowId: string) => {
       const api = gridApi.current;
@@ -158,6 +171,7 @@ export function TransactionsInfiniteGrid({
   );
 
   const selectionIntent = readSelectionIntent();
+  const hasSelection = hasTransactionSelection(selectionIntent);
   const selectedDirtyUpdates = buildSelectedTrackedGridUpdatePayload(state, selectionIntent).updates;
   const selectedEditsHaveConflict = hasTrackedGridUpdateConflict(state, selectedDirtyUpdates);
   const statusActionBlockedByConflict = hasSelectedTrackedGridFieldConflict(
@@ -207,6 +221,29 @@ export function TransactionsInfiniteGrid({
     },
     [applySelectionAction, readSelectionIntent, selectionScope, state],
   );
+
+  const handleExportCurrentPage = useCallback(() => {
+    const api = gridApi.current;
+    if (api) exportCurrentPage(api);
+  }, [exportCurrentPage]);
+
+  const handleExportSelected = useCallback(() => {
+    const api = gridApi.current;
+    if (!api) return;
+
+    const currentSelection = readSelectionIntent();
+    if (!hasTransactionSelection(currentSelection)) return;
+
+    // Reuse the exact target builder used by selection mutations. Export must not reinterpret what
+    // filtered/all Select All means merely because the operation returns a file instead of changing data.
+    void exportSelected(
+      buildTransactionSelectionTarget(
+        currentSelection,
+        selectionScope === 'filtered' ? 'filtered' : 'all',
+        api.getFilterModel(),
+      ),
+    );
+  }, [exportSelected, readSelectionIntent, selectionScope]);
 
   const rowEditActionsContext = useMemo<TransactionRowEditActionsContext>(
     () => ({
@@ -299,11 +336,20 @@ export function TransactionsInfiniteGrid({
   return (
     <Stack spacing={2}>
       <TransactionSelectionActions
-        hasSelection={hasTransactionSelection(selectionIntent)}
+        hasSelection={hasSelection}
+        selectedRowCount={selectedRowCount}
         isApplying={isApplyingSelectionAction}
         statusActionBlockedByConflict={statusActionBlockedByConflict}
         error={selectionActionError}
         onSetStatus={handleSetSelectedStatus}
+      />
+
+      <TransactionExportActions
+        hasSelection={hasSelection}
+        isExportingSelected={isExportingSelected}
+        error={exportError}
+        onExportCurrentPage={handleExportCurrentPage}
+        onExportSelected={handleExportSelected}
       />
 
       <TransactionEditingControls

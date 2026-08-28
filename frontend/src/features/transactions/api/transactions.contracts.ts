@@ -119,14 +119,27 @@ export type TransactionSort = GridQuerySort<TransactionField>;
 export type TransactionFilter = GridQueryFilter<TransactionField>;
 
 /**
- * Transactions adds only its domain mutation payload to the shared server-backed selection target.
- * Explicit / filtered / all selection semantics remain shared so another table can reuse them with a
- * different action payload and different filter translator.
+ * Operation-neutral target for any backend action against a logical server-backed selection.
+ *
+ * The shared selection target owns explicit / filtered / all selection meaning. Transactions owns only
+ * the translation from its AG Grid filter model into Transaction backend filters. A future Payables or
+ * other table can reuse the same shared target with its own filter mapper and operation payload.
+ *
+ * Export and status mutation intentionally share this exact `selection + filters` contract so the
+ * backend cannot resolve different row sets merely because the requested operation is different.
  */
-export type TransactionSelectionActionRequest = GridSelectionActionTarget<
+export type TransactionSelectionTargetRequest = GridSelectionActionTarget<
   Transaction['id'],
   TransactionFilter
-> & {
+>;
+
+/**
+ * Transactions adds only its domain mutation payload to the operation-neutral selection target.
+ *
+ * Keeping `changes` outside the shared selection contract is important: selection answers WHICH rows,
+ * while this feature-specific payload answers WHAT the business action should change.
+ */
+export type TransactionSelectionActionRequest = TransactionSelectionTargetRequest & {
   changes: TransactionUpdateChanges;
 };
 
@@ -160,8 +173,13 @@ export type TransactionListRequest = GridListRequest<TransactionField>;
  * - `totalCount`: complete Transactions dataset before applying the request filters;
  * - `filteredCount`: number of Transactions matching the current request filters.
  *
- * Infinite/SSRM use `filteredCount` to size the current AG Grid row model. Infinite All Records
- * selection can use `totalCount` from the same normal page response, so it does not need a separate
- * count-only backend request.
+ * Infinite/SSRM use `filteredCount` to size the current AG Grid row model. Both server-backed grids
+ * also use these normal response totals for dataset-wide selected-count presentation:
+ * `totalCount` for All Records and `filteredCount` for All Filtered. Select All therefore does not need
+ * a second count-only backend request.
+ *
+ * These are query counts, not selection-eligibility-aware counts. A future backend may add eligible
+ * totals when a product requires the displayed Select-All number to exclude every disabled/unselectable
+ * server row, including rows that were never loaded in the browser.
  */
 export type TransactionListResponse = GridListResponse<Transaction>;

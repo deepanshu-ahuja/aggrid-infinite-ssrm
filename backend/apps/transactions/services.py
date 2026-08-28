@@ -242,13 +242,16 @@ def bulk_update_transactions(
     return [row for row, _changes in resolved]
 
 
-def update_transactions_by_selection(
+def resolve_transactions_by_selection(
     selection: Dict[str, Any],
     filters: List[Dict[str, Any]],
-    changes: Dict[str, Any],
-) -> int:
+) -> List[Dict[str, Any]]:
     """
-    Apply one business patch to the ELIGIBLE logical server-backed selection.
+    Resolve the ELIGIBLE rows represented by one logical server-backed selection.
+
+    This function is deliberately operation-neutral. Status changes and selected export both need to
+    answer the exact same question: "which authoritative backend rows does this compact selection mean?"
+    Keeping that interpretation here prevents mutation/export/future actions from drifting apart.
 
     The compact include/exclude contract is unchanged by row eligibility:
 
@@ -264,26 +267,42 @@ def update_transactions_by_selection(
 
     if selection["mode"] == "include":
         # Explicit include comes from manual/current-page selection. Resolve EVERY requested ID first so
-        # a stale/missing ID cannot produce a partially applied action.
+        # a stale/missing ID cannot silently turn an exact operation into a partial one.
         resolved_rows = [_find_transaction(transaction_id) for transaction_id in selected_ids]
 
         # Defence in depth: the UI should never allow a disabled loaded row into explicit selection,
-        # but Python still removes any ineligible ID from stale/crafted requests.
-        selected_rows = [row for row in resolved_rows if _is_selection_eligible(row)]
-    else:
-        # In exclude mode, filters define Select All Filtered. No filters means Select All Records.
-        # We resolve the candidate dataset first without asking the frontend to enumerate row IDs.
-        candidates = _apply_filters(TRANSACTIONS, filters) if filters else list(TRANSACTIONS)
+        # but Python still removes any ineligible ID from stale/crafted requests or policy changes that
+        # happen after the user selected the row.
+        return [row for row in resolved_rows if _is_selection_eligible(row)]
 
-        # `selected_ids` in exclude mode contains ONLY explicit user deselections. It must not contain
-        # every business-disabled row; `_is_selection_eligible` handles those independently below.
-        excluded_ids = set(selected_ids)
+    # In exclude mode, filters define Select All Filtered. No filters means Select All Records.
+    # Resolve the candidate dataset without asking the frontend to enumerate unloaded row IDs.
+    candidates = _apply_filters(TRANSACTIONS, filters) if filters else list(TRANSACTIONS)
 
-        selected_rows = [
-            row
-            for row in candidates
-            if _is_selection_eligible(row) and row["id"] not in excluded_ids
-        ]
+    # `selected_ids` in exclude mode contains ONLY explicit user deselections. It must not contain every
+    # business-disabled row; `_is_selection_eligible` handles those independently below.
+    excluded_ids = set(selected_ids)
+
+    return [
+        row
+        for row in candidates
+        if _is_selection_eligible(row) and row["id"] not in excluded_ids
+    ]
+
+
+def update_transactions_by_selection(
+    selection: Dict[str, Any],
+    filters: List[Dict[str, Any]],
+    changes: Dict[str, Any],
+) -> int:
+    """
+    Apply one business patch to the backend-eligible logical selection.
+
+    Row resolution is delegated to `resolve_transactions_by_selection` so Update Selected and Export
+    Selected cannot disagree about include/exclude/filter semantics. This function owns only mutation.
+    """
+
+    selected_rows = resolve_transactions_by_selection(selection, filters)
 
     for row in selected_rows:
         row.update(changes)
@@ -304,9 +323,12 @@ def query_transactions(query: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "rows": sorted_rows[offset:end],
-        # Complete dataset size is stable across the current filter and is useful for actions such as
-        # Infinite "Select All Records" without issuing a second count-only request.
+        # Complete dataset size is stable across the current filter and drives server-backed
+        # "Select All Records" presentation without issuing a second count-only request. It is NOT
+        # eligibility-aware; a future product can add a separate eligible total if exact disabled-row
+        # accounting is required across unloaded records.
         "totalCount": len(TRANSACTIONS),
-        # AG Grid row-model sizing must follow the CURRENT query result, not the unfiltered dataset.
+        # Current query size drives both AG Grid row-model sizing and "Select All Filtered" presentation.
+        # Like totalCount, this is the normal query total rather than an eligibility-aware count.
         "filteredCount": len(filtered_rows),
     }

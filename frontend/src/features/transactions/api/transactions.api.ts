@@ -1,4 +1,4 @@
-import { patchJson, postJson } from '@/shared/api/apiClient';
+import { patchJson, postBlob, postJson } from '@/shared/api/apiClient';
 import type {
   TransactionBulkUpdateRequest,
   TransactionBulkUpdateResponse,
@@ -6,6 +6,7 @@ import type {
   TransactionListResponse,
   TransactionSelectionActionRequest,
   TransactionSelectionActionResponse,
+  TransactionSelectionTargetRequest,
   TransactionUpdateChanges,
   TransactionUpdateResponse,
 } from './transactions.contracts';
@@ -50,6 +51,24 @@ export function updateTransactionsBySelection(
 ) {
   return patchJson<TransactionSelectionActionResponse, TransactionSelectionActionRequest>(
     '/transactions/selection/',
+    request,
+    signal,
+  );
+}
+
+/**
+ * Ask the backend to resolve/export the logical selection.
+ *
+ * The browser cannot safely export dataset-wide Infinite/SSRM selections itself because many selected
+ * rows may have no loaded RowNode. This endpoint receives the same selection + filter target used by
+ * server-side business actions and returns the authoritative eligible rows as CSV.
+ */
+export function exportTransactionsBySelection(
+  request: TransactionSelectionTargetRequest,
+  signal?: AbortSignal,
+) {
+  return postBlob<TransactionSelectionTargetRequest>(
+    '/transactions/selection/export/',
     request,
     signal,
   );
