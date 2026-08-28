@@ -42,8 +42,6 @@ export function useClientTransactions() {
     [queryClient],
   );
 
-  const refetch = useCallback(() => query.refetch(), [query.refetch]);
-
   return {
     rows,
     isLoading: query.isPending,
@@ -53,7 +51,9 @@ export function useClientTransactions() {
         : query.error
           ? 'Transactions could not be loaded.'
           : undefined,
-    refetch,
+    // TanStack already provides a stable, lifecycle-aware refetch function. Return it directly rather
+    // than wrapping it in another callback that would add no behavior and complicate hook dependencies.
+    refetch: query.refetch,
     applyAuthoritativeRows,
   };
 }
