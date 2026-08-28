@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-INFINITE | GRIDCAP-ACTION-SELECTED
 import type { ReactElement } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -101,6 +102,7 @@ function createApi(options?: {
     forEachNode: vi.fn((callback: (node: RowNode<Transaction>) => void) => {
       options?.rows?.forEach(callback);
     }),
+    deselectAll: vi.fn(),
     refreshHeader: vi.fn(),
     setGridOption: vi.fn(),
     refreshCells: vi.fn(),
@@ -156,7 +158,7 @@ describe('TransactionsInfiniteGrid production wiring', () => {
     });
   });
 
-  it('updates explicit selected rows through the action bar and refreshes Infinite data', async () => {
+  it('updates explicit selected rows, clears selection after success, and refreshes Infinite data', async () => {
     const api = createApi({
       rowSelection: ['txn-a', 'txn-b'],
       filterModel: {
@@ -182,6 +184,7 @@ describe('TransactionsInfiniteGrid production wiring', () => {
         },
         changes: { status: 'Failed' },
       });
+      expect(api.deselectAll).toHaveBeenCalledTimes(1);
       expect(api.refreshInfiniteCache).toHaveBeenCalledTimes(1);
     });
   });
