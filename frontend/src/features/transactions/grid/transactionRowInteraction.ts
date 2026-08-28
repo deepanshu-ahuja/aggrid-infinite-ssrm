@@ -1,3 +1,4 @@
+// GRIDCAP-ROW-ELIGIBILITY | GRIDCAP-COLUMNS
 import type { EditableCallbackParams, IsRowSelectable } from 'ag-grid-community';
 import { createGridRowInteractionClassGetter } from '@/shared/grid/rows/gridRowInteractionClass';
 import {

@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-INFINITE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-SEL-TARGET
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   createEmptyServerSelection,
@@ -70,6 +71,7 @@ export function useDatasetSelection({
     onSelectionChange?.(intent);
   }, [intent, onSelectionChange]);
 
+  // GRIDCAP-SEL-FILTERED
   const handleFilterChanged = useCallback(() => {
     if (scope !== 'filtered') return;
 
@@ -86,6 +88,9 @@ export function useDatasetSelection({
     setRowSelected,
     setHeaderSelected,
     clearSelection,
+    // All Records deliberately exposes no filter-reset callback: its selection meaning is independent
+    // of the visible filter. This boundary makes GRIDCAP-SEL-FILTERED discoverable without changing
+    // the compact include/exclude representation used by both dataset-wide scopes.
     onFilterChanged: scope === 'filtered' ? handleFilterChanged : undefined,
   };
 }

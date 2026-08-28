@@ -1,3 +1,4 @@
+// GRIDCAP-THEME
 import { themeQuartz } from 'ag-grid-community';
 import { tokens } from '@/theme/tokens';
 

@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-INFINITE | GRIDCAP-ROWMODEL-SSRM | GRIDCAP-PAGINATION | GRIDCAP-DATA-LOAD
 import type { AgGridReactProps } from 'ag-grid-react';
 
 /**

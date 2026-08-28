@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-INFINITE | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-COUNT-SELECTED | GRIDCAP-ROW-ELIGIBILITY
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { RefObject } from 'react';
 import type {
@@ -174,6 +175,7 @@ export function useInfiniteSelectionController<TData>({
     gridApi.current?.refreshHeader();
   }, [datasetIntent, gridApi, scope, syncLoadedRows]);
 
+  // GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL
   const selectionColumnDef = useMemo<SelectionColumnDef>(() => {
     const base: SelectionColumnDef = {
       width: 52,
@@ -264,8 +266,12 @@ export function useInfiniteSelectionController<TData>({
    * The filtered numeric count is reset/published by the loading layer, not here. This hook owns
    * selection meaning; the datasource/loading hook owns API count freshness.
    */
+  // GRIDCAP-SEL-FILTERED
   const resetFilterDependentSelection = useCallback(() => {
-    if (scope !== 'page') {
+    // Be explicit at this integration boundary: only Filtered selection is filter-defined. The
+    // dataset helper also refuses to expose a reset callback for All Records, but checking the scope
+    // here makes the product rule obvious without requiring a reader to inspect that helper too.
+    if (scope === 'filtered') {
       resetDatasetSelectionForFilter?.();
     }
   }, [resetDatasetSelectionForFilter, scope]);

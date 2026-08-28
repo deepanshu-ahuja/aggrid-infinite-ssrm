@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-SSRM | GRIDCAP-DATA-LOAD | GRIDCAP-ROW-ID | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-COUNT-SELECTED | GRIDCAP-SEL-TARGET | GRIDCAP-ACTION-SELECTED | GRIDCAP-EDIT-TRACKED | GRIDCAP-EDIT-SAVE-ROW | GRIDCAP-EDIT-SAVE-SELECTED | GRIDCAP-EDIT-DISCARD | GRIDCAP-EDIT-CONFLICT | GRIDCAP-COUNT-EDITED | GRIDCAP-EXPORT-PAGE | GRIDCAP-EXPORT-SELECTED | GRIDCAP-STATE-PERSISTENCE | GRIDCAP-ERROR-RETRY | GRIDCAP-LIFECYCLE-REFRESH | GRIDCAP-LIFECYCLE-DESTROY | GRIDCAP-ROW-ELIGIBILITY | GRIDCAP-COLUMNS
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import type {
@@ -74,7 +75,12 @@ export interface TransactionsSsrmGridProps {
   gridOptions?: TransactionsSsrmGridOptions;
 }
 
-/** Concrete Transactions SSRM root with native SSRM lifecycle kept visible. */
+/**
+ * Concrete Transactions SSRM root with native SSRM lifecycle kept visible.
+ *
+ * This is intentionally a multi-capability integration boundary. The GRIDCAP markers at the top make
+ * the complete SSRM feature footprint discoverable without hiding native SSRM APIs behind a wrapper.
+ */
 export function TransactionsSsrmGrid({
   gridOptions: gridOptionsOverride,
 }: TransactionsSsrmGridProps) {
@@ -133,6 +139,7 @@ export function TransactionsSsrmGrid({
   } = useCurrentPageEditActions({ lastEdit, applyChangesToNodes }, gridApi);
 
   const handlePersistedRows = useCallback(() => {
+    // GRIDCAP-LIFECYCLE-REFRESH
     gridApi.current?.refreshServerSide();
   }, []);
 
@@ -407,6 +414,7 @@ export function TransactionsSsrmGrid({
           activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={loadError ? { message: loadError, onRetry: retryLoad } : undefined}
           onGridReady={handleGridReady}
+          // GRIDCAP-LIFECYCLE-DESTROY
           // The concrete root owns the GridApi ref. Clearing it before AG Grid destroys the instance
           // prevents later React callbacks from accidentally reaching a destroyed Enterprise API.
           onGridPreDestroyed={() => {

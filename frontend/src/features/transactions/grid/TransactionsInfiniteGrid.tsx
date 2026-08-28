@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-INFINITE | GRIDCAP-DATA-LOAD | GRIDCAP-ROW-ID | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-COUNT-SELECTED | GRIDCAP-SEL-TARGET | GRIDCAP-ACTION-SELECTED | GRIDCAP-EDIT-TRACKED | GRIDCAP-EDIT-SAVE-ROW | GRIDCAP-EDIT-SAVE-SELECTED | GRIDCAP-EDIT-DISCARD | GRIDCAP-EDIT-CONFLICT | GRIDCAP-COUNT-EDITED | GRIDCAP-EXPORT-PAGE | GRIDCAP-EXPORT-SELECTED | GRIDCAP-STATE-PERSISTENCE | GRIDCAP-ERROR-RETRY | GRIDCAP-LIFECYCLE-REFRESH | GRIDCAP-LIFECYCLE-DESTROY | GRIDCAP-ROW-ELIGIBILITY | GRIDCAP-COLUMNS
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 import type {
@@ -77,7 +78,12 @@ export interface TransactionsInfiniteGridProps {
   onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
 }
 
-/** Concrete Transactions Infinite Row Model root. */
+/**
+ * Concrete Transactions Infinite Row Model root.
+ *
+ * This is intentionally a multi-capability integration boundary. The GRIDCAP markers at the top make
+ * the complete Infinite feature footprint discoverable without hiding AG Grid's datasource lifecycle.
+ */
 export function TransactionsInfiniteGrid({
   selectionScope: selectionScopeOverride,
   gridOptions: gridOptionsOverride,
@@ -138,6 +144,7 @@ export function TransactionsInfiniteGrid({
   } = useCurrentPageEditActions({ lastEdit, applyChangesToNodes }, gridApi);
 
   const handlePersistedRows = useCallback(() => {
+    // GRIDCAP-LIFECYCLE-REFRESH
     gridApi.current?.refreshInfiniteCache();
   }, []);
 
@@ -392,6 +399,7 @@ export function TransactionsInfiniteGrid({
           activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={loadError ? { message: loadError, onRetry: retryLoad } : undefined}
           onGridReady={handleGridReady}
+          // GRIDCAP-LIFECYCLE-DESTROY
           // The root owns this API ref. Clear it before AG Grid destroys the instance so asynchronous
           // callbacks/effects cannot retain a stale API and accidentally call it during React teardown.
           onGridPreDestroyed={() => {

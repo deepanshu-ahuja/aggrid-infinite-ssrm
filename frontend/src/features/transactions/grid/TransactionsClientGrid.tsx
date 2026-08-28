@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-CLIENT | GRIDCAP-DATA-LOAD | GRIDCAP-ROW-ID | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-COUNT-SELECTED | GRIDCAP-ACTION-SELECTED | GRIDCAP-EDIT-TRACKED | GRIDCAP-EDIT-SAVE-ROW | GRIDCAP-EDIT-SAVE-SELECTED | GRIDCAP-EDIT-DISCARD | GRIDCAP-EDIT-CONFLICT | GRIDCAP-COUNT-EDITED | GRIDCAP-EXPORT-PAGE | GRIDCAP-EXPORT-SELECTED | GRIDCAP-STATE-PERSISTENCE | GRIDCAP-ERROR-RETRY | GRIDCAP-LIFECYCLE-REFRESH | GRIDCAP-LIFECYCLE-DESTROY | GRIDCAP-ROW-ELIGIBILITY | GRIDCAP-COLUMNS
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 import type {
@@ -75,6 +76,9 @@ export interface TransactionsClientGridProps {
  * `rowData`. From that point AG Grid owns sorting, filtering, pagination and checkbox selection locally.
  * Shared Transaction editing/conflict/row-policy mechanics are reused, but no Infinite datasource,
  * SSRM store state, or unloaded-row selection representation is imported into this root.
+ *
+ * This concrete root is intentionally a multi-capability integration boundary. The GRIDCAP markers at
+ * the top are an extraction map, not a signal that these concerns should be hidden behind one wrapper.
  */
 export function TransactionsClientGrid({
   selectionScope: selectionScopeOverride,
@@ -152,6 +156,7 @@ export function TransactionsClientGrid({
   });
 
   const handleSelectionActionApplied = useCallback(() => {
+    // GRIDCAP-LIFECYCLE-REFRESH | GRIDCAP-ACTION-SELECTED
     // Selection status API returns only updatedCount. Refetch the bounded collection so Client rowData
     // receives authoritative changed values/policy; stable getRowId lets AG Grid reconcile row identity.
     void refetch();
@@ -275,6 +280,7 @@ export function TransactionsClientGrid({
 
   const handleRowDataUpdated = useCallback(
     (event: RowDataUpdatedEvent<Transaction>) => {
+      // GRIDCAP-EDIT-CONFLICT | GRIDCAP-LIFECYCLE-REFRESH
       // A new Client rowData projection represents authoritative query data. Reconcile it against
       // durable LOCAL drafts before overlaying those drafts back onto the newly-created row objects.
       restoreTrackedEdits(event.api);
@@ -366,6 +372,7 @@ export function TransactionsClientGrid({
             loadError ? { message: loadError, onRetry: () => void refetch() } : undefined
           }
           onGridReady={handleGridReady}
+          // GRIDCAP-LIFECYCLE-DESTROY
           // The concrete root owns this API ref. Clear it before AG Grid destroys the instance so
           // asynchronous callbacks/effects cannot retain and call a stale GridApi during teardown.
           onGridPreDestroyed={() => {

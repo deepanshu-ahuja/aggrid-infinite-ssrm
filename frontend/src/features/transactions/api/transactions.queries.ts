@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-CLIENT | GRIDCAP-DATA-LOAD | GRIDCAP-LIFECYCLE-REFRESH | GRIDCAP-EDIT-CONFLICT
 import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { listAllTransactions } from './transactions.api';

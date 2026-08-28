@@ -1,3 +1,4 @@
+// GRIDCAP-DATA-LOAD | GRIDCAP-QUERY-SORT | GRIDCAP-QUERY-FILTER | GRIDCAP-SEL-FILTERED
 import type { FlatGridBlockRequest } from '@/shared/grid/data/gridData.types';
 import type {
   TransactionField,

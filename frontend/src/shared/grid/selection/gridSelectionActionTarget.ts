@@ -1,3 +1,4 @@
+// GRIDCAP-SEL-TARGET | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-ACTION-SELECTED | GRIDCAP-EXPORT-SELECTED
 import type { GridSelectionId, ServerSelectionIntent } from './serverSelection';
 
 /**

@@ -1,3 +1,4 @@
+// GRIDCAP-EXPORT-PAGE | GRIDCAP-PAGINATION
 import type { GridApi, IRowNode } from 'ag-grid-community';
 import { getCurrentPageNodes } from '@/shared/grid/pagination/getCurrentPageNodes';
 

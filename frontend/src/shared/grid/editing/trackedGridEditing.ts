@@ -1,3 +1,4 @@
+// GRIDCAP-EDIT-TRACKED | GRIDCAP-EDIT-SAVE-ROW | GRIDCAP-EDIT-SAVE-SELECTED | GRIDCAP-EDIT-DISCARD | GRIDCAP-EDIT-CONFLICT | GRIDCAP-COUNT-EDITED | GRIDCAP-SEL-TARGET
 import type { ServerSelectionIntent } from '@/shared/grid/selection/serverSelection';
 
 /** Changed values keyed by an editable field name. */

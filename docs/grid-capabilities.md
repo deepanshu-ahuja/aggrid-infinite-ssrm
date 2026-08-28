@@ -2,9 +2,9 @@
 
 This document answers one question:
 
-> What can the current server-backed grid foundation do today?
+> What can the current grid foundation do today across Client-Side, Infinite and SSRM?
 
-It describes **logical capabilities**, not one particular screen layout or button arrangement. A feature can reuse these capabilities with a different UI as long as it respects the same contracts.
+It describes **logical capabilities**, not one particular screen layout or button arrangement. A feature can reuse these capabilities with a different UI as long as it respects the same contracts and the actual row model's native ownership.
 
 Detailed feature/edge-case documents remain the source of truth for implementation details. This file is the high-level catalog that a developer should read first when deciding whether the foundation already supports a requirement.
 
@@ -14,13 +14,32 @@ When a grid capability is added, removed, or materially changes, update this doc
 
 Do not let this become a roadmap or wish list. A capability belongs here only when the repository currently implements it.
 
-For the separate list of AG Grid-native APIs, props, events and RowNode features we rely on, see `docs/ag-grid-native-usage.md`.
+For the searchable implementation/dependency map, see `docs/grid-capability-tags.md`. For the separate list of AG Grid-native APIs, props, events and RowNode features we rely on, see `docs/ag-grid-native-usage.md`.
 
 ---
 
 ## 1. Supported row models
 
-The foundation currently supports two server-backed AG Grid row models:
+The foundation currently supports three real AG Grid row models as separate implementations.
+
+### Client-Side Row Model
+
+Use when the complete bounded working set can reasonably live in browser memory and the application wants AG Grid to own data shaping locally.
+
+Current support includes:
+
+- one complete Transaction collection request through TanStack Query;
+- editable row copies passed through native `rowData`;
+- native Client sorting, filtering and pagination;
+- native header Select All scopes `currentPage`, `filtered` and `all`;
+- exact selected IDs/count because the complete working set is local;
+- shared row eligibility, tracked editing, Save/Discard and BASE/LOCAL/REMOTE conflict mechanics;
+- explicit-ID backend selected business actions;
+- native Current Page CSV;
+- native local Selected CSV across pagination pages;
+- native Grid State preference persistence.
+
+The current Transactions Client route defaults its Select All meaning to `all`; this is configuration, not a separate implementation. Page and Filtered remain supported by the same Client controller.
 
 ### Infinite Row Model
 
@@ -34,7 +53,7 @@ Current support includes:
 - pagination;
 - bounded block caching;
 - retry/error handling;
-- native loaded-row selection;
+- native loaded/manual row selection;
 - application-owned dataset-wide selection semantics where Infinite cannot represent unloaded rows by itself;
 - tracked editing that survives RowNode/cache recreation;
 - backend-authoritative refresh after writes.
@@ -59,11 +78,27 @@ Grouping, aggregation, tree data and pivot behavior are not part of the current 
 
 ---
 
-## 2. Server-backed data loading
+## 2. Data loading and ownership
 
-Both row models can request data from the backend instead of loading the complete dataset into the browser.
+### Client-Side
 
-The shared capability is:
+Client fetches the complete bounded collection once through an application/TanStack Query boundary:
+
+```text
+GET complete Transaction collection
+-> TanStack Query authoritative cache
+-> fresh editable row copies
+-> AG Grid rowData
+-> local sort/filter/pagination/selection
+```
+
+The editable row copies deliberately prevent AG Grid in-cell edits from mutating the authoritative Query-cache objects that represent REMOTE values for conflict reconciliation.
+
+Client does not reuse the Infinite/SSRM paged query API with an artificial large limit.
+
+### Infinite + SSRM
+
+Both server-backed row models request blocks from the backend instead of loading the complete dataset into the browser:
 
 ```text
 AG Grid row-model request
@@ -72,7 +107,7 @@ AG Grid row-model request
 -> typed API request
 -> backend query
 -> rows + counts
--> AG Grid row model/cache
+-> AG Grid row model/cache/store
 ```
 
 The current flat response includes:
@@ -89,49 +124,73 @@ Detailed flow: `docs/api-data-flow.md`.
 
 ## 3. Sorting
 
-Sorting is available through AG Grid column sorting and is executed against the backend dataset.
+Sorting uses native AG Grid column sorting in all three row models, but data ownership differs.
 
-Capabilities:
+### Client-Side
+
+AG Grid sorts the complete local `rowData` working set directly. No server-grid query request is issued merely because the user changes sort order.
+
+### Infinite + SSRM
+
+AG Grid sort state is translated into the backend query contract and the server executes sorting across the dataset.
+
+Common capabilities:
 
 - sortable columns inherit native sorting by default;
-- a feature can disable sorting for specific utility/action columns;
-- AG Grid sort state is translated into the backend query contract;
-- multiple server sort items can be represented by the request contract;
-- sorting does not clear logical selection because row identity is based on stable backend IDs, not row position;
+- a feature can disable sorting for utility/action columns;
+- stable backend IDs keep row identity independent of sort position;
 - user sort preference is persisted through native Grid State.
 
-Sorting is therefore a data-query capability, not a client-only reorder of currently loaded rows.
+Do not treat a server sort as a reorder of only the currently loaded cache.
 
 ---
 
 ## 4. Filtering
 
-Filtering is available through native AG Grid column filters and is executed against the backend dataset.
+Filtering uses native AG Grid column-filter UI, with row-model-specific execution.
 
-Current Transactions examples use:
+### Client-Side
 
-- text filters;
-- number filters;
-- date filters.
+The complete working set is local, so AG Grid executes filtering locally. Client columns intentionally do not inherit the narrower server filter parameters merely for consistency.
 
-Capabilities:
+### Infinite + SSRM
 
-- globally filterable columns by default;
-- per-column filter type/params;
+Filtering is executed against the backend dataset. Current Transactions examples use text, number and date filters.
+
+Server-backed capabilities include:
+
 - feature-owned allow-list mapping from AG Grid FilterModel to backend filters;
 - unsupported filter combinations fail explicitly rather than silently changing meaning;
-- the same filter mapper is reused for normal row loading and Select All Filtered business actions;
+- the same Transaction filter mapper is reused for normal row loading and Select All Filtered backend actions;
+- server filter UI is deliberately limited to semantics the backend contract supports.
+
+Across all three row models:
+
 - active filter preference is persisted through native Grid State;
-- filtered-wide selection is invalidated if the defining filter changes;
+- filtered-wide Select All is invalidated if the defining filter changes;
 - explicit row selection and All Records selection are not automatically cleared merely because the visible filter changes.
 
-The filter itself remains AG Grid-owned. We do not maintain a second React copy of the active filter model.
+The active filter model remains AG Grid-owned. We do not maintain a second React copy simply to mirror it.
 
 ---
 
 ## 5. Pagination and cache behavior
 
-The shared server-backed defaults currently provide:
+### Client-Side
+
+Current shared Client defaults provide:
+
+```text
+pagination enabled
+page size = 25
+page-size choices = 10 / 25 / 50
+```
+
+There is no server cache-block configuration because all Client rows are already in browser memory.
+
+### Infinite + SSRM
+
+Current shared server-backed defaults provide:
 
 ```text
 pagination enabled
@@ -149,48 +208,56 @@ Important capability rule:
 
 > Cache residency is never used to define which records a business action targets.
 
-For example, Select All Records can update rows that the browser has never loaded. The backend resolves that logical target. Loaded cache blocks are only a presentation/performance concern.
+For example, server-backed Select All Records can update rows that the browser has never loaded. The backend resolves that logical target. Loaded cache blocks are only a presentation/performance concern.
 
 ---
 
 ## 6. Stable row identity
 
-Both row models use stable backend row IDs.
+All three row models use stable backend row IDs.
 
-This allows selection and editing to survive:
+This allows selection/editing/reconciliation to remain attached to business rows through applicable lifecycle changes such as:
 
 - sorting;
+- filtering;
 - pagination;
-- cache eviction;
-- block reload;
+- cache eviction/block reload;
 - RowNode recreation;
+- Client `rowData` replacement;
 - server refresh.
 
-The foundation must not use row index/position as durable business identity.
+The foundation must not use displayed row index/position as durable business identity.
 
 ---
 
 ## 7. Selection
 
-Selection supports both concrete loaded-row selection and logical server-backed selection.
-
-### Selection meanings available today
-
-The product can represent these selection meanings:
+The product can represent these user selection meanings where applicable:
 
 ```text
+Manual / explicit rows
 Current Page
 All Filtered
 All Records
 ```
 
-Manual/individual multi-row selection is also supported.
+These are selection **meanings**, not one mandatory implementation or UI.
 
-These are selection **meanings**, not one required UI. A feature may expose them as header behavior, buttons, menu actions or another appropriate presentation.
+### Client-Side selection
 
-### Logical selection contract
+Client uses native AG Grid selection for all three Select All scopes:
 
-Shared/application code uses the compact logical shape:
+```text
+page      -> rowSelection.selectAll = 'currentPage'
+filtered  -> rowSelection.selectAll = 'filtered'
+all       -> rowSelection.selectAll = 'all'
+```
+
+Every selected Client row is concrete/local, so business actions can read exact native selected IDs. The current demo defaults to `all` but the same controller supports all three scopes.
+
+### Server logical selection contract
+
+Infinite/SSRM backend-facing selected operations use the compact logical shape:
 
 ```ts
 {
@@ -224,7 +291,7 @@ The serialized backend contract does not need a redundant `scope` value.
 
 Infinite uses native AG Grid selection for loaded/manual rows.
 
-Because Infinite cannot natively remember an unloaded dataset-wide Select All plus exceptions, application selection state fills only that gap.
+Because Infinite cannot natively remember an unloaded dataset-wide Select All plus exceptions, compact application selection state fills only that gap.
 
 The Infinite header strategy can be configured as:
 
@@ -251,28 +318,59 @@ Current behavior:
 
 Selection currently supports:
 
-- selection across pages;
-- selection surviving sorting;
+- selection across pages where the row model can represent it;
+- selection surviving sorting by stable ID;
 - explicit selection surviving visible filter changes;
 - All Records surviving visible filter changes;
 - filtered-wide Select All resetting when the defining filter changes;
-- restoration as rows/blocks materialise again;
-- user deselection exceptions during dataset-wide selection;
-- selection-aware backend actions without enumerating every selected row in the browser.
+- server logical selection restoration as rows/blocks materialise again;
+- user deselection exceptions during dataset-wide server selection;
+- backend actions without enumerating every selected server row in the browser.
 
 ### Selection eligibility
 
-Rows can be outside the selectable universe. Disabled rows are not manufactured as `exclude` IDs.
+Rows can be outside the selectable universe. Disabled rows are not manufactured as user `exclude` IDs.
 
 Detailed contracts:
 
+- `docs/client-side-grid.md`
 - `frontend/src/infinite-selection-contract.md`
 - `frontend/src/ssrm-selection-contract.md`
 - `docs/row-interaction.md`
 
 ---
 
-## 8. Row interaction capability
+## 8. Selected-row counts
+
+### Client-Side
+
+Client selected count is exact because every row is local and native `isRowSelectable` is evaluated for the full working set:
+
+```text
+selected count = api.getSelectedRows().length
+```
+
+The deterministic current demo has 750 rows, of which 63 are `selectionDisabled` and 63 are `readOnly`; native Select All therefore selects 624 eligible rows.
+
+### Infinite + SSRM
+
+Server-backed selected totals use the same normal API metadata:
+
+```text
+explicit/manual/current-page -> exact include ID count
+All Filtered                 -> filteredCount - user exceptions
+All Records                  -> totalCount - user exceptions
+```
+
+Current `totalCount` / `filteredCount` are dataset/query counts rather than eligibility-aware counts. Therefore a server-wide displayed selected total can be larger than the number of rows an authoritative backend operation ultimately acts on.
+
+Do not subtract only restricted rows currently loaded in the browser. That would create false precision for unloaded rows.
+
+Detailed contract: `docs/selection-counts.md`.
+
+---
+
+## 9. Row interaction capability
 
 A backend row can currently describe one of three generic interaction modes:
 
@@ -303,19 +401,19 @@ readOnly
 
 The feature/backend decides **why** a row receives a mode. Shared grid code only understands the generic capability.
 
-Frontend behavior and backend mutation checks both enforce the rule so unloaded rows are protected as well.
+Frontend behavior and backend mutation checks both enforce the rule. This matters especially for server-wide operations that may include rows the browser never loaded.
 
 Detailed contract: `docs/row-interaction.md`.
 
 ---
 
-## 9. Editing
+## 10. Editing
 
-The editing foundation is not tied to one visual editor layout. It provides reusable edit mechanics that a feature can present however it wants.
+The editing foundation is shared across Client-Side, Infinite and SSRM and is not tied to one visual editor layout.
 
 ### Direct cell editing
 
-The grid can track a committed AG Grid cell edit after `cellValueChanged`.
+The grid tracks committed AG Grid cell edits after `cellValueChanged`.
 
 Current Transactions editable fields are:
 
@@ -332,22 +430,17 @@ The editable-field list and value access are feature configuration; the tracking
 
 Dirty values are stored by stable backend row ID rather than relying on RowNode lifetime.
 
-This lets unsaved edits survive:
+This lets unsaved work survive applicable lifecycle changes such as pagination, cache/store recreation and Client authoritative `rowData` replacement.
 
-- pagination;
-- cache/store reload;
-- RowNode recreation;
-- server-backed refresh where the server did not independently change that field.
-
-Returning a normal dirty field to its original value automatically removes the draft.
+Returning a normal dirty field to its original BASE value automatically removes the draft.
 
 ### Programmatic edit application
 
-The current foundation can apply tracked edits programmatically to eligible loaded/current-page RowNodes.
+The current foundation can apply tracked edits programmatically to eligible concrete/current-page RowNodes.
 
 Existing reusable flows include:
 
-- reapply the most recent edit;
+- reapply the most recent direct edit;
 - apply an explicit set of editable field changes;
 - preserve the same row-editability rule used by direct editing.
 
@@ -357,7 +450,7 @@ A `readOnly` row cannot be changed by these helpers merely because code called a
 
 One dirty row can be saved independently of checkbox selection.
 
-Discard restores authoritative values and clears the row's tracked draft.
+Discard restores the latest authoritative value represented by tracked state and clears the row draft.
 
 ### Save/Discard selected edits
 
@@ -372,7 +465,7 @@ Therefore:
 - selected but clean rows are not persisted;
 - dirty but unselected rows remain untouched;
 - the backend bulk endpoint receives explicit row IDs and explicit field changes;
-- it does not turn logical Select All into edits for untouched/unloaded rows.
+- Select All does not manufacture edits for untouched/unloaded rows.
 
 ### Safe acknowledgement of in-flight saves
 
@@ -384,9 +477,9 @@ Detailed editing contract: `docs/transaction-editing.md`.
 
 ---
 
-## 10. Refresh/edit conflict reconciliation
+## 11. Refresh/edit conflict reconciliation
 
-The foundation can detect when a refreshed server value competes with an unsaved local edit for the same field.
+The foundation detects when a refreshed authoritative value competes with an unsaved local edit for the same field.
 
 For a dirty field it tracks:
 
@@ -425,48 +518,33 @@ Keep my edit
 -> field remains dirty and can later be saved
 ```
 
-### Conflict-aware mutation protection
-
-Unresolved conflicts are not only visual metadata.
-
-The current foundation can guard:
-
-- row Save when that row has unresolved conflicts;
-- Save selected edits when the selected dirty update set contains a conflict;
-- selection-based business actions only when they write a field that is conflicted in the selected target.
-
-Example:
-
-```text
-selected status conflict + status action
--> blocked
-
-selected amount conflict + status action
--> allowed
-```
-
-This prevents a broad "row has any conflict, disable everything" rule.
+Unresolved conflicts guard only relevant persistence/business mutations rather than globally locking an unrelated field action.
 
 Detailed behavior and manual test matrix: `docs/edit-conflict-reconciliation.md`.
 
 ---
 
-## 11. Backend mutations currently demonstrated
+## 12. Backend operations currently demonstrated
 
-Transactions currently demonstrates four backend operations:
+Transactions currently demonstrates these relevant backend boundaries:
 
 ```text
+GET   /api/transactions/
 POST  /api/transactions/query/
 PATCH /api/transactions/{id}/
 PATCH /api/transactions/bulk/
 PATCH /api/transactions/selection/
+POST  /api/transactions/selection/export/
 ```
 
-They represent four reusable categories:
+They represent reusable categories:
 
 ```text
-query
--> load server-backed rows
+Client collection
+-> complete bounded working set
+
+server query
+-> load Infinite/SSRM blocks
 
 single-row update
 -> save one explicit dirty row
@@ -475,35 +553,69 @@ explicit bulk update
 -> save explicit dirty row patches
 
 logical selection action
--> apply one business change across include/exclude selection, including unloaded rows
+-> apply one business change across a selected target
+
+logical selected export
+-> resolve server-backed selected rows and return CSV
 ```
 
 Feature endpoints and payload fields are not shared-grid concerns; the capability boundaries are.
 
 ---
 
-## 12. Selection-based business actions
+## 13. Selection-based business actions
 
-The grid can turn logical selection into a backend action target without expanding the entire dataset into IDs in the browser.
+The foundation can turn selection into a backend business-action target without making the grid know the business meaning.
 
-Transactions currently demonstrates status actions such as setting selected eligible rows to a status.
+Transactions currently demonstrates status changes.
 
-The generic action path is:
+### Client-Side
+
+Client reads exact native selected IDs and sends an explicit `include` target. It does not need backend filter translation to describe already-known selected IDs.
+
+### Infinite + SSRM
+
+Server-backed dataset-wide selection can remain compact:
 
 ```text
 logical include/exclude selection
 -> shared target construction
--> feature filter translation / business changes
+-> feature filter translation when filtered exclude is active
 -> backend selection endpoint
 -> backend eligibility enforcement
 -> row-model-specific refresh
 ```
 
-This capability can support other future business actions without making the grid know their business meaning.
+The backend operation-neutral resolver is shared with server Selected export so mutation and export do not reinterpret selection differently.
 
 ---
 
-## 13. Grid State / user preference persistence
+## 14. Export
+
+### Export Current Page
+
+All three roots can use the shared native Current Page helper once the exact pagination-page RowNodes are concrete.
+
+The helper:
+
+- resolves the exact current AG Grid pagination page;
+- refuses a partially unresolved page;
+- delegates CSV serialization/escaping/value processing to native AG Grid;
+- treats Current Page as a page snapshot, so displayed `selectionDisabled` / `readOnly` rows are included.
+
+### Export Selected — Client-Side
+
+All selected rows are local, so Client uses native AG Grid selected CSV with `onlySelectedAllPages` to include selection from other pagination pages.
+
+### Export Selected — Infinite / SSRM
+
+Logical selection may include unloaded rows, so Selected export is backend-owned. The frontend sends the common selection target; the backend resolves all authoritative eligible selected rows and generates CSV.
+
+Detailed contract: `docs/grid-export.md` and `docs/client-side-grid.md`.
+
+---
+
+## 15. Grid State / user preference persistence
 
 The foundation persists intentional native AG Grid preference state:
 
@@ -519,30 +631,34 @@ It deliberately does not currently persist:
 - pagination position;
 - row selection.
 
-Infinite and SSRM use separate preference keys.
+Client, Infinite and SSRM use separate preference keys so independent grids do not overwrite one another.
 
 The current store uses browser storage behind a replaceable `GridStateStore` boundary, so future user/profile persistence can replace storage without replacing the Grid State contract.
 
 ---
 
-## 14. Error handling and retry
+## 16. Error handling, retry and refresh
 
-Both row models support data-load error presentation and retry.
-
-The retry implementation remains row-model specific rather than pretending Infinite and SSRM have one identical native lifecycle.
-
-Successful backend writes also use row-model-specific native refresh:
+The row models intentionally keep their appropriate lifecycle ownership.
 
 ```text
-Infinite -> refreshInfiniteCache()
-SSRM     -> refreshServerSide()
+Client
+-> TanStack Query refetch/cache update + rowData replacement
+
+Infinite
+-> refreshInfiniteCache()
+
+SSRM
+-> refreshServerSide() / retryServerSideLoads()
 ```
 
-The browser then receives authoritative server values through the normal datasource path.
+Infinite and SSRM loading adapters also cancel obsolete in-flight datasource requests when their datasource is destroyed.
+
+Do not create one artificial refresh abstraction merely to make these mechanics look identical.
 
 ---
 
-## 15. Column/presentation capabilities currently used
+## 17. Column, presentation, theming and setup capabilities
 
 The foundation supports native feature column definitions including:
 
@@ -559,42 +675,57 @@ The foundation supports native feature column definitions including:
 
 Transactions demonstrates currency/date formatting, status rendering/editing, interaction state rendering and conflict cell treatment.
 
-These are feature presentation choices composed on top of native `ColDef` rather than a custom column abstraction.
+The same Transaction domain columns are composed with different filter mechanics where appropriate: server grids use backend-compatible filter parameters; Client uses native local filtering without inheriting server restrictions.
 
----
+The application also provides:
 
-## 16. Theming and application defaults
-
-The application provides:
-
-- one shared AG Grid theme;
+- one shared AG Grid theme built from application design tokens;
 - global default column behavior;
 - centralized AG Grid module registration;
 - centralized Enterprise license setup.
-
-Feature grids can still override native grid/column options where required.
 
 There is no generic React wrapper that hides `AgGridReact`.
 
 ---
 
-## 17. Lifecycle hardening
+## 18. Lifecycle hardening
 
 The foundation explicitly treats AG Grid lifecycle ownership as part of correctness.
 
 Current protections include:
 
-- each concrete grid root owns one authoritative `GridApi` ref;
+- each concrete Client/Infinite/SSRM root owns one authoritative `GridApi` ref;
 - the ref is cleared during `gridPreDestroy`;
-- custom listener cleanup checks `api.isDestroyed()` before calling GridApi methods after teardown;
+- custom listener cleanup checks destroyed APIs where required;
+- Infinite/SSRM datasource destruction aborts outstanding requests;
+- latest-request metadata is guarded by request start order;
 - programmatic editing writes are marked so they do not become false user edits;
-- locally overlaid RowNode data is distinguished from genuinely refreshed server data so drafts are not accidentally auto-cleared.
+- locally overlaid RowNode data is distinguished from genuinely refreshed authoritative data so drafts are not accidentally auto-cleared.
 
 This category should keep evolving whenever a real AG Grid warning/race is found.
 
 ---
 
-## 18. What is deliberately not a current capability
+## 19. Capability discoverability / extraction support
+
+This repository is intentionally also a source of reusable proven patterns.
+
+`docs/grid-capability-tags.md` registers stable `GRIDCAP-*` markers across important:
+
+- concrete row-model roots;
+- shared controllers/algorithms;
+- datasource/query boundaries;
+- editing/export/selection integration;
+- backend authority;
+- focused executable tests.
+
+A developer who wants to extract one capability should find its registered tag, search exact occurrences, read the row-model ownership notes, inspect every meaningful touchpoint, and then adapt only the implementation relevant to the target project's row model.
+
+A marker means "this code participates in the capability"; it does not mean every marked file should be copied unchanged.
+
+---
+
+## 20. What is deliberately not a current capability
 
 Do not assume the foundation currently provides these:
 
@@ -602,25 +733,31 @@ Do not assume the foundation currently provides these:
 - aggregation/pivot result contracts;
 - backend optimistic concurrency/version enforcement for a stale client that never refreshed;
 - bulk `Use all server` / `Keep all my edits` conflict resolution;
-- one universal grid wrapper/component hiding Infinite and SSRM;
+- one universal grid wrapper/controller hiding Client, Infinite and SSRM;
 - database-backed user grid preferences;
-- business actions inferred from currently loaded cache rows only.
+- import/template/sample upload workflow;
+- business actions inferred from currently loaded server-cache rows only.
 
 These can be added when a real product requirement justifies them.
 
 ---
 
-## 19. Where to read next
+## 21. Where to read next
 
-Use this document to discover a capability, then use the detailed contract for implementation/edge cases:
+Use this document to discover a capability, then use the detailed contract or searchable registry for implementation/edge cases:
 
+- `docs/grid-capability-tags.md` — searchable capability marker registry and extraction workflow;
+- `docs/client-side-grid.md` — Client data/selection/export ownership and capability matrix;
 - `docs/ag-grid-native-usage.md` — AG Grid-native props/APIs/events we rely on;
 - `docs/ag-grid.md` — architecture and ownership rules;
 - `docs/server-backed-grid-reuse.md` — how to add another server-backed table;
 - `frontend/src/infinite-selection-contract.md` — Infinite selection source of truth;
 - `frontend/src/ssrm-selection-contract.md` — SSRM selection source of truth;
+- `docs/selection-counts.md` — selected-total semantics and eligibility limitation;
+- `docs/grid-export.md` — export ownership/eligibility semantics;
 - `docs/row-interaction.md` — selectable/editable/read-only contract;
 - `docs/transaction-editing.md` — editing behavior;
 - `docs/edit-conflict-reconciliation.md` — refresh conflict behavior and manual testing;
-- `docs/api-data-flow.md` — API/query/action flow;
+- `docs/api-data-flow.md` — Client and server API/query/action flow;
+- `docs/grid-backlog.md` — unfinished verification/design/product work;
 - `docs/ag-grid-foundation-status.md` — current foundation status and remaining work.

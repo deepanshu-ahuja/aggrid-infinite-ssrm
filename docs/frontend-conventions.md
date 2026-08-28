@@ -9,7 +9,7 @@ Promote code into `shared` when it is genuinely domain-neutral application/grid 
 For every new grid concern, ask both questions:
 
 ```text
-Would another server-backed table need this for the same reason?
+Would another application table need this for the same reason?
 Does this code know anything about the current domain's fields/actions/API meaning?
 ```
 
@@ -21,8 +21,8 @@ For AG Grid code, distinguish reusable capability mechanics from feature semanti
 
 - keep concrete `AgGridReact` rendering and the authoritative `GridApi` ref visible in the owning grid root;
 - put row-model-independent mechanics such as tracked-edit state, current-page target resolution, generic selection-action targets and Grid State persistence wiring in `shared/grid`;
-- keep row-model-specific mechanics under the relevant shared Infinite/SSRM area when they are genuinely reusable across features;
-- keep Infinite and SSRM implementations separate when their native lifecycle/capabilities differ; sharing a semantic helper does not require sharing one controller/root;
+- keep row-model-specific mechanics under the relevant shared Client-Side/Infinite/SSRM area when they are genuinely reusable across features;
+- keep Client-Side, Infinite and SSRM implementations separate when their native lifecycle/capabilities differ; sharing a semantic helper does not require sharing one controller/root;
 - keep feature fields, validation, API requests, filter/request mapping, business action payloads and feature UI under the feature;
 - do not replace a large component with one giant `useGrid(...)` hook that merely hides AG Grid lifecycle behind another abstraction.
 
@@ -56,7 +56,9 @@ Do not serialize redundant UI history such as `scope: page | filtered | all` whe
 
 The frontend may still need row-model-specific internal context while constructing that request. Infinite and SSRM can reach the same logical target through different native/custom selection mechanisms; preserve those differences instead of forcing one implementation.
 
-Feature filter translation remains feature-owned and must be reused consistently between normal row loading and Select All Filtered actions.
+Client-Side can enumerate exact selected IDs because the complete bounded working set is local. It may reuse the same backend selected-operation contract with `include + ids` without importing server dataset-wide exclude state.
+
+Feature filter translation remains feature-owned and must be reused consistently between normal server row loading and Select All Filtered actions.
 
 ### Abstraction threshold
 
@@ -76,6 +78,43 @@ Avoid pass-through patterns such as `useFeatureX()` calling `useSharedX()` uncha
 
 Shared mechanics and concrete feature composition are different things: a reusable datasource/loading hook may own AG Grid request lifecycle, cancellation and retry behavior, while a concrete feature root can still directly compose `mapFeatureRequest(...)` with `listFeatureRecords(...)` when that composition adds no behavior of its own.
 
+## Capability markers (`GRIDCAP-*`)
+
+This repository is a reference implementation, so code discoverability is an explicit engineering concern. A future developer may want to extract one capability without remembering every hook, event handler, request mapper, backend resolver, and test that participates in it.
+
+`docs/grid-capability-tags.md` is the authoritative registry for searchable capability markers.
+
+Rules:
+
+- every marker starts with the exact prefix `GRIDCAP-`;
+- **do not invent an ad-hoc marker in source**; define a genuinely new capability in the registry first;
+- use one logical marker across Client-Side, Infinite, SSRM, frontend, backend, and tests when the user/business capability is the same but implementation differs;
+- multiple markers are allowed on one location when one shared boundary supports several capabilities;
+- mark extraction-relevant boundaries: concrete roots, controllers, shared algorithms, event/lifecycle boundaries, request/response mapping, backend authority, and focused tests;
+- do not tag every obvious helper/statement; a repository search should return a useful dependency/extraction map, not comment noise;
+- a tag means **participates in this capability**, not **copy this implementation into every row model**;
+- preserve applicable markers during refactors just like useful rationale comments;
+- when a capability changes materially, search its existing marker occurrences and review all affected touchpoints before declaring the change complete;
+- avoid casual marker renames because stable searchability across Git history is part of their value.
+
+Example shared boundary:
+
+```ts
+// GRIDCAP-PAGINATION | GRIDCAP-SEL-PAGE | GRIDCAP-EDIT-PAGE-APPLY | GRIDCAP-EXPORT-PAGE
+```
+
+That does not mean pagination and export are one feature. It means this boundary participates in all four capability paths and should be considered when extracting or changing any one of them.
+
+A developer extracting a capability should:
+
+```text
+1. Find the tag in docs/grid-capability-tags.md.
+2. Read its row-model/ownership notes.
+3. Search the exact tag across the repository.
+4. Review every marked production/test boundary and linked detailed docs.
+5. Adapt only the row-model implementation relevant to the target project.
+```
+
 ## React and TypeScript
 
 - Prefer props, ordinary functions and local state before creating a custom hook.
@@ -90,7 +129,9 @@ Shared mechanics and concrete feature composition are different things: a reusab
 
 Comments should explain ownership, lifecycle, constraints and non-obvious decisions; they should not translate TypeScript syntax into English.
 
-**Preserve useful explanatory comments by default.** Refactoring or adding a feature is not a reason to shorten/remove existing rationale merely to make a file look cleaner. Remove or rewrite an existing comment only when the underlying logic/contract changed, the comment became inaccurate, or the same explanation is genuinely duplicated without adding local clarity. If removing it would make ownership, lifecycle, business rules, race handling, or future maintenance harder to understand, keep it and add the new logic-level explanation beside it.
+**Preserve useful explanatory comments by default.** Refactoring or adding a feature is not a reason to shorten/remove existing rationale merely to make a file look cleaner. Remove or rewrite an existing comment only when the underlying logic/contract changed, the comment became inaccurate, or the same explanation is genuinely duplicated without adding local clarity. If removing it would make ownership, lifecycle, business rules, race handling, capability discoverability, or future maintenance harder to understand, keep it and add the new logic-level explanation beside it.
+
+Capability marker comments are not ordinary prose comments. Preserve an accurate `GRIDCAP-*` marker during refactors; update/remove it only when the integration point no longer participates in that registered capability.
 
 For meaningful React state, refs, effects, memoized values and callbacks, document the rationale when it is not obvious from the name alone. A useful comment answers the relevant questions:
 
@@ -112,4 +153,6 @@ Do not add noise such as `// set the error` above `setError(...)` or `// return 
 
 Prioritize stable boundaries: request mappers, datasource callback behavior, selection/action target construction, API validation and business transformations. Test feature screens when they gain user interaction or state beyond straightforward library composition. Avoid snapshots of third-party component markup.
 
-Test Infinite and SSRM lifecycle wiring independently when their behavior differs. Share tests only for genuinely shared semantic helpers; do not create a fake common row-model behavior merely to reduce test duplication.
+Test Client-Side, Infinite and SSRM lifecycle wiring independently when their behavior differs. Share tests only for genuinely shared semantic helpers; do not create a fake common row-model behavior merely to reduce test duplication.
+
+When a capability footprint changes, reuse the same `GRIDCAP-*` marker in focused tests where doing so helps a future developer find the executable contract alongside the implementation.

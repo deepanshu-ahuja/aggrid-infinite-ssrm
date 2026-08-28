@@ -1,3 +1,4 @@
+# GRIDCAP-DATA-LOAD | GRIDCAP-QUERY-SORT | GRIDCAP-QUERY-FILTER | GRIDCAP-ROW-ELIGIBILITY | GRIDCAP-SEL-TARGET | GRIDCAP-ACTION-SELECTED | GRIDCAP-EXPORT-SELECTED
 from datetime import date, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -15,6 +16,7 @@ class TransactionReadOnlyError(PermissionError):
     """Raised when a direct/edit persistence request targets a backend read-only Transaction."""
 
 
+# GRIDCAP-ROW-ELIGIBILITY
 def _interaction_policy_for_row(row: Dict[str, Any]) -> Tuple[str, Optional[str]]:
     """
     Derive the DEMO Transaction interaction policy from Transaction business data.
@@ -94,6 +96,7 @@ def _build_transactions(count: int = 750) -> List[Dict[str, Any]]:
 TRANSACTIONS = _build_transactions()
 
 
+# GRIDCAP-ROWMODEL-CLIENT | GRIDCAP-DATA-LOAD
 def list_transactions() -> List[Dict[str, Any]]:
     """
     Return the complete authoritative Transaction working set for Client-Side Row Model consumers.
@@ -177,6 +180,7 @@ def _find_transaction(transaction_id: str) -> Dict[str, Any]:
     raise TransactionNotFoundError(transaction_id)
 
 
+# GRIDCAP-ROW-ELIGIBILITY
 def _is_selection_eligible(row: Dict[str, Any]) -> bool:
     """
     Backend-authoritative eligibility for CHECKBOX/SELECTION-BASED actions.
@@ -259,6 +263,7 @@ def bulk_update_transactions(
     return [row for row, _changes in resolved]
 
 
+# GRIDCAP-SEL-TARGET | GRIDCAP-ACTION-SELECTED | GRIDCAP-EXPORT-SELECTED | GRIDCAP-ROW-ELIGIBILITY
 def resolve_transactions_by_selection(
     selection: Dict[str, Any],
     filters: List[Dict[str, Any]],
@@ -307,6 +312,7 @@ def resolve_transactions_by_selection(
     ]
 
 
+# GRIDCAP-ACTION-SELECTED | GRIDCAP-SEL-TARGET
 def update_transactions_by_selection(
     selection: Dict[str, Any],
     filters: List[Dict[str, Any]],
@@ -331,6 +337,7 @@ def update_transactions_by_selection(
     return len(selected_rows)
 
 
+# GRIDCAP-DATA-LOAD | GRIDCAP-QUERY-SORT | GRIDCAP-QUERY-FILTER | GRIDCAP-COUNT-SELECTED
 def query_transactions(query: Dict[str, Any]) -> Dict[str, Any]:
     filtered_rows = _apply_filters(TRANSACTIONS, query.get("filters", []))
     sorted_rows = _apply_sort(filtered_rows, query.get("sort", []))

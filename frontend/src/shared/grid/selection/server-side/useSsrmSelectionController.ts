@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-SSRM | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-SEL-TARGET | GRIDCAP-ROW-ELIGIBILITY
 import { useCallback, useState } from 'react';
 import type { RefObject } from 'react';
 import type { GridApi, RowSelectedEvent, SelectionChangedEvent } from 'ag-grid-community';
@@ -204,6 +205,7 @@ export function useSsrmSelectionController<TData>({
    * SSRM has native All Records but no native "current pagination page" mode, so this is one of the
    * small missing mechanics we implement ourselves using native RowNodes.
    */
+  // GRIDCAP-SEL-PAGE | GRIDCAP-PAGINATION | GRIDCAP-ROW-ELIGIBILITY
   const selectCurrentPage = useCallback(() => {
     const api = gridApi.current;
     if (!api) return false;
@@ -255,6 +257,7 @@ export function useSsrmSelectionController<TData>({
   /**
    * Enter custom Select All Filtered.
    */
+  // GRIDCAP-SEL-FILTERED
   const selectAllFiltered = useCallback(() => {
     const api = gridApi.current;
     if (!api) return false;
@@ -283,6 +286,7 @@ export function useSsrmSelectionController<TData>({
    * changes to Failed, retaining that same logical state would silently redefine the user's selection.
    * Native All Records and ordinary explicit IDs do not depend on the visible filter and remain valid.
    */
+  // GRIDCAP-SEL-FILTERED
   const resetFilterDependentSelection = useCallback(() => {
     if (!filteredSelection) return;
 

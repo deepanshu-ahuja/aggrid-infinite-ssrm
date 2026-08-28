@@ -1,3 +1,4 @@
+// GRIDCAP-EXPORT-PAGE | GRIDCAP-EXPORT-SELECTED | GRIDCAP-SEL-TARGET | GRIDCAP-ROWMODEL-INFINITE | GRIDCAP-ROWMODEL-SSRM
 import { useCallback, useState } from 'react';
 import type { GridApi } from 'ag-grid-community';
 import { downloadBlob } from '@/shared/files/downloadBlob';
@@ -19,11 +20,13 @@ export function useTransactionExport() {
   const [isExportingSelected, setIsExportingSelected] = useState(false);
   const [error, setError] = useState<string>();
 
+  // GRIDCAP-EXPORT-PAGE
   const exportCurrentPage = useCallback((api: GridApi<Transaction>) => {
     const result = exportCurrentPageCsv(api, 'transactions-current-page.csv');
     setError(result.ok ? undefined : result.error);
   }, []);
 
+  // GRIDCAP-EXPORT-SELECTED | GRIDCAP-SEL-TARGET
   const exportSelected = useCallback(async (request: TransactionSelectionTargetRequest) => {
     setIsExportingSelected(true);
     setError(undefined);

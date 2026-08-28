@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-CLIENT | GRIDCAP-ROWMODEL-INFINITE | GRIDCAP-ROWMODEL-SSRM | GRIDCAP-PAGINATION | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL
 import {
   clientSideGridDefaults,
   type ClientSideGridOptions,
@@ -15,6 +16,8 @@ import type { Transaction } from './api/transactions.contracts';
  *
  * Grid lifecycle handlers (GridApi ownership, preferences, editing, selection) are intentionally
  * composed inside each concrete Transactions grid root, not hidden in one common page/controller.
+ * The GRIDCAP markers above make this feature-level configuration boundary discoverable alongside
+ * each row-model implementation without turning the configuration object into a universal wrapper.
  */
 export type TransactionsClientGridOptions = ClientSideGridOptions<Transaction>;
 export type TransactionsInfiniteGridOptions = ServerBackedGridOptions<Transaction>;

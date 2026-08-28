@@ -1,3 +1,4 @@
+// GRIDCAP-EDIT-TRACKED | GRIDCAP-EDIT-DISCARD | GRIDCAP-EDIT-CONFLICT | GRIDCAP-COUNT-EDITED | GRIDCAP-ROW-ID | GRIDCAP-ROW-ELIGIBILITY
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { CellValueChangedEvent, GridApi, IRowNode } from 'ag-grid-community';
 import {
@@ -133,6 +134,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     [editableFields, getFieldValue, getRowId, isRowEditable, markLocalOverlay],
   );
 
+  // GRIDCAP-EDIT-CONFLICT | GRIDCAP-LIFECYCLE-REFRESH
   const restoreTrackedEdits = useCallback(
     (api: GridApi<TData>) => {
       let reconciledState = state;
@@ -219,6 +221,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     [editableFields, getFieldValue, getRowId, state.conflictsById, state.originalsById],
   );
 
+  // GRIDCAP-EDIT-DISCARD
   const discardRow = useCallback(
     (api: GridApi<TData>, rowId: string) => {
       if (!state.originalsById[rowId]) return;
@@ -228,6 +231,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     [restoreAuthoritativeValuesForRows, state.originalsById],
   );
 
+  // GRIDCAP-EDIT-DISCARD
   const discardRows = useCallback(
     (api: GridApi<TData>, rowIds: readonly string[]) => {
       if (rowIds.length === 0) return;
@@ -242,6 +246,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     [restoreAuthoritativeValuesForRows],
   );
 
+  // GRIDCAP-EDIT-CONFLICT
   const resolveConflictWithRemote = useCallback(
     (api: GridApi<TData>, rowId: string, field: TField) => {
       const conflict = state.conflictsById[rowId]?.[field];
@@ -264,6 +269,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     [getFieldValue, getRowId, state.conflictsById],
   );
 
+  // GRIDCAP-EDIT-CONFLICT
   const resolveConflictWithLocal = useCallback((rowId: string, field: TField) => {
     setState((current) => resolveTrackedGridConflictWithLocal(current, rowId, field));
   }, []);
@@ -274,6 +280,7 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
   return {
     state,
     payload,
+    // GRIDCAP-COUNT-EDITED: one update per dirty row, regardless of how many fields are dirty.
     editedRowCount: payload.updates.length,
     conflictCount,
     lastEdit,

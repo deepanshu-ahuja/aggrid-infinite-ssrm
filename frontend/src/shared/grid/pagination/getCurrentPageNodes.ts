@@ -1,3 +1,4 @@
+// GRIDCAP-PAGINATION | GRIDCAP-SEL-PAGE | GRIDCAP-EDIT-PAGE-APPLY | GRIDCAP-EXPORT-PAGE
 import type { GridApi, IRowNode } from 'ag-grid-community';
 
 /**

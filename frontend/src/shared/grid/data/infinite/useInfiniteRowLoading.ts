@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-INFINITE | GRIDCAP-DATA-LOAD | GRIDCAP-REQUEST-FRESHNESS | GRIDCAP-ERROR-RETRY | GRIDCAP-LIFECYCLE-REFRESH | GRIDCAP-COUNT-SELECTED
 import { useCallback, useMemo, useState } from 'react';
 import type { RefObject } from 'react';
 import type { GridApi } from 'ag-grid-community';
@@ -59,6 +60,7 @@ export function useInfiniteRowLoading<TData>({
           setFilteredCount(0);
         },
         onLoadSuccess: (result, _request, { isLatestRequest }) => {
+          // GRIDCAP-REQUEST-FRESHNESS
           // Freshness is request-order based, not page-number based. Therefore forward and backward
           // navigation follow the same rule: an older response cannot replace a newer API result.
           if (!isLatestRequest) return;
@@ -76,6 +78,7 @@ export function useInfiniteRowLoading<TData>({
   );
 
   /** Clear the visible error and let AG Grid refresh the Infinite datasource natively. */
+  // GRIDCAP-ERROR-RETRY | GRIDCAP-LIFECYCLE-REFRESH
   const retry = useCallback(() => {
     setError(undefined);
     gridApi.current?.refreshInfiniteCache();

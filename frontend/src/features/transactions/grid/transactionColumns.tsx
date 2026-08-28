@@ -1,3 +1,4 @@
+// GRIDCAP-COLUMNS | GRIDCAP-QUERY-SORT | GRIDCAP-QUERY-FILTER | GRIDCAP-ROW-ELIGIBILITY | GRIDCAP-EDIT-TRACKED | GRIDCAP-EDIT-CONFLICT | GRIDCAP-EDIT-SAVE-ROW
 import type { ColDef, EditableCallbackParams } from 'ag-grid-community';
 import {
   serverDateFilterParams,

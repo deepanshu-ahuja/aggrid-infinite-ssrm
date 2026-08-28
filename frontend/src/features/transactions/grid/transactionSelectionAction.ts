@@ -1,3 +1,4 @@
+// GRIDCAP-SEL-TARGET | GRIDCAP-ACTION-SELECTED | GRIDCAP-EXPORT-SELECTED | GRIDCAP-QUERY-FILTER
 import {
   buildGridSelectionActionTarget,
   hasGridSelection,
