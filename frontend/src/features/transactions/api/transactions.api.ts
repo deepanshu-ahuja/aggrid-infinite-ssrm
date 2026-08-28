@@ -1,5 +1,6 @@
-import { patchJson, postBlob, postJson } from '@/shared/api/apiClient';
+import { getJson, patchJson, postBlob, postJson } from '@/shared/api/apiClient';
 import type {
+  Transaction,
   TransactionBulkUpdateRequest,
   TransactionBulkUpdateResponse,
   TransactionListRequest,
@@ -11,6 +12,17 @@ import type {
   TransactionUpdateResponse,
 } from './transactions.contracts';
 
+/**
+ * Fetch the complete bounded Transaction working set for Client-Side Row Model.
+ *
+ * Client-Side owns sorting/filtering/pagination in browser memory, so this collection read is kept
+ * separate from the server-grid query endpoint below rather than inventing a giant page size.
+ */
+export function listAllTransactions(signal?: AbortSignal) {
+  return getJson<Transaction[]>('/transactions/', signal);
+}
+
+/** Server-backed Infinite/SSRM query for one translated page/block. */
 export function listTransactions(request: TransactionListRequest, signal?: AbortSignal) {
   return postJson<TransactionListResponse, TransactionListRequest>(
     '/transactions/query/',

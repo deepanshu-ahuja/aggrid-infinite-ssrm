@@ -4,11 +4,12 @@ This is the **single living TODO/control list** for unfinished grid-foundation w
 
 Use it with:
 - `docs/grid-capabilities.md` — implemented logical capabilities;
+- `docs/client-side-grid.md` — Client-Side capability matrix, ownership and verification;
 - `docs/ag-grid-native-usage.md` — meaningful native AG Grid dependencies;
-- `docs/selection-edit-export.md` — current selected-count, edited-count and export semantics;
+- `docs/selection-edit-export.md` — current server-backed selected-count, edited-count and export semantics;
 - detailed feature/manual-test docs.
 
-The backlog is a tracking/control document. It is **not** a rule that every item must be completed before Client-Side Row Model starts.
+The backlog is a tracking/control document. It is **not** a rule that every verification item must be completed before implementation work can continue.
 
 ## Maintenance rule
 
@@ -19,19 +20,21 @@ When something is fully implemented and verified, remove it from Active backlog,
 ## Current agreed sequence
 
 ```text
-1. Finish the small pre-Client baseline
+1. Keep the Infinite + SSRM baseline verification available
    - selected-row total
    - edited/dirty-row total semantics
    - Export Current Page + Export Selected
    - CI explanation docs
-   - focused automated + manual verification
+   - focused automated coverage is already present
+   - manual browser verification remains pending and can be consolidated later
 
-2. Start Client-Side Row Model
+2. Build and verify Client-Side Row Model
    - separate native-first implementation
    - match the proven user-facing capabilities where they make sense
    - reuse only genuinely row-model-neutral mechanics
+   - do not wait for the deferred manual server-grid pass unless a real correctness defect appears
 
-3. From that baseline onward
+3. From the three-row-model baseline onward
    - evaluate new grid-foundation capabilities across Client / Infinite / SSRM together
    - do NOT force the three row models through identical implementation
 
@@ -43,17 +46,17 @@ When something is fully implemented and verified, remove it from Active backlog,
    - named views/mass editing/create-delete/etc.
 ```
 
-Only a genuine core Infinite/SSRM correctness defect should interrupt Client-Side once the small baseline above is verified.
+Manual verification remains important, but it is intentionally schedulable as a later consolidated pass. Only a genuine core correctness defect should interrupt the current Client-Side implementation phase.
 
 # Active backlog
 
-## A. Pre-Client baseline
+## A. Infinite + SSRM baseline verification
 
 ### A1. Manual Infinite + SSRM regression pass
 **Status:** VERIFY  
-**Priority:** Highest
+**Priority:** Pending manual pass; non-blocking for current Client implementation
 
-Verify both row models independently:
+Verify both row models independently when the manual pass is scheduled:
 - explicit/manual selection;
 - Current Page selection;
 - Select All Filtered / All Records with exceptions;
@@ -72,7 +75,7 @@ Verify both row models independently:
 - cache/reload behavior;
 - navigation/remount/teardown without AG Grid warning #26.
 
-A pass in Infinite does not prove SSRM and vice versa.
+A pass in Infinite does not prove SSRM and vice versa. Do not mark this complete unless the browser scenarios were actually run.
 
 ### A2. Selected-row total
 **Status:** VERIFY
@@ -94,19 +97,19 @@ selectionEligibleTotalCount
 selectionEligibleFilteredCount
 ```
 
-See `docs/selection-edit-export.md`.
+See `docs/selection-counts.md`.
 
 ### A3. Edited/dirty-row total
 **Status:** VERIFY
 
 The existing tracked-editing state is authoritative. `Edited` means number of dirty rows, not dirty cells. Multiple dirty fields in one row count as one edited row; conflicts remain dirty until resolved/removed from tracked state.
 
-See `docs/selection-edit-export.md`.
+See `docs/edited-row-count.md`.
 
 ### A4. Export Current Page + Export Selected
 **Status:** VERIFY
 
-Implemented ownership:
+Implemented server-backed ownership:
 - Current Page -> native AG Grid CSV export over the exact loaded pagination-page RowNodes;
 - Selected -> backend resolves the same logical selection/filter target used by selection-based business actions and returns CSV.
 
@@ -114,10 +117,12 @@ Dataset-wide selected export must never fetch the whole selected server dataset 
 
 Import is intentionally separate and does not block Client-Side.
 
+See `docs/grid-export.md`.
+
 ### A5. GitHub Actions explanation
 **Status:** VERIFY
 
-`docs/github-actions-ci.md` explains workflow/event/job/step syntax, `uses` vs `run`, permissions, concurrency, Node/Python setup, `npm ci`, every validation command, failure diagnosis, and the first real CI finding from this repository.
+`docs/github-actions-ci.md` explains workflow/event/job/step syntax, `uses` vs `run`, permissions, concurrency, Node/Python setup, `npm ci`, every validation command, failure diagnosis, and real CI findings from this repository.
 
 ### A6. Lifecycle/race hardening
 **Status:** Ongoing engineering rule
@@ -126,10 +131,10 @@ Warning #26 established the policy: fix concrete lifecycle ownership/timing bugs
 
 Already protected: root GridApi pre-destroy cleanup, destroyed-API guards, datasource cancellation, programmatic-write guards, and LOCAL-overlay vs fresh-REMOTE distinction.
 
-## B. Client-Side Row Model — next implementation phase
+## B. Client-Side Row Model — current implementation phase
 
 ### B1. Reusable Client-Side foundation
-**Status:** PLANNED
+**Status:** VERIFY
 
 Rule:
 
@@ -137,19 +142,25 @@ Rule:
 same logical capability != same row-model implementation
 ```
 
-Prefer native Client-Side AG Grid first for sorting, filtering, pagination, checkbox selection, header Select All scopes (`all`, `filtered`, `currentPage` where supported by the pinned version), selected-row traversal/counting, local filtered/displayed traversal and local export.
+Implemented native-first baseline:
+- one complete bounded Transaction collection request through TanStack Query;
+- native Client-Side sorting, filtering and pagination over `rowData`;
+- native header selection scopes `currentPage`, `filtered` and `all`;
+- exact explicit selected IDs/count because the complete working set is local;
+- existing `selectionDisabled` / `readOnly` native selectability adapter;
+- shared tracked editing, Save/Discard and BASE/LOCAL/REMOTE conflict mechanics;
+- explicit-ID backend selected status actions;
+- shared native Current Page CSV helper;
+- native local Selected CSV across pagination pages;
+- separate Client pagination defaults with no server cache/block configuration.
+
+The complete capability/ownership matrix lives in `docs/client-side-grid.md`.
 
 Do **not** port Infinite unloaded-row include/exclude machinery, SSRM selection-state ownership, server datasource translation, or server cache-specific code unless a real semantic gap requires it.
 
-Potentially reusable mechanics: stable IDs, row capability semantics, tracked edits, Save/Discard, selected-dirty saves, conflict mechanics when locally held data is refreshed from server, validation mechanics, Grid State persistence, feature-owned actions, and presentation for selected/edited totals.
+Potentially reusable mechanics remain stable IDs, row capability semantics, tracked edits, Save/Discard, selected-dirty saves, conflict mechanics when locally held data is refreshed from server, validation mechanics, Grid State persistence, feature-owned actions, and presentation for selected/edited totals.
 
-Before coding, maintain a capability matrix:
-
-```text
-Capability | Client-Side | Infinite | SSRM
-```
-
-Classify each capability as native / shared mechanic / row-model-specific / N/A.
+Manual `/client` verification is documented in `docs/client-side-grid.md` and remains pending until actually run.
 
 ### B2. Many Client-Side tables without repetition
 **Status:** PLANNED
@@ -158,20 +169,26 @@ Assume Client Grid A/B/C/D have different columns, rows, endpoints and business 
 
 Feature owns domain data, columns, validation/business rules, actions, formatting and restriction reasons. Shared Client-Side code owns only repeated Client-Side mechanics. AG Grid owns native behavior whenever possible.
 
+The first Transactions implementation establishes shared Client-Side mechanics for pagination defaults, selection and local selected export without creating a universal grid wrapper. A second real Client table should validate whether any additional extraction is actually justified.
+
 Do not create a universal `AgGridReact` wrapper or giant `useGrid()` just to remove a few repeated props.
 
 ### B3. Client-Side-specific docs
-**Status:** PLANNED
+**Status:** VERIFY
 
-When implementation starts:
-- create a dedicated Client-Side foundation/usage doc;
-- document the capability matrix and ownership boundaries;
-- explain Client-Side-specific native AG Grid props/APIs/events used;
-- update `docs/ag-grid-native-usage.md` and `docs/grid-capabilities.md`;
-- add Client-Side manual scenarios;
-- put inline `why` comments in non-obvious logic, not only JSDoc.
+`docs/client-side-grid.md` records:
+- the Client / Infinite / SSRM capability matrix;
+- data and TanStack Query ownership;
+- Client-Side native AG Grid selection/filtering/pagination/export behavior;
+- exact Client selected-count semantics;
+- row eligibility and editing/conflict reconciliation;
+- implementation map;
+- limitations / row-model choice guidance;
+- deferred manual verification scenarios.
 
-## C. Core/product decisions that do not block Client-Side unless a real defect requires them
+`README.md`, `docs/grid-capabilities.md`, `docs/ag-grid-native-usage.md`, `docs/api-data-flow.md` and `AGENTS.md` should remain aligned with the implemented Client baseline.
+
+## C. Core/product decisions that do not block current implementation unless a real defect requires them
 
 ### C1. Post-business-action selection behavior
 **Status:** DESIGN
@@ -204,6 +221,8 @@ Do not enable spreadsheet-style undo/redo until its interaction with durable dir
 **Status:** DEFERRED
 
 When required, design file formats, create/update/upsert semantics, identifiers, mapping, preview, validation, duplicates, atomic/partial success, error reports, progress and post-import refresh as a separate workflow.
+
+Import/template/sample upload is not part of the Client-Side foundation and does not block completing the three-row-model baseline.
 
 ### D2. Conditional styling / lock indicators
 **Status:** Core native approach implemented; further abstraction DEFERRED

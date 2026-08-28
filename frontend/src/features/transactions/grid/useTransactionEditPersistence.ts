@@ -25,8 +25,10 @@ interface UseTransactionEditPersistenceOptions {
  * Transactions persistence lifecycle for tracked grid edits.
  *
  * TanStack Query owns request lifecycle. The feature hook chooses single vs bulk backend endpoint and
- * maps the generic tracked-edit shape into the strict Transactions contract. Infinite/SSRM cache
- * refresh remains at the concrete grid root because those native APIs differ.
+ * maps the generic tracked-edit shape into the strict Transactions contract. Authoritative-row
+ * reconciliation remains at the concrete grid root because the row models receive fresh data through
+ * different native/application lifecycles: Infinite cache refresh, SSRM store refresh, or Client
+ * TanStack Query/`rowData` replacement.
  *
  * Bulk selection semantics intentionally stay OUTSIDE this hook. The concrete grid root owns current
  * selection, intersects that selection with dirty drafts, then passes only those explicit updates to

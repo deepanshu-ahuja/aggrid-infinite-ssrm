@@ -94,6 +94,23 @@ def _build_transactions(count: int = 750) -> List[Dict[str, Any]]:
 TRANSACTIONS = _build_transactions()
 
 
+def list_transactions() -> List[Dict[str, Any]]:
+    """
+    Return the complete authoritative Transaction working set for Client-Side Row Model consumers.
+
+    Client-Side Row Model intentionally receives the full bounded dataset once and lets AG Grid own
+    sorting, filtering, pagination and selection locally. This is therefore a different API concern
+    from `query_transactions`, whose offset/limit/sort/filter contract exists specifically for
+    server-backed Infinite/SSRM loading.
+
+    Return a new list container so callers cannot replace/reorder the module-level dataset accidentally.
+    Row dictionaries remain authoritative domain objects and are read-only for this collection path;
+    mutations continue through the validated update services below.
+    """
+
+    return list(TRANSACTIONS)
+
+
 def _as_comparable(value: Any) -> Any:
     if isinstance(value, str):
         return value.casefold()

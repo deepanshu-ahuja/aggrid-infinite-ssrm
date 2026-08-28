@@ -1,13 +1,13 @@
 import type { GridState } from 'ag-grid-community';
 
 /**
- * Persist only user preferences that are genuinely common to both Infinite Row Model and SSRM.
+ * Persist only user preferences that are genuinely common to Client-Side, Infinite and SSRM.
  *
  * We deliberately exclude pagination and row selection:
- * - restoring pagination requires row-model-specific initial-row-count configuration;
- * - SSRM selection is restorable by AG Grid, while Infinite selection is not;
- * - selection is transient business state in this application rather than a durable layout
- *   preference.
+ * - restoring pagination has row-model-specific lifecycle/config implications;
+ * - SSRM selection is restorable by AG Grid, while Infinite dataset-wide selection has custom state;
+ * - Client selection is fully native but is still transient business state in this application;
+ * - selection is not a durable layout preference in any of the three roots.
  *
  * Keeping the persisted shape as native `GridState` means AG Grid remains the source of truth and
  * can apply its own version migration when supported older state is restored.

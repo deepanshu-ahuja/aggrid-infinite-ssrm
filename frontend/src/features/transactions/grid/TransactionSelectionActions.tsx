@@ -3,7 +3,7 @@ import type { TransactionStatus } from '../api/transactions.contracts';
 
 interface TransactionSelectionActionsProps {
   hasSelection: boolean;
-  /** Logical row count, including unloaded rows when dataset-wide Select All is active. */
+  /** Renderable logical row count; server dataset-wide modes may include unloaded rows, Client is exact. */
   selectedRowCount: number;
   isApplying: boolean;
   /** Status actions may not decide a still-unresolved LOCAL-vs-REMOTE status conflict implicitly. */
@@ -49,7 +49,7 @@ export function TransactionSelectionActions({
 
       {statusActionBlockedByConflict ? (
         <Typography variant="caption" color="warning.main">
-          Resolve selected status conflicts before applying a server-side status action.
+          Resolve selected status conflicts before applying a backend status action.
         </Typography>
       ) : null}
       {error ? <Alert severity="error">{error}</Alert> : null}
