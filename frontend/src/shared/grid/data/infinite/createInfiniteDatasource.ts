@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-INFINITE | GRIDCAP-DATA-LOAD | GRIDCAP-REQUEST-FRESHNESS | GRIDCAP-REQUEST-CANCEL | GRIDCAP-QUERY-SORT | GRIDCAP-QUERY-FILTER
 import type { IDatasource, IGetRowsParams } from 'ag-grid-community';
 import type {
   FlatGridBlockRequest,
@@ -136,6 +137,7 @@ export function createInfiniteDatasource<TData>({
       try {
         const result = await loadRows(request, { signal: controller.signal });
 
+        // GRIDCAP-REQUEST-FRESHNESS
         onLoadSuccess?.(result, request, {
           // A response can be valid for AG Grid's own datasource lifecycle and still be stale for
           // rendered metadata. Compare request start order; never infer freshness from row/page number.
@@ -165,6 +167,7 @@ export function createInfiniteDatasource<TData>({
      * AG Grid calls this when the datasource is replaced/destroyed. Cancelling outstanding requests
      * prevents stale async work from reporting into a grid that has moved to another datasource/query.
      */
+    // GRIDCAP-REQUEST-CANCEL | GRIDCAP-LIFECYCLE-DESTROY
     destroy() {
       activeRequests.forEach((controller) => controller.abort());
       activeRequests.clear();
