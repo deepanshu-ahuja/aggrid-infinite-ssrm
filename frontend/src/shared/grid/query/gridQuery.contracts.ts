@@ -1,3 +1,4 @@
+// GRIDCAP-DATA-LOAD | GRIDCAP-QUERY-SORT | GRIDCAP-QUERY-FILTER | GRIDCAP-COUNT-SELECTED
 /**
  * Shared backend contract for server-backed data grids.
  *
