@@ -71,6 +71,7 @@ Then read the capability-specific docs relevant to the task, including as applic
 
 - `docs/client-side-grid.md`;
 - `docs/selection-counts.md`;
+- `docs/selected-action-selection-lifecycle.md`;
 - `docs/grid-export.md`;
 - `docs/edited-row-count.md`;
 - `docs/pre-client-manual-testing.md`;
@@ -520,6 +521,49 @@ Client selected business actions can also reuse the same backend operation by se
 
 ---
 
+## Post-business-action selection lifecycle
+
+Selection state after a successful selected-row business action is an explicit **feature/action policy**, not a hidden shared-grid default.
+
+Current frontend policy shape:
+
+```text
+clear
+preserve
+```
+
+Rules:
+
+- the action chooses the policy explicitly;
+- the policy is frontend-only lifecycle metadata and is never serialized to the backend;
+- failed mutations preserve selection so the user can inspect/retry the same target;
+- successful `clear` delegates to the row-model selection owner before/alongside authoritative refresh;
+- successful `preserve` leaves selection intact;
+- current Transaction status mutations choose `clear` because they can change the selected/filter universe;
+- non-mutating Selected export stays separate and preserves selection.
+
+Row-model clear ownership remains different:
+
+```text
+Client
+→ native AG Grid deselectAll()
+
+Infinite page/manual
+→ native AG Grid selection clear
+
+Infinite filtered/all
+→ clear compact application dataset selection
+
+SSRM
+→ clear whichever native/custom SSRM selection owner is active
+```
+
+Do not send `clear` / `preserve` in the business API payload and do not create one universal grid wrapper to implement it.
+
+Detailed contract: `docs/selected-action-selection-lifecycle.md`.
+
+---
+
 ## Editing / dirty-row baseline
 
 Tracked editing state lives outside transient RowNodes so dirty work can survive row recreation/cache lifecycle where required.
@@ -554,10 +598,13 @@ Current high-level state/sequence:
 1. Client-Side, Infinite, and SSRM baseline implementations exist with focused automated coverage;
 2. browser/manual verification for the three row models remains available for a later consolidated pass and must not be falsely marked complete;
 3. frontend capability-tag discoverability is maintained so individual frontend patterns can be extracted safely later;
-4. Import/template/sample-upload remains intentionally deferred until its roadmap point;
-5. future capabilities should be evaluated across Client / Infinite / SSRM together without forcing identical implementations.
+4. post-business-action selection lifecycle is explicit per action (`clear` / `preserve`) and current Transaction status mutations clear only after success;
+5. field/backend validation is the next substantial design topic, but its rule-key/metadata schema is intentionally still open for discussion;
+6. application-level draft lifetime and grouped/tree/aggregation/pivot work are on hold until a real product requirement asks for them;
+7. Import/template/sample-upload, concurrency, advanced permissions/state and other advanced capabilities remain deferred to their roadmap points;
+8. future capabilities should be evaluated across Client / Infinite / SSRM together without forcing identical implementations.
 
-Multiple future Client-Side grids should reuse a proper client foundation rather than copy-paste plumbing, but wait for a second real table before inventing abstractions that have not been proven necessary.
+The foundation is intended to support N real business tables through reusable mechanics plus thin feature composition. A second real table should validate whether **additional** extraction is justified; do not invent abstractions or a fake business feature merely to prove reuse.
 
 **When this sequence changes, update this file and `docs/grid-backlog.md` together.**
 
@@ -573,6 +620,7 @@ Meaningful behavior changes should have focused tests at stable boundaries, incl
 - stale-filter behavior;
 - selection transformations;
 - selected counts;
+- post-business-action clear/preserve lifecycle;
 - backend validation;
 - backend selection resolution;
 - export semantics;
@@ -581,7 +629,7 @@ Meaningful behavior changes should have focused tests at stable boundaries, incl
 - Client-Side native scope mapping and exact local-selection behavior;
 - frontend capability-marker searches when a frontend capability footprint changes.
 
-Test Client-Side, Infinite, and SSRM independently where their lifecycle or selection implementation differs. Share tests/helpers only for genuinely shared semantics.
+Test Client-Side, Infinite and SSRM independently where their lifecycle or selection implementation differs. Share tests/helpers only for genuinely shared semantics.
 
 Typical frontend verification:
 
@@ -623,8 +671,6 @@ Before making changes:
 After a PR is merged to `main`, synchronize/fast-forward `grid-foundation` to the new `main` state before continuing work when necessary. Ordinary grid-foundation work should continue on that branch and its meaningful PR rather than creating a new branch per capability.
 
 **Do not create a new feature/work branch unless the user explicitly asks for one.**
-
-The existing `grid-capability-tags` branch is a one-time grandfathered exception because the tag work had already started there before this rule was restated. Finishing that existing branch does **not** establish a future branching pattern. After that PR is merged, return to `grid-foundation` for continuing work.
 
 Do not blindly write onto a stale `grid-foundation`. Inspect it first; if it is behind `main` with no intended unique divergence, synchronize it before changing files.
 
@@ -685,9 +731,12 @@ These are common entry points for current grid work. Search the relevant fronten
 ### Selection/action/export
 
 - `frontend/src/shared/grid/selection/gridSelectionActionTarget.ts`
+- `frontend/src/features/transactions/grid/TransactionSelectionActions.tsx`
 - `frontend/src/features/transactions/grid/transactionSelectionAction.ts`
+- `frontend/src/features/transactions/grid/useTransactionSelectionAction.ts`
 - `frontend/src/features/transactions/grid/useTransactionExport.ts`
 - `frontend/src/features/transactions/api/transactions.contracts.ts`
+- `docs/selected-action-selection-lifecycle.md`
 
 ### Editing
 
