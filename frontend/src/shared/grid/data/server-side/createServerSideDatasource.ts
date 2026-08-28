@@ -7,8 +7,8 @@ import type {
 } from '../gridData.types';
 
 interface ServerSideLoadSuccessMeta {
-  /** True only when this response belongs to the newest filter universe requested by this datasource. */
-  isLatestFilter: boolean;
+  /** True only for the most recently started request in this datasource instance. */
+  isLatestRequest: boolean;
 }
 
 interface CreateServerSideDatasourceOptions<TData> {
@@ -31,16 +31,8 @@ export function createServerSideDatasource<TData>({
   defaultBlockSize = 100,
 }: CreateServerSideDatasourceOptions<TData>): IServerSideDatasource<TData> {
   const activeRequests = new Set<AbortController>();
-
-  /**
-   * Mutable request-order state belongs to this datasource instance, not React.
-   *
-   * SSRM can have an old filter request still in flight when a new filter starts. Both responses may
-   * be valid for their own request, but only the newest filter is allowed to publish UI metadata such
-   * as `filteredCount`. Keeping the key in this closure avoids mirroring datasource lifecycle in a
-   * React ref and lets the hook receive a simple `isLatestFilter` fact on success.
-   */
   let activeFilterKey: string | undefined;
+  let latestRequestSequence = 0;
 
   return {
     async getRows(params: IServerSideGetRowsParams<TData>) {
@@ -56,6 +48,7 @@ export function createServerSideDatasource<TData>({
         filterModel: params.request.filterModel ?? {},
       };
       const filterKey = JSON.stringify(request.filterModel);
+      const requestSequence = ++latestRequestSequence;
 
       if (activeFilterKey !== filterKey) {
         activeFilterKey = filterKey;
@@ -68,14 +61,14 @@ export function createServerSideDatasource<TData>({
         const result = await loadRows(request, { signal: controller.signal });
 
         onLoadSuccess?.(result, request, {
-          // A slower response from an older filter can still finish, but it must not overwrite count
-          // metadata associated with the filter the user is currently viewing.
-          isLatestFilter: activeFilterKey === filterKey,
+          // Page direction is irrelevant: 1 -> 2 -> 3 and 3 -> 2 -> 1 use the same rule. If an older
+          // request finishes after a newer one, it may complete for AG Grid but must not replace the
+          // newest API count metadata rendered by React.
+          isLatestRequest: requestSequence === latestRequestSequence,
         });
 
         // SSRM must size the query represented by THIS request. AG Grid owns whether an older request
-        // is still relevant to its current store; our metadata callback above independently guards UI
-        // state from stale-filter responses.
+        // is still relevant to its current store; count metadata is guarded independently above.
         params.success({
           rowData: result.rows,
           rowCount: result.filteredCount,
