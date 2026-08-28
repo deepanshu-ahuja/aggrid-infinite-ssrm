@@ -549,7 +549,7 @@ Current high-level state/sequence:
 
 1. Client-Side, Infinite, and SSRM baseline implementations exist with focused automated coverage;
 2. browser/manual verification for the three row models remains available for a later consolidated pass and must not be falsely marked complete;
-3. capability-tag discoverability is being maintained so individual patterns can be extracted safely later;
+3. capability-tag discoverability is maintained so individual patterns can be extracted safely later;
 4. Import/template/sample-upload remains intentionally deferred until its roadmap point;
 5. future capabilities should be evaluated across Client / Infinite / SSRM together without forcing identical implementations.
 
@@ -608,20 +608,27 @@ GitHub is the repository-state source of truth.
 Before making changes:
 
 - inspect current `main`;
-- inspect the working branch;
-- inspect open PRs;
+- inspect `grid-foundation` and the current open PR;
 - inspect recently merged PRs when relevant;
 - inspect CI status.
 
-The project has commonly used `grid-foundation` as the working branch. Continue that convention when it is clean and appropriate, but do not blindly write onto a stale branch. If it is behind with no unique work, fast-forward/recreate the continuation from current `main` before changing files.
+### Continuous working branch rule
 
-A deliberately isolated infrastructure/discoverability change may use a focused branch when that keeps the PR clean; do not proliferate branches for ordinary feature work without reason.
+**`grid-foundation` is the project's continuous working branch.**
 
-Maintain a meaningful PR for branch work.
+After a PR is merged to `main`, synchronize/fast-forward `grid-foundation` to the new `main` state before continuing work when necessary. Ordinary grid-foundation work should continue on that branch and its meaningful PR rather than creating a new branch per capability.
+
+**Do not create a new feature/work branch unless the user explicitly asks for one.**
+
+The existing `grid-capability-tags` branch is a one-time grandfathered exception because the tag work had already started there before this rule was restated. Finishing that existing branch does **not** establish a future branching pattern. After that PR is merged, return to `grid-foundation` for continuing work.
+
+Do not blindly write onto a stale `grid-foundation`. Inspect it first; if it is behind `main` with no intended unique divergence, synchronize it before changing files.
+
+Maintain a meaningful PR for ongoing branch work.
 
 **Never merge a PR unless the user explicitly asks for the merge.**
 
-If the user merges while work is in progress, detect that state before further writes. Continue from the new `main` and open/update the correct next PR instead of building on stale assumptions.
+If the user merges while work is in progress, detect that state before further writes. Continue from the new `main`, synchronize `grid-foundation` as needed, and continue there instead of creating another branch automatically.
 
 PR descriptions should accurately state:
 
