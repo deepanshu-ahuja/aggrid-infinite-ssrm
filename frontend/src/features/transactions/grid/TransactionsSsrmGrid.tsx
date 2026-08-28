@@ -32,6 +32,7 @@ import {
 } from '../transactionsGrid.config';
 import { TransactionEditConflictPopover } from './TransactionEditConflictPopover';
 import { TransactionEditingControls } from './TransactionEditingControls';
+import { TransactionExportActions } from './TransactionExportActions';
 import type { TransactionRowEditActionsContext } from './TransactionRowEditActions';
 import { TransactionSelectionActions } from './TransactionSelectionActions';
 import {
@@ -48,9 +49,11 @@ import {
 } from './transactionRowInteraction';
 import {
   buildTransactionSelectionActionRequest,
+  buildTransactionSelectionTarget,
   hasTransactionSelection,
 } from './transactionSelectionAction';
 import { useTransactionEditPersistence } from './useTransactionEditPersistence';
+import { useTransactionExport } from './useTransactionExport';
 import { useTransactionSelectionAction } from './useTransactionSelectionAction';
 
 const SSRM_STATE_KEY = 'transactions:ssrm';
@@ -144,6 +147,13 @@ export function TransactionsSsrmGrid({
     selectionActionError,
   } = useTransactionSelectionAction({ onApplied: handlePersistedRows });
 
+  const {
+    error: exportError,
+    isExportingSelected,
+    exportCurrentPage,
+    exportSelected,
+  } = useTransactionExport();
+
   const handleDiscardRow = useCallback(
     (rowId: string) => {
       const api = gridApi.current;
@@ -155,6 +165,7 @@ export function TransactionsSsrmGrid({
   );
 
   const selectionIntent = isGridReady ? readSelectionIntent() : EMPTY_SELECTION;
+  const hasSelection = hasTransactionSelection(selectionIntent);
 
   // Native SSRM gives us the selection rule, not the dataset size represented by selectAll=true.
   // All Records therefore uses the API's filter-independent total. Custom All Filtered uses AG Grid's
@@ -217,6 +228,29 @@ export function TransactionsSsrmGrid({
     },
     [applySelectionAction, isFilteredSelectAllActive, readSelectionIntent, state],
   );
+
+  const handleExportCurrentPage = useCallback(() => {
+    const api = gridApi.current;
+    if (api) exportCurrentPage(api);
+  }, [exportCurrentPage]);
+
+  const handleExportSelected = useCallback(() => {
+    const api = gridApi.current;
+    if (!api) return;
+
+    const currentSelection = readSelectionIntent();
+    if (!hasTransactionSelection(currentSelection)) return;
+
+    // Native SSRM All Records and custom All Filtered use different in-grid ownership, but selected
+    // export receives one operation-neutral backend target after this row-model-specific interpretation.
+    void exportSelected(
+      buildTransactionSelectionTarget(
+        currentSelection,
+        isFilteredSelectAllActive ? 'filtered' : 'all',
+        api.getFilterModel(),
+      ),
+    );
+  }, [exportSelected, isFilteredSelectAllActive, readSelectionIntent]);
 
   const rowEditActionsContext = useMemo<TransactionRowEditActionsContext>(
     () => ({
@@ -301,12 +335,20 @@ export function TransactionsSsrmGrid({
   return (
     <Stack spacing={2}>
       <TransactionSelectionActions
-        hasSelection={hasTransactionSelection(selectionIntent)}
+        hasSelection={hasSelection}
         selectedRowCount={selectedRowCount}
         isApplying={isApplyingSelectionAction}
         statusActionBlockedByConflict={statusActionBlockedByConflict}
         error={selectionActionError}
         onSetStatus={handleSetSelectedStatus}
+      />
+
+      <TransactionExportActions
+        hasSelection={hasSelection}
+        isExportingSelected={isExportingSelected}
+        error={exportError}
+        onExportCurrentPage={handleExportCurrentPage}
+        onExportSelected={handleExportSelected}
       />
 
       <TransactionEditingControls
