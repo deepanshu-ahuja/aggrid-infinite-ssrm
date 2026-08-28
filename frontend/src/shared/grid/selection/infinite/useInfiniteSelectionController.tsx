@@ -9,6 +9,7 @@ import type {
 import { InfiniteCurrentPageSelectionHeader } from './InfiniteCurrentPageSelectionHeader';
 import { useDatasetSelection } from './useDatasetSelection';
 import { SelectionHeaderCheckbox } from '../SelectionHeaderCheckbox';
+import { getLogicalSelectedRowCount } from '../selectionCount';
 import type { InfiniteSelectionMode, ServerSelectionIntent } from '../serverSelection';
 
 interface UseInfiniteSelectionControllerOptions<TData> {
@@ -58,8 +59,9 @@ export function useInfiniteSelectionController<TData>({
    */
   const [filteredTotal, setFilteredTotal] = useState(0);
 
-  // Dataset-wide header math uses the appropriate universe size. Page mode does not use this custom
-  // dataset-selection helper at all, so zero is intentional there.
+  // Dataset-wide header/count math uses the appropriate universe size. Page mode does not use this
+  // custom dataset-selection helper, so zero is intentional there; explicit include selection count
+  // never depends on the supplied universe size.
   const datasetTotal = scope === 'all' ? totalCount : scope === 'filtered' ? filteredTotal : 0;
 
   const {
@@ -98,6 +100,11 @@ export function useInfiniteSelectionController<TData>({
     () => (scope === 'page' ? readPageSelectionIntent() : datasetIntent),
     [datasetIntent, readPageSelectionIntent, scope],
   );
+
+  // Count from the same authoritative representation used by bulk actions. Page/manual mode is exact
+  // because its include IDs come from native Grid State. Dataset-wide mode uses the backend/API row
+  // universe count minus explicit user exceptions, so unloaded rows are represented without loading them.
+  const selectedRowCount = getLogicalSelectedRowCount(readSelectionIntent(), datasetTotal);
 
   /**
    * Reconcile logical filtered/all selection onto ONLY the Infinite RowNodes currently in memory.
@@ -258,6 +265,7 @@ export function useInfiniteSelectionController<TData>({
   return {
     selectionColumnDef,
     readSelectionIntent,
+    selectedRowCount,
     onRowsChanged,
     onRowSelected,
     onSelectionChanged,
