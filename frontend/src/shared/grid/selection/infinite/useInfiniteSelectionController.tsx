@@ -22,8 +22,11 @@ interface UseInfiniteSelectionControllerOptions<TData> {
   /** Stable backend identity. Infinite RowNodes may be evicted/recreated, so row index is not enough. */
   getRowId: (row: TData) => string;
 
-  /** Complete unfiltered count returned by normal row loading; no extra selection metadata request. */
+  /** Complete unfiltered count from the latest accepted normal API response. */
   totalCount: number;
+
+  /** Current filtered count from the latest accepted normal API response. */
+  filteredCount: number;
 
   /** Optional feature observer for the current compact logical selection. */
   onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
@@ -35,11 +38,9 @@ export function useInfiniteSelectionController<TData>({
   scope,
   getRowId,
   totalCount,
+  filteredCount,
   onSelectionChange,
 }: UseInfiniteSelectionControllerOptions<TData>) {
-  /** Final accepted filtered result size used by filtered-wide header/count presentation. */
-  const [filteredTotal, setFilteredTotal] = useState(0);
-
   /**
    * Renderable count for native explicit/page selection.
    *
@@ -49,7 +50,9 @@ export function useInfiniteSelectionController<TData>({
    */
   const [pageSelectedCount, setPageSelectedCount] = useState(0);
 
-  const datasetTotal = scope === 'all' ? totalCount : scope === 'filtered' ? filteredTotal : 0;
+  // Dataset-wide Infinite selection is custom because unloaded rows have no RowNode, but its universe
+  // size comes from the same backend counts as SSRM: filteredCount for filtered-wide, totalCount for all.
+  const datasetTotal = scope === 'all' ? totalCount : scope === 'filtered' ? filteredCount : 0;
 
   const {
     intent: datasetIntent,
@@ -80,8 +83,8 @@ export function useInfiniteSelectionController<TData>({
     [datasetIntent, readPageSelectionIntent, scope],
   );
 
-  // Dataset-wide count is pure React state + logical selection. Page mode uses the event-maintained
-  // derived count above so rendering never reaches through the GridApi ref.
+  // Page/manual mode is exact explicit native IDs. Dataset-wide modes subtract explicit user
+  // exceptions from the backend-provided universe total without enumerating unloaded rows.
   const selectedRowCount =
     scope === 'page'
       ? pageSelectedCount
@@ -103,16 +106,10 @@ export function useInfiniteSelectionController<TData>({
   }, [getRowId, gridApi, isRowSelected, scope]);
 
   const onRowsChanged = useCallback(() => {
-    const api = gridApi.current;
-    if (!api) return;
-
-    if (scope === 'filtered' && api.isLastRowIndexKnown()) {
-      // Infinite only knows the final filtered size once the datasource has closed the row range.
-      setFilteredTotal(api.getDisplayedRowCount());
-    }
-
+    // Count metadata is supplied by the normal API loading lifecycle. Row-model changes only need to
+    // reconcile the logical dataset-wide selection onto whichever concrete rows are currently loaded.
     syncLoadedRows();
-  }, [gridApi, scope, syncLoadedRows]);
+  }, [syncLoadedRows]);
 
   useEffect(() => {
     if (scope === 'page') return;
@@ -178,7 +175,6 @@ export function useInfiniteSelectionController<TData>({
   );
 
   const resetFilterDependentSelection = useCallback(() => {
-    if (scope === 'filtered') setFilteredTotal(0);
     if (scope !== 'page') resetDatasetSelectionForFilter?.();
   }, [resetDatasetSelectionForFilter, scope]);
 
