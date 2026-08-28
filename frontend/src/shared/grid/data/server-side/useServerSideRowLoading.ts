@@ -21,9 +21,9 @@ interface UseServerSideRowLoadingOptions<TData> {
 /**
  * Reusable SSRM loading lifecycle.
  *
- * It owns datasource identity, visible load-error state, native retry, and the normal API counts used
- * by server-wide selection presentation. Request-order bookkeeping stays inside the datasource closure;
- * React receives only the latest publishable counts.
+ * The normal API response supplies `totalCount` and `filteredCount`. The datasource also tells this
+ * hook whether a completed response belongs to the latest started request, so a slower older call
+ * cannot overwrite newer count metadata. Page direction does not matter; request start order does.
  */
 export function useServerSideRowLoading<TData>({
   gridApi,
@@ -43,19 +43,16 @@ export function useServerSideRowLoading<TData>({
         loadRows,
         defaultBlockSize,
         onFilterChanged: () => {
-          // The previous filter's count is no longer meaningful as soon as a new filter request starts.
-          // Keep the UI at zero until a response for the new universe is accepted for metadata.
+          // The previous filter total is no longer meaningful once a different filter request starts.
           setFilteredCount(0);
         },
-        onLoadSuccess: (result, _request, { isLatestFilter }) => {
-          // `totalCount` is filter-independent, so every successful response may publish it.
+        onLoadSuccess: (result, _request, { isLatestRequest }) => {
+          if (!isLatestRequest) return;
+
+          // Publish the two counts from the same newest normal API response used by the grid request.
+          // This is intentionally the same count-source rule used by Infinite Row Model.
           setTotalCount(result.totalCount);
-
-          if (isLatestFilter) {
-            // Only the newest filter universe may drive the rendered All Filtered selected total.
-            setFilteredCount(result.filteredCount);
-          }
-
+          setFilteredCount(result.filteredCount);
           setError(undefined);
         },
         onError: () => setError(errorMessage),
