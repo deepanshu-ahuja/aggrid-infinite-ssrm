@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-SSRM | GRIDCAP-DATA-LOAD | GRIDCAP-REQUEST-FRESHNESS | GRIDCAP-ERROR-RETRY | GRIDCAP-LIFECYCLE-REFRESH | GRIDCAP-COUNT-SELECTED
 import { useCallback, useMemo, useState } from 'react';
 import type { RefObject } from 'react';
 import type { GridApi } from 'ag-grid-community';
@@ -60,6 +61,7 @@ export function useServerSideRowLoading<TData>({
           setFilteredCount(0);
         },
         onLoadSuccess: (result, _request, { isLatestRequest }) => {
+          // GRIDCAP-REQUEST-FRESHNESS
           /**
            * Example: request A starts, then request B starts. B is now the latest request.
            *
@@ -84,6 +86,7 @@ export function useServerSideRowLoading<TData>({
   );
 
   /** Clear the rendered error and let AG Grid retry failed server-side blocks natively. */
+  // GRIDCAP-ERROR-RETRY
   const retry = useCallback(() => {
     setError(undefined);
     gridApi.current?.retryServerSideLoads();
