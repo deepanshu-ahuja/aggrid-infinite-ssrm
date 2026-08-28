@@ -1,3 +1,4 @@
+// GRIDCAP-ROW-ELIGIBILITY | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-EDIT-TRACKED
 export type GridRowInteractionMode = 'enabled' | 'selectionDisabled' | 'readOnly';
 
 /**
