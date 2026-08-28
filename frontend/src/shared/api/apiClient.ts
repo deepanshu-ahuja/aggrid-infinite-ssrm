@@ -43,3 +43,35 @@ export function patchJson<TResponse, TRequest>(
 ): Promise<TResponse> {
   return requestJson<TResponse, TRequest>('PATCH', path, body, signal);
 }
+
+/**
+ * POST a JSON request whose successful response is a file/blob rather than JSON.
+ *
+ * Selected server-grid export needs this transport shape because the browser sends the same logical
+ * selection/query contract as a bulk action but receives CSV bytes. Keeping blob handling here avoids
+ * teaching generic grid selection code about HTTP or download mechanics.
+ */
+export async function postBlob<TRequest>(
+  path: string,
+  body: TRequest,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!response.ok) {
+    // Error responses from the DRF API are JSON. Preserve the same ApiError payload behavior as the
+    // JSON helpers so feature UI can surface validation failures consistently instead of receiving a
+    // meaningless Blob containing an error document.
+    const payload: unknown = await response.json().catch(() => undefined);
+    throw new ApiError(`Request failed with status ${response.status}.`, response.status, payload);
+  }
+
+  return response.blob();
+}
