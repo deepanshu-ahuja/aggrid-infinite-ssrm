@@ -1,3 +1,4 @@
+// GRIDCAP-SETUP-ENTERPRISE
 import { LicenseManager } from 'ag-grid-enterprise';
 
 let configured = false;
