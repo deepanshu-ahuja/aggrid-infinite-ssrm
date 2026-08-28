@@ -61,10 +61,17 @@ The root `package.json` build script produces `frontend/dist`. Databricks instal
 
 Configure `DJANGO_SECRET_KEY` and the AG Grid license key through Databricks App resources or environment configuration rather than committing them. The supplied `app.yaml` contains only non-secret runtime settings.
 
+## Continuing in a new chat or coding-agent session
+
+Read [AGENTS.md](AGENTS.md) **first**. It is the repository-owned project handoff and AI/developer working contract: architecture rules, comment-preservation standard, current server-grid semantics, testing/documentation expectations, Git/PR workflow, key source files, and the bootstrap instruction for a new chat.
+
+`AGENTS.md` is intentionally maintained in the repository so continuation does not depend on access to an earlier ChatGPT/Codex conversation. When architecture, capability contracts, workflow rules, or roadmap sequencing change, review and update that file in the same work.
+
 ## Project documentation
 
 Start with these grid-foundation entry points:
 
+- [Project handoff / working contract](AGENTS.md) — read first when starting a new developer or coding-agent session; points to the live sources of truth and records durable project rules.
 - [Grid foundation backlog](docs/grid-backlog.md) — the single living TODO/control list for unfinished capabilities, risks, verification work, and deferred decisions.
 - [Grid capability catalog](docs/grid-capabilities.md) — what the current grid foundation can do logically, independent of one UI flow.
 - [AG Grid native usage reference](docs/ag-grid-native-usage.md) — which native AG Grid props, APIs, RowNode methods, events, state and modules the project currently relies on.
