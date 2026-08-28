@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-SSRM | GRIDCAP-DATA-LOAD | GRIDCAP-REQUEST-FRESHNESS | GRIDCAP-REQUEST-CANCEL | GRIDCAP-QUERY-SORT | GRIDCAP-QUERY-FILTER
 import type { IServerSideDatasource, IServerSideGetRowsParams } from 'ag-grid-community';
 import type {
   FlatGridBlockRequest,
@@ -60,6 +61,7 @@ export function createServerSideDatasource<TData>({
         // stay native SSRM concerns to add when an actual feature requires their richer contract.
         const result = await loadRows(request, { signal: controller.signal });
 
+        // GRIDCAP-REQUEST-FRESHNESS
         onLoadSuccess?.(result, request, {
           // Page direction is irrelevant: 1 -> 2 -> 3 and 3 -> 2 -> 1 use the same rule. If an older
           // request finishes after a newer one, it may complete for AG Grid but must not replace the
@@ -82,6 +84,7 @@ export function createServerSideDatasource<TData>({
         activeRequests.delete(controller);
       }
     },
+    // GRIDCAP-REQUEST-CANCEL | GRIDCAP-LIFECYCLE-DESTROY
     destroy() {
       activeRequests.forEach((controller) => controller.abort());
       activeRequests.clear();
