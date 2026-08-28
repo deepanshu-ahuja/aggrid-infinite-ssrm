@@ -1,3 +1,7 @@
+import csv
+from io import StringIO
+
+from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -7,6 +11,7 @@ from apps.transactions.services import (
     TransactionReadOnlyError,
     bulk_update_transactions,
     query_transactions,
+    resolve_transactions_by_selection,
     update_transaction,
     update_transactions_by_selection,
 )
@@ -15,6 +20,7 @@ from .serializers import (
     TransactionBulkUpdateSerializer,
     TransactionChangesSerializer,
     TransactionQuerySerializer,
+    TransactionSelectionTargetSerializer,
     TransactionSelectionUpdateSerializer,
     TransactionSerializer,
 )
@@ -64,13 +70,7 @@ class TransactionDetailView(APIView):
 
 
 class TransactionBulkUpdateView(APIView):
-    """
-    Save many explicit row patches in one request.
-
-    The service resolves every id and validates row editability before applying changes, so a missing
-    or read-only row rejects the operation before any valid row is mutated. A future database
-    implementation should preserve that contract with a real transaction.
-    """
+    """Save many explicit row patches in one validated backend operation."""
 
     def patch(self, request):
         bulk_serializer = TransactionBulkUpdateSerializer(data=request.data)
@@ -115,11 +115,54 @@ class TransactionSelectionUpdateView(APIView):
                 data["changes"],
             )
         except TransactionNotFoundError:
-            # Only explicit/include selection resolves exact ids. Dataset-wide exclude selection can
-            # safely ignore stale exception ids because they do not identify rows to mutate.
             return Response(
                 {"detail": "One or more selected transactions were not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
         return Response({"updatedCount": updated_count})
+
+
+class TransactionSelectionExportView(APIView):
+    """Resolve the logical server-backed selection and return its eligible rows as CSV."""
+
+    CSV_FIELDS = (
+        "id",
+        "reference",
+        "account",
+        "amount",
+        "currency",
+        "status",
+        "transactionDate",
+    )
+
+    def post(self, request):
+        serializer = TransactionSelectionTargetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            rows = resolve_transactions_by_selection(
+                data["selection"],
+                data.get("filters", []),
+            )
+        except TransactionNotFoundError:
+            # Include mode names exact rows, so stale IDs are an invalid exact export target. Exclude
+            # exception IDs never need resolving and therefore cannot trigger this branch.
+            return Response(
+                {"detail": "One or more selected transactions were not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        buffer = StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=self.CSV_FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+        # UTF-8 BOM helps spreadsheet applications detect the encoding without changing CSV values.
+        response = HttpResponse(
+            "\ufeff" + buffer.getvalue(),
+            content_type="text/csv; charset=utf-8",
+        )
+        response["Content-Disposition"] = 'attachment; filename="transactions-selected.csv"'
+        return response
