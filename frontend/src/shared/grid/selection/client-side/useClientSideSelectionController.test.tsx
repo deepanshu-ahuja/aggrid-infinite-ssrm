@@ -1,4 +1,4 @@
-// GRIDCAP-ROWMODEL-CLIENT | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-COUNT-SELECTED
+// GRIDCAP-ROWMODEL-CLIENT | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-COUNT-SELECTED | GRIDCAP-ACTION-SELECTED
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { GridApi, IsRowSelectable, SelectionChangedEvent } from 'ag-grid-community';
@@ -74,6 +74,22 @@ describe('useClientSideSelectionController', () => {
       mode: 'include',
       ids: ['row-a', 'row-b'],
     });
+  });
+
+  it('clears native selection explicitly after a feature action requests it', () => {
+    const selectedRows = [{ id: 'row-a', selectable: true }];
+    const api = createApi(selectedRows);
+    const onSelectionChange = vi.fn();
+    const { result } = renderController('all', api, onSelectionChange);
+
+    act(() => {
+      result.current.onSelectionChanged({ api } as unknown as SelectionChangedEvent<Row>);
+      result.current.clearSelection();
+    });
+
+    expect(api.deselectAll).toHaveBeenCalledTimes(1);
+    expect(result.current.selectedRowCount).toBe(0);
+    expect(onSelectionChange).toHaveBeenLastCalledWith({ mode: 'include', ids: [] });
   });
 
   it('clears native selection when the defining filtered universe changes', () => {
