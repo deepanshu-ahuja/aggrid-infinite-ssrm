@@ -17,6 +17,7 @@ function createNode(id: string, selected: boolean, selectable = true): RowNode<R
 
 function createApi(rowA: RowNode<RowData>, rowB: RowNode<RowData>) {
   const listeners = new Map<string, () => void>();
+  let destroyed = false;
   const api = {
     paginationGetPageSize: vi.fn(() => 2),
     paginationGetCurrentPage: vi.fn(() => 0),
@@ -27,9 +28,16 @@ function createApi(rowA: RowNode<RowData>, rowB: RowNode<RowData>) {
       listeners.set(event, listener);
     }),
     removeEventListener: vi.fn(),
+    isDestroyed: vi.fn(() => destroyed),
   } as unknown as GridApi<RowData>;
 
-  return { api, listeners };
+  return {
+    api,
+    listeners,
+    markDestroyed: () => {
+      destroyed = true;
+    },
+  };
 }
 
 /**
@@ -57,10 +65,7 @@ describe('InfiniteCurrentPageSelectionHeader', () => {
       newValue: true,
     });
 
-    /**
-     * Simulate AG Grid notifying the header after native selection changes. The component re-reads
-     * GridApi rather than updating a separate selected-ID store.
-     */
+    /** Simulate AG Grid notifying the header after native selection changes. */
     vi.mocked(rowB.isSelected).mockReturnValue(true);
 
     act(() => {
@@ -100,5 +105,20 @@ describe('InfiniteCurrentPageSelectionHeader', () => {
         name: 'Select or clear current page',
       }),
     ).toBeChecked();
+  });
+
+  it('does not call removeEventListener after AG Grid has already destroyed the API', () => {
+    const rowA = createNode('a', false);
+    const rowB = createNode('b', false);
+    const { api, markDestroyed } = createApi(rowA, rowB);
+
+    const { unmount } = render(<InfiniteCurrentPageSelectionHeader api={api} />);
+
+    // AG Grid can destroy its API before React disposes a custom header. The cleanup must therefore
+    // observe the documented `isDestroyed()` guard instead of calling native methods on a dead grid.
+    markDestroyed();
+    unmount();
+
+    expect(api.removeEventListener).not.toHaveBeenCalled();
   });
 });

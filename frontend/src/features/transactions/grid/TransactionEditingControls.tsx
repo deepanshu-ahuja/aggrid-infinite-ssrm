@@ -21,8 +21,12 @@ import type {
 interface TransactionEditingControlsProps {
   /** All real drafts, whether currently selected or not. */
   editedRowCount: number;
+  /** Number of unresolved field conflicts across all tracked drafts. */
+  conflictCount: number;
   /** Only drafts whose row is currently included by the logical checkbox selection. */
   selectedEditedRowCount: number;
+  /** Selected dirty rows cannot be saved while any of those rows still contains a conflict. */
+  selectedEditsHaveConflict: boolean;
   lastEdit?: TransactionLastEdit;
   isSaving: boolean;
   saveError?: string;
@@ -34,15 +38,12 @@ interface TransactionEditingControlsProps {
 
 const STATUSES: readonly TransactionStatus[] = ['Completed', 'Pending', 'Failed'];
 
-/**
- * Transactions editing presentation for multi-row actions.
- *
- * Single-row Save/Discard lives in the grid Actions column. Aggregate persistence is explicitly
- * selection-scoped: only rows that are both dirty and checked are saved/discarded here.
- */
+/** Transactions editing presentation for current-page edit helpers and explicit draft persistence. */
 export function TransactionEditingControls({
   editedRowCount,
+  conflictCount,
   selectedEditedRowCount,
+  selectedEditsHaveConflict,
   lastEdit,
   isSaving,
   saveError,
@@ -75,6 +76,13 @@ export function TransactionEditingControls({
 
   return (
     <Stack spacing={1.5}>
+      {conflictCount > 0 ? (
+        <Alert severity="warning">
+          {conflictCount} field conflict{conflictCount === 1 ? '' : 's'} need review. Click a highlighted
+          cell and choose <strong>Use server</strong> or <strong>Keep my edit</strong> before saving that row.
+        </Alert>
+      ) : null}
+
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }}>
         <Typography variant="subtitle2">Edit target</Typography>
         <Select<TransactionEditTarget>
@@ -121,86 +129,23 @@ export function TransactionEditingControls({
           </Typography>
 
           <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} useFlexGap flexWrap="wrap">
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={useAccount}
-                  onChange={(event) => setUseAccount(event.target.checked)}
-                />
-              }
-              label="Account"
-            />
-            <TextField
-              size="small"
-              value={account}
-              onChange={(event) => setAccount(event.target.value)}
-              disabled={!useAccount || isSaving}
-            />
+            <FormControlLabel control={<Checkbox checked={useAccount} onChange={(event) => setUseAccount(event.target.checked)} />} label="Account" />
+            <TextField size="small" value={account} onChange={(event) => setAccount(event.target.value)} disabled={!useAccount || isSaving} />
 
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={useAmount}
-                  onChange={(event) => setUseAmount(event.target.checked)}
-                />
-              }
-              label="Amount"
-            />
-            <TextField
-              size="small"
-              type="number"
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-              disabled={!useAmount || isSaving}
-            />
+            <FormControlLabel control={<Checkbox checked={useAmount} onChange={(event) => setUseAmount(event.target.checked)} />} label="Amount" />
+            <TextField size="small" type="number" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={!useAmount || isSaving} />
 
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={useCurrency}
-                  onChange={(event) => setUseCurrency(event.target.checked)}
-                />
-              }
-              label="Currency"
-            />
-            <TextField
-              size="small"
-              value={currency}
-              onChange={(event) => setCurrency(event.target.value)}
-              disabled={!useCurrency || isSaving}
-            />
+            <FormControlLabel control={<Checkbox checked={useCurrency} onChange={(event) => setUseCurrency(event.target.checked)} />} label="Currency" />
+            <TextField size="small" value={currency} onChange={(event) => setCurrency(event.target.value)} disabled={!useCurrency || isSaving} />
 
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={useStatus}
-                  onChange={(event) => setUseStatus(event.target.checked)}
-                />
-              }
-              label="Status"
-            />
-            <Select<TransactionStatus>
-              size="small"
-              value={status}
-              onChange={(event) => setStatus(event.target.value as TransactionStatus)}
-              disabled={!useStatus || isSaving}
-              sx={{ minWidth: 140 }}
-            >
-              {STATUSES.map((option) => (
-                <MenuItem key={option} value={option}>
-                  {option}
-                </MenuItem>
-              ))}
+            <FormControlLabel control={<Checkbox checked={useStatus} onChange={(event) => setUseStatus(event.target.checked)} />} label="Status" />
+            <Select<TransactionStatus> size="small" value={status} onChange={(event) => setStatus(event.target.value as TransactionStatus)} disabled={!useStatus || isSaving} sx={{ minWidth: 140 }}>
+              {STATUSES.map((option) => <MenuItem key={option} value={option}>{option}</MenuItem>)}
             </Select>
           </Stack>
 
           <div>
-            <Button
-              size="small"
-              variant="outlined"
-              disabled={!hasBulkChanges || isSaving}
-              onClick={() => onApplyBulkEdit(target, bulkChanges)}
-            >
+            <Button size="small" variant="outlined" disabled={!hasBulkChanges || isSaving} onClick={() => onApplyBulkEdit(target, bulkChanges)}>
               Apply bulk edit
             </Button>
           </div>
@@ -211,21 +156,21 @@ export function TransactionEditingControls({
         <Button
           size="small"
           variant="contained"
-          disabled={!hasSelectedEdits || isSaving}
+          disabled={!hasSelectedEdits || isSaving || selectedEditsHaveConflict}
           onClick={onSaveSelected}
         >
           {isSaving ? 'Saving…' : `Save selected edits (${selectedEditedRowCount})`}
         </Button>
-        <Button
-          size="small"
-          variant="outlined"
-          disabled={!hasSelectedEdits || isSaving}
-          onClick={onDiscardSelected}
-        >
+        <Button size="small" variant="outlined" disabled={!hasSelectedEdits || isSaving} onClick={onDiscardSelected}>
           Discard selected edits
         </Button>
       </Stack>
 
+      {selectedEditsHaveConflict ? (
+        <Typography variant="caption" color="warning.main">
+          Selected edits include unresolved conflicts. Resolve the highlighted cells before saving the selection.
+        </Typography>
+      ) : null}
       {saveError ? <Alert severity="error">{saveError}</Alert> : null}
     </Stack>
   );

@@ -52,6 +52,13 @@ Configure `DJANGO_SECRET_KEY` and the AG Grid license key through Databricks App
 
 ## Project documentation
 
+Start with these two overview references when learning the grid foundation:
+
+- [Grid capability catalog](docs/grid-capabilities.md) — what the current grid foundation can do logically, independent of one UI flow.
+- [AG Grid native usage reference](docs/ag-grid-native-usage.md) — which native AG Grid props, APIs, RowNode methods, events, state and modules the project currently relies on.
+
+Then use the detailed source-of-truth documents for implementation and edge cases:
+
 - [Architecture](docs/architecture.md)
 - [Frontend conventions](docs/frontend-conventions.md)
 - [Theming and design tokens](docs/theming.md)
@@ -61,4 +68,5 @@ Configure `DJANGO_SECRET_KEY` and the AG Grid license key through Databricks App
 - [AG Grid architecture](docs/ag-grid.md)
 - [AG Grid foundation status](docs/ag-grid-foundation-status.md)
 - [Transaction editing](docs/transaction-editing.md)
+- [Unsaved edit conflict reconciliation and manual testing](docs/edit-conflict-reconciliation.md)
 - [API and data flow](docs/api-data-flow.md)

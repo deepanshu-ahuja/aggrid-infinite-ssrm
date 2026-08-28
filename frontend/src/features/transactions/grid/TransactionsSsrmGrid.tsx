@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import type {
+  CellClickedEvent,
   GetRowIdParams,
   GridApi,
   GridReadyEvent,
@@ -9,7 +10,13 @@ import type {
 import { AgGridReact } from 'ag-grid-react';
 import type { GridRowsLoader } from '@/shared/grid/data/gridData.types';
 import { useServerSideRowLoading } from '@/shared/grid/data/server-side/useServerSideRowLoading';
-import { buildSelectedTrackedGridUpdatePayload } from '@/shared/grid/editing/trackedGridEditing';
+import {
+  buildSelectedTrackedGridUpdatePayload,
+  hasSelectedTrackedGridFieldConflict,
+  hasTrackedGridFieldConflict,
+  hasTrackedGridRowConflict,
+  hasTrackedGridUpdateConflict,
+} from '@/shared/grid/editing/trackedGridEditing';
 import { useCurrentPageEditActions } from '@/shared/grid/editing/useCurrentPageEditActions';
 import { useTrackedGridEditing } from '@/shared/grid/editing/useTrackedGridEditing';
 import { GridErrorOverlay } from '@/shared/grid/overlays/GridErrorOverlay';
@@ -22,10 +29,16 @@ import {
   transactionsGridConfig,
   type TransactionsSsrmGridOptions,
 } from '../transactionsGrid.config';
+import { TransactionEditConflictPopover } from './TransactionEditConflictPopover';
 import { TransactionEditingControls } from './TransactionEditingControls';
 import type { TransactionRowEditActionsContext } from './TransactionRowEditActions';
 import { TransactionSelectionActions } from './TransactionSelectionActions';
-import { transactionEditingConfig } from './transactionEditing';
+import {
+  isTransactionEditableField,
+  transactionEditingConfig,
+  TRANSACTION_EDITABLE_FIELDS,
+  type TransactionEditableField,
+} from './transactionEditing';
 import { transactionColumns } from './transactionColumns';
 import { mapTransactionGridRequest } from './transactionRequest.mapper';
 import {
@@ -44,41 +57,28 @@ const getTransactionId = (row: Transaction) => row.id;
 const getRowId = ({ data }: GetRowIdParams<Transaction>) => getTransactionId(data);
 const EMPTY_SELECTION: ServerSelectionIntent<string> = { mode: 'include', ids: [] };
 
-/**
- * AG Grid's SSRM datasource asks for row ranges later through `getRows`. Keep the loader feature-owned:
- * it translates AG Grid's request into the Transactions backend contract, while the shared datasource
- * hook owns cancellation/error/lifecycle mechanics.
- */
 const loadTransactionRows: GridRowsLoader<Transaction> = (request, context) =>
   listTransactions(mapTransactionGridRequest(request), context.signal);
+
+interface ConflictTarget {
+  rowId: string;
+  field: TransactionEditableField;
+  anchorEl: HTMLElement;
+}
 
 export interface TransactionsSsrmGridProps {
   gridOptions?: TransactionsSsrmGridOptions;
 }
 
-/**
- * Concrete Transactions SSRM root.
- *
- * This is intentionally where the important AG Grid capabilities are visibly composed. We do not hide
- * `AgGridReact`, `GridApi`, row-model events, selection wiring or editing wiring behind a generic grid
- * wrapper because a developer debugging SSRM lifecycle needs to see those native boundaries.
- */
+/** Concrete Transactions SSRM root with native SSRM lifecycle kept visible. */
 export function TransactionsSsrmGrid({
   gridOptions: gridOptionsOverride,
 }: TransactionsSsrmGridProps) {
   const gridOptions = gridOptionsOverride ?? transactionsGridConfig.ssrm.gridOptions;
-
-  // One authoritative AG Grid API ref belongs to the concrete root. Hooks receive this same ref instead
-  // of creating wrapper APIs or mirrored React state for grid operations.
   const gridApi = useRef<GridApi<Transaction> | null>(null);
   const [isGridReady, setIsGridReady] = useState(false);
-
-  /**
-   * Checkbox state itself stays inside AG Grid. This revision counter exists only because the external
-   * MUI action controls render outside the grid and need React to recalculate their derived state after
-   * native selection changes.
-   */
   const [, setSelectionRevision] = useState(0);
+  const [conflictTarget, setConflictTarget] = useState<ConflictTarget | null>(null);
 
   const {
     error: selectionError,
@@ -91,10 +91,7 @@ export function TransactionsSsrmGrid({
     onRowSelected,
     onSelectionChanged,
     resetFilterDependentSelection,
-  } = useSsrmSelectionController({
-    gridApi,
-    getRowId: getTransactionId,
-  });
+  } = useSsrmSelectionController({ gridApi, getRowId: getTransactionId });
 
   const {
     datasource,
@@ -111,6 +108,7 @@ export function TransactionsSsrmGrid({
     state,
     payload,
     editedRowCount,
+    conflictCount,
     lastEdit,
     applyChangesToNodes,
     restoreTrackedEdits,
@@ -118,6 +116,8 @@ export function TransactionsSsrmGrid({
     acknowledgeChanges,
     discardRow,
     discardRows,
+    resolveConflictWithRemote,
+    resolveConflictWithLocal,
   } = useTrackedGridEditing(transactionEditingConfig);
 
   const {
@@ -126,10 +126,6 @@ export function TransactionsSsrmGrid({
     applyBulkChanges,
   } = useCurrentPageEditActions({ lastEdit, applyChangesToNodes }, gridApi);
 
-  /**
-   * Backend writes are authoritative. `refreshServerSide()` tells SSRM to ask its datasource for fresh
-   * server rows using SSRM's own cache/lifecycle instead of us patching RowNodes manually.
-   */
   const handlePersistedRows = useCallback(() => {
     gridApi.current?.refreshServerSide();
   }, []);
@@ -149,21 +145,28 @@ export function TransactionsSsrmGrid({
   const handleDiscardRow = useCallback(
     (rowId: string) => {
       const api = gridApi.current;
-      if (api) discardRow(api, rowId);
+      if (!api) return;
+      discardRow(api, rowId);
+      if (conflictTarget?.rowId === rowId) setConflictTarget(null);
     },
-    [discardRow],
+    [conflictTarget?.rowId, discardRow],
   );
 
-  /** Bulk Save/Discard acts only on rows that are both dirty and currently selected. */
   const selectionIntent = isGridReady ? readSelectionIntent() : EMPTY_SELECTION;
   const selectedDirtyUpdates = isGridReady
     ? buildSelectedTrackedGridUpdatePayload(state, selectionIntent).updates
     : [];
+  const selectedEditsHaveConflict = hasTrackedGridUpdateConflict(state, selectedDirtyUpdates);
+  const statusActionBlockedByConflict = hasSelectedTrackedGridFieldConflict(
+    state,
+    selectionIntent,
+    ['status'],
+  );
 
   const handleSaveSelected = useCallback(() => {
     if (!gridApi.current) return;
-
     const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
+    if (hasTrackedGridUpdateConflict(state, updates)) return;
     saveBulk(updates);
   }, [readSelectionIntent, saveBulk, state]);
 
@@ -172,74 +175,73 @@ export function TransactionsSsrmGrid({
     if (!api) return;
 
     const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
-    discardRows(
-      api,
-      updates.map((update) => update.id),
-    );
-  }, [discardRows, readSelectionIntent, state]);
+    discardRows(api, updates.map((update) => update.id));
+    if (conflictTarget && updates.some((update) => update.id === conflictTarget.rowId)) {
+      setConflictTarget(null);
+    }
+  }, [conflictTarget, discardRows, readSelectionIntent, state]);
 
   const handleSetSelectedStatus = useCallback(
     (status: TransactionStatus) => {
       const api = gridApi.current;
       if (!api) return;
 
-      // Always read logical selection at click time. Native SSRM may represent All Records across rows
-      // that are not loaded, so `api.getSelectedRows()` would be the wrong business-action boundary.
       const currentSelection = readSelectionIntent();
-      if (!hasTransactionSelection(currentSelection)) return;
+      if (
+        !hasTransactionSelection(currentSelection) ||
+        hasSelectedTrackedGridFieldConflict(state, currentSelection, ['status'])
+      ) {
+        return;
+      }
 
       applySelectionAction(
         buildTransactionSelectionActionRequest(
           currentSelection,
-          // Only our custom filtered-wide mode adds translated filters. Native All Records deliberately
-          // sends no filters so Python targets the whole eligible dataset.
           isFilteredSelectAllActive ? 'filtered' : 'all',
           api.getFilterModel(),
           { status },
         ),
       );
     },
-    [applySelectionAction, isFilteredSelectAllActive, readSelectionIntent],
+    [applySelectionAction, isFilteredSelectAllActive, readSelectionIntent, state],
   );
 
-  /** The Actions cell checks this same draft state, so a clean row should not show Save/Discard. */
   const rowEditActionsContext = useMemo<TransactionRowEditActionsContext>(
     () => ({
       isRowDirty: (rowId) => Boolean(state.changesById[rowId]),
+      isRowConflicted: (rowId) => hasTrackedGridRowConflict(state, rowId),
+      isCellConflicted: (rowId, field) => hasTrackedGridFieldConflict(state, rowId, field),
+      getCellConflict: (rowId, field) => {
+        const conflict = state.conflictsById[rowId]?.[field];
+        const localValue = state.changesById[rowId]?.[field];
+        return conflict && localValue !== undefined
+          ? { localValue, remoteValue: conflict.remoteValue }
+          : undefined;
+      },
       isSaving,
-      onSaveRow: saveRow,
+      onSaveRow: (rowId) => {
+        if (!hasTrackedGridRowConflict(state, rowId)) saveRow(rowId);
+      },
       onDiscardRow: handleDiscardRow,
     }),
-    [handleDiscardRow, isSaving, saveRow, state.changesById],
+    [handleDiscardRow, isSaving, saveRow, state],
   );
 
-  /**
-   * AG Grid cell renderers receive `context` outside React's normal prop tree. Push the latest callback
-   * references into the native grid context, then redraw only the Actions column so row renderers see
-   * current dirty/saving state without recreating the whole grid.
-   */
   useEffect(() => {
     const api = gridApi.current;
     if (!api) return;
 
     api.setGridOption?.('context', rowEditActionsContext);
-    api.refreshCells?.({ columns: ['editActions'], force: true });
+    api.refreshCells?.({ columns: [...TRANSACTION_EDITABLE_FIELDS, 'editActions'], force: true });
   }, [rowEditActionsContext]);
 
-  const { initialState, onStateUpdated } = useGridStatePersistence<Transaction>({
-    key: SSRM_STATE_KEY,
-  });
+  const { initialState, onStateUpdated } = useGridStatePersistence<Transaction>({ key: SSRM_STATE_KEY });
 
   const handleGridReady = useCallback((event: GridReadyEvent<Transaction>) => {
-    // Capture exactly the GridApi instance AG Grid created. Other hooks/actions share this same ref.
     gridApi.current = event.api;
     setIsGridReady(true);
   }, []);
 
-  /**
-   * `modelUpdated` means SSRM's displayed RowNodes may have been loaded/replaced/recreated. Reconcile
-   * custom filtered checkbox presentation and restore still-unsaved drafts onto the new RowNodes.
-   */
   const handleModelUpdated = useCallback(() => {
     syncSelectionAfterRowsChange();
     const api = gridApi.current;
@@ -248,10 +250,7 @@ export function TransactionsSsrmGrid({
 
   const handleSelectionChanged = useCallback(
     (event: SelectionChangedEvent<Transaction>) => {
-      // First let the SSRM selection controller handle native-vs-custom ownership transitions.
       onSelectionChanged(event);
-
-      // Then trigger only a React re-render for external action controls; selected IDs remain AG Grid-owned.
       setSelectionRevision((revision) => revision + 1);
     },
     [onSelectionChanged],
@@ -259,24 +258,49 @@ export function TransactionsSsrmGrid({
 
   const handleFilterChanged = useCallback(() => {
     clearLoadError();
-
-    // Custom Select All Filtered belongs to the old filter universe, so it must be cleared. Native All
-    // Records and explicit native selections are intentionally preserved by the selection controller.
     resetFilterDependentSelection();
   }, [clearLoadError, resetFilterDependentSelection]);
+
+  const handleCellClicked = useCallback(
+    (event: CellClickedEvent<Transaction>) => {
+      if (!event.data) return;
+      const candidateField = event.colDef.field as string | undefined;
+      if (!isTransactionEditableField(candidateField)) return;
+      if (!hasTrackedGridFieldConflict(state, event.data.id, candidateField)) return;
+
+      const target = event.event?.target;
+      const anchorEl = target instanceof Element ? target.closest('.ag-cell') : null;
+      if (!(anchorEl instanceof HTMLElement)) return;
+
+      setConflictTarget({ rowId: event.data.id, field: candidateField, anchorEl });
+    },
+    [state],
+  );
+
+  const activeConflict = useMemo(() => {
+    if (!conflictTarget) return undefined;
+    const conflict = state.conflictsById[conflictTarget.rowId]?.[conflictTarget.field];
+    const localValue = state.changesById[conflictTarget.rowId]?.[conflictTarget.field];
+    return conflict && localValue !== undefined
+      ? { localValue, remoteValue: conflict.remoteValue }
+      : undefined;
+  }, [conflictTarget, state.changesById, state.conflictsById]);
 
   return (
     <Stack spacing={2}>
       <TransactionSelectionActions
         hasSelection={hasTransactionSelection(selectionIntent)}
         isApplying={isApplyingSelectionAction}
+        statusActionBlockedByConflict={statusActionBlockedByConflict}
         error={selectionActionError}
         onSetStatus={handleSetSelectedStatus}
       />
 
       <TransactionEditingControls
         editedRowCount={editedRowCount}
+        conflictCount={conflictCount}
         selectedEditedRowCount={selectedDirtyUpdates.length}
+        selectedEditsHaveConflict={selectedEditsHaveConflict}
         lastEdit={lastEdit}
         isSaving={isSaving}
         saveError={saveError}
@@ -309,8 +333,8 @@ export function TransactionsSsrmGrid({
       </Stack>
 
       <Typography variant="caption" color="text.secondary">
-        SSRM header checkbox selects all records. Current Page and All Filtered are explicit
-        controls because SSRM does not support those native Select-All modes.
+        SSRM header checkbox selects all records. Current Page and All Filtered are explicit controls
+        because SSRM does not support those native Select-All modes.
       </Typography>
 
       {selectionError ? <Alert severity="warning">{selectionError}</Alert> : null}
@@ -322,43 +346,52 @@ export function TransactionsSsrmGrid({
           serverSideDatasource={datasource}
           columnDefs={transactionColumns}
           context={rowEditActionsContext}
-          // Stable backend identity is mandatory for selection/edit restoration when SSRM recreates nodes.
           getRowId={getRowId}
-          // Shared interaction class helper supplies restricted-row presentation only; it does not enforce behavior.
           getRowClass={getTransactionRowClass}
           initialState={initialState}
           rowSelection={{
             mode: 'multiRow',
-
-            // SSRM DOES support native All Records. Keep the native header enabled instead of replacing
-            // it with an application header and duplicating server-side selection state.
             headerCheckbox: true,
             selectAll: 'all',
-
-            // This controller is intentionally flat-row selection. Group/tree selection would produce
-            // a different server-side selection-state shape and needs a separate design.
             groupSelects: 'self',
-
-            // This is the native loaded-row eligibility boundary. AG Grid evaluates it and writes the
-            // result to `RowNode.selectable`; shared Current Page / All Filtered mechanics consume that
-            // native flag. Restricted rows are therefore never passed into selection API calls and are
-            // never converted into frontend exclude IDs.
             isRowSelectable: isTransactionRowSelectable,
           }}
           activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={loadError ? { message: loadError, onRetry: retryLoad } : undefined}
           onGridReady={handleGridReady}
-          // Model changes are where newly materialised SSRM RowNodes need selection/draft reconciliation.
+          // The concrete root owns the GridApi ref. Clearing it in AG Grid's pre-destroy lifecycle
+          // prevents shared callbacks from observing a destroyed API during React component cleanup.
+          onGridPreDestroyed={() => {
+            gridApi.current = null;
+          }}
           onModelUpdated={handleModelUpdated}
           onRowSelected={onRowSelected}
           onSelectionChanged={handleSelectionChanged}
           onFilterChanged={handleFilterChanged}
-          // AG Grid fires this only after a cell value is committed; the tracked-edit hook distinguishes
-          // real user commits from its own programmatic `setDataValue` writes.
+          onCellClicked={handleCellClicked}
           onCellValueChanged={handleCellValueChanged}
           onStateUpdated={onStateUpdated}
         />
       </Box>
+
+      <TransactionEditConflictPopover
+        anchorEl={activeConflict ? conflictTarget?.anchorEl ?? null : null}
+        field={conflictTarget?.field}
+        localValue={activeConflict?.localValue}
+        remoteValue={activeConflict?.remoteValue}
+        onClose={() => setConflictTarget(null)}
+        onUseServer={() => {
+          const api = gridApi.current;
+          if (!api || !conflictTarget) return;
+          resolveConflictWithRemote(api, conflictTarget.rowId, conflictTarget.field);
+          setConflictTarget(null);
+        }}
+        onKeepLocal={() => {
+          if (!conflictTarget) return;
+          resolveConflictWithLocal(conflictTarget.rowId, conflictTarget.field);
+          setConflictTarget(null);
+        }}
+      />
     </Stack>
   );
 }
