@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .client_views import TransactionCollectionView
 from .views import (
     TransactionBulkUpdateView,
     TransactionDetailView,
@@ -10,6 +11,9 @@ from .views import (
 
 
 urlpatterns = [
+    # Client-Side Row Model owns local sort/filter/page behavior, so it receives the complete bounded
+    # Transaction working set from the collection route rather than abusing the server-grid query API.
+    path("", TransactionCollectionView.as_view(), name="transaction-collection"),
     path("query/", TransactionQueryView.as_view(), name="transaction-query"),
     path("bulk/", TransactionBulkUpdateView.as_view(), name="transaction-bulk-update"),
     path(
@@ -22,7 +26,7 @@ urlpatterns = [
         TransactionSelectionUpdateView.as_view(),
         name="transaction-selection-update",
     ),
-    # Keep the catch-all transaction id route after concrete selection routes so `selection/export`
-    # can never be interpreted as a transaction identifier as this API grows.
+    # Keep the catch-all transaction id route after concrete collection/selection routes so fixed API
+    # paths can never be interpreted as transaction identifiers as this API grows.
     path("<str:transaction_id>/", TransactionDetailView.as_view(), name="transaction-detail"),
 ]
