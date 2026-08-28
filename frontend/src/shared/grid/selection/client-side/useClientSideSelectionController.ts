@@ -81,6 +81,19 @@ export function useClientSideSelectionController<TData>({
     [getRowId, onSelectionChange],
   );
 
+  // GRIDCAP-ACTION-SELECTED
+  const clearSelection = useCallback(() => {
+    const api = gridApi.current;
+    if (!api) return;
+
+    // Client selection is fully native, so clear it through AG Grid instead of maintaining a second
+    // selected-ID store. Update the renderable derivative/observer immediately as well; AG Grid's
+    // selectionChanged event may publish the same empty intent again and that duplicate is harmless.
+    api.deselectAll();
+    setSelectedRowCount(0);
+    onSelectionChange?.({ mode: 'include', ids: [] });
+  }, [gridApi, onSelectionChange]);
+
   // GRIDCAP-SEL-FILTERED
   const onFilterChanged = useCallback(() => {
     if (scope !== 'filtered') return;
@@ -111,6 +124,7 @@ export function useClientSideSelectionController<TData>({
     rowSelection,
     selectedRowCount,
     readSelectionIntent,
+    clearSelection,
     onSelectionChanged,
     onFilterChanged,
   };
