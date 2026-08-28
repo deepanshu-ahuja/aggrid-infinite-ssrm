@@ -24,6 +24,11 @@ interface UseServerSideRowLoadingOptions<TData> {
  * It owns the repeated mechanics around datasource identity, visible load-error state and native
  * `retryServerSideLoads()` behavior. Endpoint/request mapping remains feature-owned, and the feature
  * root still wires the returned datasource/error directly into native AG Grid props.
+ *
+ * The hook also exposes the complete unfiltered `totalCount` returned by normal row loading. SSRM's
+ * native selection state can represent Select All across unloaded rows, but it cannot manufacture the
+ * business dataset size needed to display a logical selected-row total. Keeping the API-provided total
+ * here avoids a second count request while leaving selection representation native to AG Grid.
  */
 export function useServerSideRowLoading<TData>({
   gridApi,
@@ -33,11 +38,16 @@ export function useServerSideRowLoading<TData>({
 }: UseServerSideRowLoadingOptions<TData>) {
   /** Renderable SSRM datasource failure state; unrelated selection/edit errors stay separate. */
   const [error, setError] = useState<string>();
+  const [totalCount, setTotalCount] = useState(0);
 
   /** Clear the old visible error only after an actual backend request has recovered successfully. */
   const loadRowsWithRecovery = useCallback<GridRowsLoader<TData>>(
     async (request, context) => {
       const result = await loadRows(request, context);
+
+      // The backend contract defines `totalCount` as filter-independent, so any successful block may
+      // publish it even when SSRM has overlapping requests for different cache blocks/filter states.
+      setTotalCount(result.totalCount);
       setError(undefined);
       return result;
     },
@@ -68,6 +78,7 @@ export function useServerSideRowLoading<TData>({
   return {
     datasource,
     error,
+    totalCount,
     retry,
     clearError,
   };
