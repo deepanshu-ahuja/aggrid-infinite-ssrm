@@ -14,7 +14,7 @@ When a grid capability is added, removed, or materially changes, update this doc
 
 Do not let this become a roadmap or wish list. A capability belongs here only when the repository currently implements it.
 
-For the searchable implementation/dependency map, see `docs/grid-capability-tags.md`. For the separate list of AG Grid-native APIs, props, events and RowNode features we rely on, see `docs/ag-grid-native-usage.md`.
+For the searchable **frontend** implementation/dependency map, see `docs/grid-capability-tags.md`. Backend contracts remain documented/tested separately. For the separate list of AG Grid-native APIs, props, events and RowNode features we rely on, see `docs/ag-grid-native-usage.md`.
 
 ---
 
@@ -706,22 +706,24 @@ This category should keep evolving whenever a real AG Grid warning/race is found
 
 ---
 
-## 19. Capability discoverability / extraction support
+## 19. Frontend capability discoverability / extraction support
 
-This repository is intentionally also a source of reusable proven patterns.
+This repository is intentionally also a source of reusable proven frontend patterns.
 
-`docs/grid-capability-tags.md` registers stable `GRIDCAP-*` markers across important:
+`docs/grid-capability-tags.md` registers stable `GRIDCAP-*` markers across important frontend boundaries such as:
 
 - concrete row-model roots;
 - shared controllers/algorithms;
 - datasource/query boundaries;
 - editing/export/selection integration;
-- backend authority;
-- focused executable tests.
+- feature API adapters and column/editor integration;
+- focused frontend executable tests.
 
-A developer who wants to extract one capability should find its registered tag, search exact occurrences, read the row-model ownership notes, inspect every meaningful touchpoint, and then adapt only the implementation relevant to the target project's row model.
+`GRIDCAP-*` comments are intentionally **frontend-only**. Backend services, serializers, views and backend tests remain authoritative and documented/tested normally, but they are not decorated with capability-marker comments.
 
-A marker means "this code participates in the capability"; it does not mean every marked file should be copied unchanged.
+A developer who wants to extract one capability should find its registered tag, search exact frontend occurrences, read the row-model ownership notes, inspect every meaningful frontend touchpoint, and then separately inspect any linked API/backend contract needed by the target capability.
+
+A marker means "this frontend code participates in the capability"; it does not mean every marked file should be copied unchanged.
 
 ---
 
@@ -744,9 +746,9 @@ These can be added when a real product requirement justifies them.
 
 ## 21. Where to read next
 
-Use this document to discover a capability, then use the detailed contract or searchable registry for implementation/edge cases:
+Use this document to discover a capability, then use the detailed contract or searchable frontend registry for implementation/edge cases:
 
-- `docs/grid-capability-tags.md` — searchable capability marker registry and extraction workflow;
+- `docs/grid-capability-tags.md` — searchable frontend capability marker registry and extraction workflow;
 - `docs/client-side-grid.md` — Client data/selection/export ownership and capability matrix;
 - `docs/ag-grid-native-usage.md` — AG Grid-native props/APIs/events we rely on;
 - `docs/ag-grid.md` — architecture and ownership rules;

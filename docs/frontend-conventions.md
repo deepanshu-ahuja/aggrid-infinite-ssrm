@@ -80,22 +80,25 @@ Shared mechanics and concrete feature composition are different things: a reusab
 
 ## Capability markers (`GRIDCAP-*`)
 
-This repository is a reference implementation, so code discoverability is an explicit engineering concern. A future developer may want to extract one capability without remembering every hook, event handler, request mapper, backend resolver, and test that participates in it.
+This repository is a reference implementation, so frontend code discoverability is an explicit engineering concern. A future developer may want to extract one grid capability without remembering every hook, event handler, request mapper, feature API adapter and focused frontend test that participates in it.
 
-`docs/grid-capability-tags.md` is the authoritative registry for searchable capability markers.
+`docs/grid-capability-tags.md` is the authoritative registry for searchable **frontend** capability markers.
 
 Rules:
 
 - every marker starts with the exact prefix `GRIDCAP-`;
 - **do not invent an ad-hoc marker in source**; define a genuinely new capability in the registry first;
-- use one logical marker across Client-Side, Infinite, SSRM, frontend, backend, and tests when the user/business capability is the same but implementation differs;
-- multiple markers are allowed on one location when one shared boundary supports several capabilities;
-- mark extraction-relevant boundaries: concrete roots, controllers, shared algorithms, event/lifecycle boundaries, request/response mapping, backend authority, and focused tests;
+- use one logical marker across Client-Side, Infinite and SSRM frontend implementations and focused frontend tests when the user/business capability is the same but implementation differs;
+- `GRIDCAP-*` comments belong in frontend source/tests only; do not add them to Python/backend source or backend tests;
+- multiple markers are allowed on one location when one shared frontend boundary supports several capabilities;
+- mark extraction-relevant frontend boundaries: concrete roots, controllers, shared algorithms, event/lifecycle boundaries, request/response adapters and focused frontend tests;
 - do not tag every obvious helper/statement; a repository search should return a useful dependency/extraction map, not comment noise;
-- a tag means **participates in this capability**, not **copy this implementation into every row model**;
+- a tag means **participates in this frontend capability**, not **copy this implementation into every row model**;
 - preserve applicable markers during refactors just like useful rationale comments;
-- when a capability changes materially, search its existing marker occurrences and review all affected touchpoints before declaring the change complete;
+- when a capability changes materially, search its existing frontend marker occurrences and review all affected touchpoints before declaring the change complete;
 - avoid casual marker renames because stable searchability across Git history is part of their value.
+
+Backend contracts, validation, eligibility and operation authority remain important architecture and must still be documented/tested normally. They are simply outside the `GRIDCAP-*` marker system.
 
 Example shared boundary:
 
@@ -103,16 +106,17 @@ Example shared boundary:
 // GRIDCAP-PAGINATION | GRIDCAP-SEL-PAGE | GRIDCAP-EDIT-PAGE-APPLY | GRIDCAP-EXPORT-PAGE
 ```
 
-That does not mean pagination and export are one feature. It means this boundary participates in all four capability paths and should be considered when extracting or changing any one of them.
+That does not mean pagination and export are one feature. It means this frontend boundary participates in all four capability paths and should be considered when extracting or changing any one of them.
 
 A developer extracting a capability should:
 
 ```text
 1. Find the tag in docs/grid-capability-tags.md.
 2. Read its row-model/ownership notes.
-3. Search the exact tag across the repository.
-4. Review every marked production/test boundary and linked detailed docs.
-5. Adapt only the row-model implementation relevant to the target project.
+3. Search the exact tag across frontend source/tests.
+4. Review every marked frontend production/test boundary and linked detailed docs.
+5. Separately read any linked API/backend contract docs needed by that capability.
+6. Adapt only the row-model implementation relevant to the target project.
 ```
 
 ## React and TypeScript
@@ -131,7 +135,7 @@ Comments should explain ownership, lifecycle, constraints and non-obvious decisi
 
 **Preserve useful explanatory comments by default.** Refactoring or adding a feature is not a reason to shorten/remove existing rationale merely to make a file look cleaner. Remove or rewrite an existing comment only when the underlying logic/contract changed, the comment became inaccurate, or the same explanation is genuinely duplicated without adding local clarity. If removing it would make ownership, lifecycle, business rules, race handling, capability discoverability, or future maintenance harder to understand, keep it and add the new logic-level explanation beside it.
 
-Capability marker comments are not ordinary prose comments. Preserve an accurate `GRIDCAP-*` marker during refactors; update/remove it only when the integration point no longer participates in that registered capability.
+Capability marker comments are not ordinary prose comments. Preserve an accurate `GRIDCAP-*` marker during frontend refactors; update/remove it only when the integration point no longer participates in that registered capability.
 
 For meaningful React state, refs, effects, memoized values and callbacks, document the rationale when it is not obvious from the name alone. A useful comment answers the relevant questions:
 
@@ -155,4 +159,4 @@ Prioritize stable boundaries: request mappers, datasource callback behavior, sel
 
 Test Client-Side, Infinite and SSRM lifecycle wiring independently when their behavior differs. Share tests only for genuinely shared semantic helpers; do not create a fake common row-model behavior merely to reduce test duplication.
 
-When a capability footprint changes, reuse the same `GRIDCAP-*` marker in focused tests where doing so helps a future developer find the executable contract alongside the implementation.
+When a frontend capability footprint changes, reuse the same `GRIDCAP-*` marker in focused frontend tests where doing so helps a future developer find the executable contract alongside the implementation. Backend tests remain ordinary tests without capability-marker comments.

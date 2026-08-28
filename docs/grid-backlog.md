@@ -4,7 +4,7 @@ This is the **single living TODO/control list** for unfinished grid-foundation w
 
 Use it with:
 - `docs/grid-capabilities.md` — implemented logical capabilities;
-- `docs/grid-capability-tags.md` — searchable capability footprint/extraction registry;
+- `docs/grid-capability-tags.md` — searchable frontend capability footprint/extraction registry;
 - `docs/client-side-grid.md` — Client-Side capability matrix, ownership and verification;
 - `docs/ag-grid-native-usage.md` — meaningful native AG Grid dependencies;
 - `docs/selection-edit-export.md` — navigation to the detailed selection/edit/export docs;
@@ -26,9 +26,10 @@ When something is fully implemented and verified, remove it from Active backlog,
    - manual browser verification remains pending and can be consolidated later
    - manual verification is important but is not a blocker for architecture/reference work
 
-2. Maintain capability discoverability
-   - GRIDCAP-* registry is authoritative
-   - important roots/controllers/backend boundaries/tests carry searchable markers
+2. Maintain frontend capability discoverability
+   - GRIDCAP-* registry is authoritative for frontend source/tests
+   - important roots/controllers/frontend integration boundaries/tests carry searchable markers
+   - backend contracts remain documented/tested normally but are intentionally untagged
    - tags identify capability participation, not copy-paste equivalence
 
 3. From the three-row-model baseline onward
@@ -191,26 +192,27 @@ Do not create a universal `AgGridReact` wrapper or giant `useGrid()` just to rem
 ### C1. `GRIDCAP-*` capability registry and source markers
 **Status:** VERIFY
 
-The repository now maintains `docs/grid-capability-tags.md` as the authoritative stable registry for searchable capability markers.
+The repository now maintains `docs/grid-capability-tags.md` as the authoritative stable registry for searchable **frontend** capability markers.
 
-The markers intentionally span important extraction boundaries such as:
+The markers intentionally span important frontend extraction boundaries such as:
 - Client / Infinite / SSRM concrete roots;
 - row-model selection controllers;
 - current-page resolution;
 - server datasource loading, cancellation and request freshness;
-- query/filter translation;
+- query/filter translation and frontend API integration;
 - tracked editing, Save/Discard and conflicts;
 - selected counts;
-- Current Page / Selected export;
+- Current Page / Selected export integration;
 - Grid State;
-- row eligibility;
+- row eligibility presentation/guards;
 - modules/licensing/theme;
-- backend logical-selection authority;
-- focused executable tests.
+- focused frontend executable tests.
 
-One source boundary may have multiple markers when it participates in several capabilities. Do not tag every trivial line. A marker means the location participates in the capability; it does not mean the same implementation should be copied to every row model.
+Backend contracts, eligibility, persistence and backend tests remain first-class architecture/test concerns but are deliberately not decorated with `GRIDCAP-*` comments.
 
-When a capability footprint changes, review the registry and current occurrences in the same work.
+One frontend source boundary may have multiple markers when it participates in several capabilities. Do not tag every trivial line. A marker means the frontend location participates in the capability; it does not mean the same implementation should be copied to every row model.
+
+When a frontend capability footprint changes, review the registry and current frontend occurrences in the same work.
 
 ## D. Core/product decisions that do not block current implementation unless a real defect requires them
 
@@ -307,6 +309,6 @@ Added GitHub CI without Docker: frontend lint/typecheck/tests/build and backend 
 - speculative advanced SSRM features;
 - Docker for this Databricks same-repository app;
 - custom abstractions that duplicate native AG Grid without a real semantic gap;
-- excessive `GRIDCAP-*` markers on trivial implementation details.
+- excessive `GRIDCAP-*` markers on trivial frontend implementation details.
 
 > **Standing rule: Native AG Grid first. Row-model-specific capability second. Share only genuine semantics/mechanics. Feature business rules stay feature/backend-owned.**

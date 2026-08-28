@@ -1,10 +1,12 @@
 # Grid Capability Tag Registry
 
-This file is the **authoritative registry for searchable grid capability markers** used in source code and focused tests.
+This file is the **authoritative registry for searchable frontend grid capability markers** used in frontend source code and focused frontend tests.
 
-The repository is intentionally a reference implementation that may later be mined for one capability at a time. A developer should be able to decide, for example, "I need Select All Filtered" or "I need safe AG Grid teardown", search one stable marker, and discover the important integration points without remembering every hook, event, API mapper, backend resolver, and test that participates in that capability.
+The repository is intentionally a reference implementation that may later be mined for one grid capability at a time. A developer should be able to decide, for example, "I need Select All Filtered" or "I need safe AG Grid teardown", search one stable marker, and discover the important frontend integration points without remembering every hook, event, datasource adapter, feature API adapter, column boundary, and focused frontend test that participates in that capability.
 
-Capability markers are a **discoverability index**, not a replacement for architecture, types, tests, or feature documentation.
+Capability markers are a **frontend discoverability index**, not a replacement for architecture, API contracts, backend tests, feature documentation, or backend authority.
+
+Backend code is deliberately **not** decorated with `GRIDCAP-*` markers. When a frontend capability depends on backend behavior, the registry or detailed docs may point to that backend contract, but the searchable marker remains frontend-only.
 
 ## How to use the registry
 
@@ -15,42 +17,38 @@ I need Select All Filtered.
 
 1. Find GRIDCAP-SEL-FILTERED in this registry.
 2. Read its ownership/row-model notes below.
-3. Search the repository for the exact marker:
+3. Search frontend source/tests for the exact marker:
 
    GRIDCAP-SEL-FILTERED
 
-4. Review every marked integration point before extracting/adapting the capability.
-5. Read the linked detailed docs/tests before copying code.
+4. Review every marked frontend integration point before extracting/adapting the capability.
+5. Read the linked detailed docs and any API/backend contract docs needed by that capability.
 ```
 
-A source location can participate in more than one capability:
+A frontend source location can participate in more than one capability:
 
 ```ts
 // GRIDCAP-SEL-PAGE | GRIDCAP-PAGINATION
 ```
 
-or:
-
-```py
-# GRIDCAP-SEL-TARGET | GRIDCAP-ACTION-SELECTED | GRIDCAP-EXPORT-SELECTED
-```
-
-That is intentional. Shared infrastructure is often the hidden dependency a developer could otherwise miss while extracting one feature.
+That is intentional. Shared frontend infrastructure is often the hidden dependency a developer could otherwise miss while extracting one feature.
 
 ## Marker rules
 
 1. Every marker begins with the exact common prefix `GRIDCAP-`.
 2. **Do not invent an ad-hoc tag in code.** Add/define it in this registry first.
-3. Tags describe a stable logical capability or a deliberate row-model foundation, not a filename or temporary implementation detail.
-4. Use the same logical tag across Client-Side, Infinite, SSRM, frontend, backend, and tests when they implement the same user/business capability differently.
-5. Multiple tags are allowed when one boundary supports multiple capabilities.
-6. Mark **extraction-relevant boundaries**: row-model roots, controllers, shared algorithms, event/lifecycle boundaries, request/response mapping, backend authority, and focused tests. Do not tag every helper line or obvious UI statement.
-7. A tag does **not** mean every marked implementation can be copied unchanged to every row model. Read the registry applicability notes and the row-model-specific docs.
-8. Preserve markers during refactors when the capability still exists. If a capability is removed or materially redefined, update this registry and all affected markers in the same PR.
-9. Avoid casual tag renames. Searchability across Git history and developer notes is more valuable than naming churn.
-10. Tests may carry the same tag as production code so a developer can find the executable contract along with the implementation.
-11. Documentation may mention tags, but the registry is the source of truth for tag meaning. Do not scatter competing tag definitions across docs.
-12. When a meaningful grid capability is added, removed, or materially changed, review this registry as part of Definition of Done.
+3. `GRIDCAP-*` comments belong in **frontend source and focused frontend tests only**. Do not add them to Python/backend source or backend tests.
+4. Tags describe a stable logical frontend capability or a deliberate row-model frontend foundation, not a filename or temporary implementation detail.
+5. Use the same logical tag across Client-Side, Infinite and SSRM frontend implementations when they express the same user/business capability differently.
+6. Multiple tags are allowed when one frontend boundary supports multiple capabilities.
+7. Mark **extraction-relevant frontend boundaries**: concrete grid roots, controllers, shared algorithms, lifecycle/event boundaries, request/response adapters, feature API integration, column/editor presentation, and focused frontend tests. Do not tag every helper line or obvious UI statement.
+8. A tag does **not** mean every marked implementation can be copied unchanged to every row model. Read the applicability notes and row-model-specific docs.
+9. Preserve markers during frontend refactors when the capability still exists. If a capability is removed or materially redefined, update this registry and all affected frontend markers in the same PR.
+10. Avoid casual tag renames. Searchability across Git history and developer notes is more valuable than naming churn.
+11. Focused frontend tests may carry the same tag as production code so a developer can find the executable frontend contract with the implementation.
+12. Documentation may mention tags, but this registry is the source of truth for marker meaning.
+13. Backend contracts/eligibility/validation remain independently documented and tested; absence of `GRIDCAP-*` comments does not make them less authoritative.
+14. When a meaningful grid capability is added, removed, or materially changed, review this registry as part of Definition of Done.
 
 ## Naming shape
 
@@ -69,7 +67,7 @@ GRIDCAP-EXPORT-SELECTED
 GRIDCAP-LIFECYCLE-DESTROY
 ```
 
-Row-model foundation tags intentionally use:
+Row-model frontend foundation tags intentionally use:
 
 ```text
 GRIDCAP-ROWMODEL-CLIENT
@@ -77,7 +75,7 @@ GRIDCAP-ROWMODEL-INFINITE
 GRIDCAP-ROWMODEL-SSRM
 ```
 
-These let a developer search for the important pieces required by one complete row-model implementation in addition to searching for one logical feature.
+These let a developer search for the important frontend pieces required by one complete row-model implementation in addition to searching for one logical feature.
 
 ---
 
@@ -87,69 +85,75 @@ These let a developer search for the important pieces required by one complete r
 
 ### `GRIDCAP-ROWMODEL-CLIENT`
 
-**Meaning:** Client-Side Row Model foundation where the complete bounded working set is local and AG Grid owns local shaping.
+**Meaning:** Client-Side Row Model frontend foundation where the complete bounded working set is local and AG Grid owns local shaping.
 
 **Applies to:** Client-Side only.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - `frontend/src/features/transactions/grid/TransactionsClientGrid.tsx`
 - `frontend/src/features/transactions/transactionsGrid.config.ts`
 - `frontend/src/features/transactions/api/transactions.queries.ts`
 - `frontend/src/shared/grid/config/clientSideGridDefaults.ts`
 - `frontend/src/shared/grid/selection/client-side/useClientSideSelectionController.ts`
-- `backend/apps/transactions/api/client_views.py`
-- `backend/apps/transactions/api/urls.py`
-- focused Client tests and `docs/client-side-grid.md`
+- `frontend/src/shared/grid/export/exportSelectedRowsCsv.ts`
+- focused Client frontend tests
+
+**Related docs/contracts:** `docs/client-side-grid.md` and the Transaction collection API contract.
 
 **Extraction note:** do not copy server datasource/include-exclude machinery into Client-Side merely for symmetry.
 
 ### `GRIDCAP-ROWMODEL-INFINITE`
 
-**Meaning:** Infinite Row Model foundation including datasource/block-loading lifecycle and Infinite-specific selection gaps.
+**Meaning:** Infinite Row Model frontend foundation including datasource/block-loading lifecycle and Infinite-specific selection gaps.
 
 **Applies to:** Infinite only.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - `frontend/src/features/transactions/grid/TransactionsInfiniteGrid.tsx`
 - `frontend/src/features/transactions/transactionsGrid.config.ts`
 - `frontend/src/shared/grid/data/infinite/createInfiniteDatasource.ts`
 - `frontend/src/shared/grid/data/infinite/useInfiniteRowLoading.ts`
 - `frontend/src/shared/grid/selection/infinite/`
-- Infinite production tests and `frontend/src/infinite-selection-contract.md`
+- Infinite frontend tests
+
+**Related docs/contracts:** `frontend/src/infinite-selection-contract.md` and server query/API docs.
 
 ### `GRIDCAP-ROWMODEL-SSRM`
 
-**Meaning:** flat Enterprise Server-Side Row Model foundation, including SSRM datasource/store lifecycle and native server-side selection state where appropriate.
+**Meaning:** flat Enterprise Server-Side Row Model frontend foundation, including SSRM datasource/store lifecycle and native server-side selection state where appropriate.
 
 **Applies to:** SSRM only.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - `frontend/src/features/transactions/grid/TransactionsSsrmGrid.tsx`
 - `frontend/src/features/transactions/transactionsGrid.config.ts`
 - `frontend/src/shared/grid/data/server-side/createServerSideDatasource.ts`
 - `frontend/src/shared/grid/data/server-side/useServerSideRowLoading.ts`
 - `frontend/src/shared/grid/selection/server-side/useSsrmSelectionController.ts`
 - `frontend/src/shared/grid/gridModules.ts`
-- SSRM production tests and `frontend/src/ssrm-selection-contract.md`
+- SSRM frontend tests
+
+**Related docs/contracts:** `frontend/src/ssrm-selection-contract.md` and server query/API docs.
 
 ### `GRIDCAP-SETUP-MODULES`
 
-**Meaning:** application-level AG Grid module registration required before row-model/runtime APIs are usable.
+**Meaning:** frontend AG Grid module registration required before row-model/runtime APIs are usable.
 
 **Applies to:** all row models; SSRM additionally requires Enterprise modules.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - `frontend/src/shared/grid/gridModules.ts`
-- application AG Grid provider/bootstrap
-- `docs/ag-grid-native-usage.md`
+- application AG Grid bootstrap/provider
+
+**Related docs:** `docs/ag-grid-native-usage.md`.
 
 ### `GRIDCAP-SETUP-ENTERPRISE`
 
-**Meaning:** Enterprise-only setup such as SSRM modules/API modules and license initialization.
+**Meaning:** Enterprise-only frontend setup such as SSRM modules/API modules and license initialization.
 
 **Applies to:** SSRM / other future Enterprise features.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - `frontend/src/shared/grid/gridModules.ts`
 - `frontend/src/shared/grid/enterpriseLicense.ts`
 - application bootstrap/environment configuration
@@ -160,55 +164,53 @@ These let a developer search for the important pieces required by one complete r
 
 ### `GRIDCAP-DATA-LOAD`
 
-**Meaning:** getting authoritative row data into a grid, while preserving the correct owner for each row model.
+**Meaning:** getting authoritative row data into a grid while preserving the correct frontend owner for each row model.
 
-**Applies to:** all row models, with different mechanics.
+**Client:** full bounded collection through TanStack Query -> editable `rowData` projection.
 
-**Client:** full bounded collection via TanStack Query -> `rowData`.
+**Infinite/SSRM:** AG Grid datasource lifecycle -> feature request mapper -> typed API adapter -> rows/counts -> row model/cache/store.
 
-**Infinite/SSRM:** AG Grid datasource lifecycle -> feature request mapper -> backend query -> rows/counts.
-
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - `frontend/src/features/transactions/api/transactions.api.ts`
 - `frontend/src/features/transactions/api/transactions.queries.ts`
 - `frontend/src/shared/grid/data/`
 - `frontend/src/features/transactions/grid/transactionRequest.mapper.ts`
-- `backend/apps/transactions/api/client_views.py`
-- `backend/apps/transactions/api/views.py`
-- `backend/apps/transactions/services.py`
+- concrete grid roots
+
+**Related backend contract:** collection/query endpoints remain documented normally and are not tagged.
 
 ### `GRIDCAP-QUERY-SORT`
 
-**Meaning:** translating/native-owning sort behavior without keeping duplicate sort state.
+**Meaning:** frontend/native ownership of sort behavior without duplicate sort state.
 
 **Client:** AG Grid sorts local `rowData`.
 
-**Infinite/SSRM:** AG Grid sort model is translated to the allow-listed backend contract.
+**Infinite/SSRM:** AG Grid sort model is translated into the feature/API contract.
 
-**Important touchpoints:**
-- Transaction column definitions
+**Important frontend touchpoints:**
+- `frontend/src/features/transactions/grid/transactionColumns.tsx`
 - `frontend/src/features/transactions/grid/transactionRequest.mapper.ts`
 - `frontend/src/shared/grid/query/gridQuery.contracts.ts`
-- backend query/serializer logic
 
 ### `GRIDCAP-QUERY-FILTER`
 
-**Meaning:** local Client filtering or server filter-model translation, including filter-dependent semantics.
+**Meaning:** local Client filtering or frontend server-filter-model translation, including filter-dependent semantics.
 
-**Important touchpoints:**
-- Transaction column definitions
+**Important frontend touchpoints:**
+- `frontend/src/features/transactions/grid/transactionColumns.tsx`
 - `frontend/src/shared/grid/config/serverFilterParams.ts`
 - `frontend/src/features/transactions/grid/transactionRequest.mapper.ts`
-- backend query/serializer logic
 - selection controllers where `GRIDCAP-SEL-FILTERED` reacts to filter changes
+
+**Related backend contract:** server filter allow-list/semantics are documented and tested separately.
 
 ### `GRIDCAP-PAGINATION`
 
-**Meaning:** native user-facing pagination and the exact current-page boundary; server cache block size is not page size.
+**Meaning:** native user-facing pagination and the exact current-page frontend boundary; server cache block size is not page size.
 
 **Applies to:** all current row models.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - `frontend/src/shared/grid/config/clientSideGridDefaults.ts`
 - `frontend/src/shared/grid/config/serverBackedGridDefaults.ts`
 - `frontend/src/shared/grid/pagination/getCurrentPageNodes.ts`
@@ -217,23 +219,22 @@ These let a developer search for the important pieces required by one complete r
 
 ### `GRIDCAP-ROW-ID`
 
-**Meaning:** stable backend row identity used instead of displayed row position/index.
+**Meaning:** stable business/backend row identity used by frontend grid state instead of displayed row position/index.
 
 **Applies to:** all row models and tracked editing/selection.
 
-**Important touchpoints:**
-- concrete Transactions grid roots (`getRowId`)
+**Important frontend touchpoints:**
+- concrete grid roots (`getRowId`)
 - selection targets
 - tracked editing state
-- backend IDs
 
 ### `GRIDCAP-REQUEST-FRESHNESS`
 
-**Meaning:** latest-**started** server row request owns renderable count metadata; older responses may finish AG Grid lifecycle but cannot overwrite newer metadata.
+**Meaning:** latest-**started** server row request owns renderable frontend count metadata; older responses may finish AG Grid lifecycle but cannot overwrite newer metadata.
 
 **Applies to:** Infinite and SSRM.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - `frontend/src/shared/grid/data/infinite/createInfiniteDatasource.ts`
 - `frontend/src/shared/grid/data/server-side/createServerSideDatasource.ts`
 - row-loading hooks
@@ -243,21 +244,22 @@ These let a developer search for the important pieces required by one complete r
 
 ### `GRIDCAP-REQUEST-CANCEL`
 
-**Meaning:** cancel/abort obsolete datasource work when a datasource/grid lifecycle ends.
+**Meaning:** cancel/abort obsolete frontend datasource work when a datasource/grid lifecycle ends.
 
 **Applies to:** Infinite and SSRM server requests.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - Infinite/SSRM datasource adapters and their `destroy()` behavior
+- datasource tests
 - root teardown/refresh ownership where relevant
 
 ### `GRIDCAP-ERROR-RETRY`
 
-**Meaning:** row-load error presentation and retry using the correct row-model-native lifecycle.
+**Meaning:** row-load error presentation and retry/refetch using the correct row-model frontend lifecycle.
 
 **Applies to:** all current row models, with different retry/refetch owners.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - `frontend/src/shared/grid/overlays/`
 - Client TanStack Query `refetch`
 - Infinite datasource refresh/retry path
@@ -266,7 +268,7 @@ These let a developer search for the important pieces required by one complete r
 
 ### `GRIDCAP-LIFECYCLE-REFRESH`
 
-**Meaning:** obtaining authoritative data again after a successful mutation or explicit refresh without inventing one fake universal refresh API.
+**Meaning:** obtaining authoritative data again after a successful mutation or explicit refresh without inventing one fake universal frontend refresh API.
 
 **Client:** update/refetch TanStack Query collection.
 
@@ -274,9 +276,9 @@ These let a developer search for the important pieces required by one complete r
 
 **SSRM:** `refreshServerSide()`.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - concrete grid roots
-- `useTransactionEditPersistence.ts`
+- `frontend/src/features/transactions/grid/useTransactionEditPersistence.ts`
 - selected business-action callbacks
 - Client collection query ownership
 
@@ -288,7 +290,7 @@ These let a developer search for the important pieces required by one complete r
 
 **Meaning:** explicit/manual multi-row selection based on stable row IDs.
 
-**Applies to:** Client, Infinite, SSRM through their native selection mechanisms.
+**Applies to:** Client, Infinite and SSRM through their native frontend selection mechanisms.
 
 ### `GRIDCAP-SEL-PAGE`
 
@@ -296,7 +298,7 @@ These let a developer search for the important pieces required by one complete r
 
 **Applies to:** all current row models.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - Client native `selectAll: 'currentPage'`
 - Infinite Current Page header/controller
 - SSRM current-page command
@@ -305,7 +307,7 @@ These let a developer search for the important pieces required by one complete r
 
 ### `GRIDCAP-SEL-FILTERED`
 
-**Meaning:** Select All Filtered and its filter-universe lifecycle.
+**Meaning:** Select All Filtered and its frontend filter-universe lifecycle.
 
 **Client:** native `selectAll: 'filtered'` plus project filter-change reset semantic.
 
@@ -321,62 +323,63 @@ These let a developer search for the important pieces required by one complete r
 
 **Client:** native local `selectAll: 'all'` and exact eligibility-aware selected rows.
 
-**Infinite:** logical dataset-wide include/exclude state for unloaded rows.
+**Infinite:** logical dataset-wide include/exclude frontend state for unloaded rows.
 
 **SSRM:** native Enterprise server-side All Records selection state.
 
 ### `GRIDCAP-COUNT-SELECTED`
 
-**Meaning:** user-visible selected-row total and its source of truth.
+**Meaning:** user-visible selected-row total and its frontend source of truth.
 
 **Client:** exact `api.getSelectedRows().length` because all selectable rows are local.
 
 **Infinite/SSRM dataset-wide:** API `totalCount` / `filteredCount` minus user exceptions under the documented eligibility-count limitation.
 
-**Important touchpoints:**
-- selection controllers
+**Important frontend touchpoints:**
+- row-model selection controllers
 - `frontend/src/shared/grid/selection/selectionCount.ts`
 - row-loading count metadata
-- `docs/selection-counts.md`
+
+**Related docs:** `docs/selection-counts.md`.
 
 ### `GRIDCAP-SEL-TARGET`
 
-**Meaning:** operation-neutral logical selection target that answers **which rows** a selected backend operation should resolve.
+**Meaning:** frontend operation-neutral logical selection target that answers **which rows** a selected backend operation should address.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - `frontend/src/shared/grid/selection/serverSelection.ts`
 - `frontend/src/shared/grid/selection/gridSelectionActionTarget.ts`
 - `frontend/src/features/transactions/grid/transactionSelectionAction.ts`
-- Transaction API contracts/serializers
-- `backend/apps/transactions/services.py::resolve_transactions_by_selection`
+- Transaction frontend API contracts/adapters
 
-**Cross-capability dependency:** selected business actions and selected server export must share this meaning.
+**Cross-capability dependency:** selected business actions and server-backed Selected export must construct the same frontend target meaning.
+
+**Related backend contract:** backend resolution remains authoritative but is intentionally untagged.
 
 ### `GRIDCAP-ACTION-SELECTED`
 
-**Meaning:** apply a feature business mutation to the current logical selection while backend eligibility remains authoritative.
+**Meaning:** apply a feature business mutation to the current frontend selection target while backend eligibility remains authoritative.
 
-**Important touchpoints:**
-- `TransactionSelectionActions.tsx`
-- `useTransactionSelectionAction.ts`
-- `transactionSelectionAction.ts`
-- Transaction API client/contracts
-- backend serializer/view/resolver/update service
+**Important frontend touchpoints:**
+- `frontend/src/features/transactions/grid/TransactionSelectionActions.tsx`
+- `frontend/src/features/transactions/grid/useTransactionSelectionAction.ts`
+- `frontend/src/features/transactions/grid/transactionSelectionAction.ts`
+- Transaction frontend API client/contracts
 - row-model-specific refresh after success
 
 ### `GRIDCAP-ROW-ELIGIBILITY`
 
-**Meaning:** generic `enabled` / `selectionDisabled` / `readOnly` interaction semantics and authoritative backend enforcement.
+**Meaning:** frontend handling of generic `enabled` / `selectionDisabled` / `readOnly` interaction semantics.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - `frontend/src/shared/grid/rows/`
 - `frontend/src/features/transactions/grid/transactionRowInteraction.ts`
 - Transaction columns/cell presentation
-- `backend/apps/transactions/services.py`
-- backend mutation/selection resolution
-- `docs/row-interaction.md`
+- row-model selection/editing guards
 
 **Critical distinction:** business-ineligible rows are not manufactured as user deselection exception IDs.
+
+**Related backend contract:** the backend still enforces authoritative eligibility without `GRIDCAP-*` comments.
 
 ---
 
@@ -384,9 +387,9 @@ These let a developer search for the important pieces required by one complete r
 
 ### `GRIDCAP-EDIT-TRACKED`
 
-**Meaning:** stable-ID unsaved draft state outside transient RowNodes, including safe programmatic overlay bookkeeping.
+**Meaning:** stable-ID unsaved frontend draft state outside transient RowNodes, including safe programmatic overlay bookkeeping.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - `frontend/src/shared/grid/editing/trackedGridEditing.ts`
 - `frontend/src/shared/grid/editing/useTrackedGridEditing.ts`
 - concrete grid roots' `onCellValueChanged` and restore/reconcile events
@@ -395,7 +398,7 @@ These let a developer search for the important pieces required by one complete r
 
 **Meaning:** programmatically apply the last edit or explicit edit changes to eligible rows on the exact current page.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - `frontend/src/shared/grid/editing/useCurrentPageEditActions.ts`
 - current-page resolver
 - editing controls
@@ -405,28 +408,28 @@ These let a developer search for the important pieces required by one complete r
 
 **Meaning:** persist one explicit dirty row independently of checkbox selection.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - row edit action renderer/context
-- `useTransactionEditPersistence.ts`
-- single-row API/backend endpoint
+- `frontend/src/features/transactions/grid/useTransactionEditPersistence.ts`
+- frontend single-row API adapter
 - tracked-edit acknowledgement
 
 ### `GRIDCAP-EDIT-SAVE-SELECTED`
 
 **Meaning:** persist `dirty rows ∩ current selection` as explicit dirty row patches; do not transform Select All into edits for untouched rows.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - concrete grid roots
 - editing controls
 - tracked editing selection intersection
-- `useTransactionEditPersistence.ts`
-- bulk update backend endpoint
+- `frontend/src/features/transactions/grid/useTransactionEditPersistence.ts`
+- frontend bulk API adapter
 
 ### `GRIDCAP-EDIT-DISCARD`
 
-**Meaning:** restore the latest authoritative value and remove the relevant tracked draft for one row or selected dirty rows.
+**Meaning:** restore the latest authoritative value and remove the relevant tracked frontend draft for one row or selected dirty rows.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - tracked editing state/hook
 - row action renderer
 - editing controls
@@ -434,25 +437,27 @@ These let a developer search for the important pieces required by one complete r
 
 ### `GRIDCAP-EDIT-CONFLICT`
 
-**Meaning:** BASE / LOCAL / REMOTE reconciliation, field-level conflicts, Use server / Keep my edit, and conflict-aware mutation guards.
+**Meaning:** frontend BASE / LOCAL / REMOTE reconciliation, field-level conflicts, Use server / Keep my edit, and conflict-aware mutation guards.
 
-**Important touchpoints:**
-- `trackedGridEditing.ts`
-- `useTrackedGridEditing.ts`
+**Important frontend touchpoints:**
+- `frontend/src/shared/grid/editing/trackedGridEditing.ts`
+- `frontend/src/shared/grid/editing/useTrackedGridEditing.ts`
 - Transaction conflict cell/popover presentation
 - save/selected-action conflict guards in concrete roots
 - refresh/reconciliation lifecycle
-- `docs/edit-conflict-reconciliation.md`
+
+**Related docs:** `docs/edit-conflict-reconciliation.md`.
 
 ### `GRIDCAP-COUNT-EDITED`
 
-**Meaning:** exact count of dirty **rows**, not dirty fields/cells.
+**Meaning:** exact frontend count of dirty **rows**, not dirty fields/cells.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - tracked editing payload derivation
-- `useTrackedGridEditing.ts`
-- `TransactionEditingControls.tsx`
-- `docs/edited-row-count.md`
+- `frontend/src/shared/grid/editing/useTrackedGridEditing.ts`
+- `frontend/src/features/transactions/grid/TransactionEditingControls.tsx`
+
+**Related docs:** `docs/edited-row-count.md`.
 
 ---
 
@@ -462,9 +467,9 @@ These let a developer search for the important pieces required by one complete r
 
 **Meaning:** native AG Grid CSV export over exactly the fully resolved current pagination page.
 
-**Applies to:** Client, Infinite, SSRM.
+**Applies to:** Client, Infinite and SSRM.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - `frontend/src/shared/grid/export/exportCurrentPageCsv.ts`
 - `frontend/src/shared/grid/pagination/getCurrentPageNodes.ts`
 - concrete grid export handlers
@@ -474,21 +479,22 @@ These let a developer search for the important pieces required by one complete r
 
 ### `GRIDCAP-EXPORT-SELECTED`
 
-**Meaning:** export the complete selected universe using the data owner that can enumerate it authoritatively.
+**Meaning:** frontend Selected export integration using the data owner that can enumerate the selected universe authoritatively.
 
 **Client:** native/local AG Grid selected CSV across pagination pages.
 
-**Infinite/SSRM:** backend selected export using the shared logical selection target/resolver because selected rows may be unloaded.
+**Infinite/SSRM:** frontend sends the shared logical selection target to the backend selected-export API because selected rows may be unloaded.
 
-**Important touchpoints:**
-- `frontend/src/shared/grid/export/exportSelectedRowsCsv.ts` (local exact/native mechanic)
-- `frontend/src/features/transactions/grid/useTransactionExport.ts` (server-backed selected export)
+**Important frontend touchpoints:**
+- `frontend/src/shared/grid/export/exportSelectedRowsCsv.ts` (Client local/native mechanic)
+- `frontend/src/features/transactions/grid/useTransactionExport.ts` (server-backed selected export integration)
 - concrete grid roots
-- Transaction API client/contracts
-- backend selected export view
-- `backend/apps/transactions/services.py` shared selection resolver
-- `backend/apps/transactions/tests/test_selection_export_api.py`
-- `docs/grid-export.md`
+- Transaction frontend API client/contracts
+- focused frontend export tests
+
+**Related backend contract:** selected-export endpoint/resolver is documented/tested normally and intentionally untagged.
+
+**Related docs:** `docs/grid-export.md`.
 
 ---
 
@@ -498,48 +504,50 @@ These let a developer search for the important pieces required by one complete r
 
 **Meaning:** persist intentional native AG Grid user preference state while keeping transient business state such as row selection/pagination out of the current durable contract.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - `frontend/src/shared/grid/state/gridStatePersistence.ts`
 - `frontend/src/shared/grid/state/useGridStatePersistence.ts`
 - concrete grid roots and their distinct storage keys
-- state persistence tests
+- frontend state persistence tests
 
 ### `GRIDCAP-LIFECYCLE-DESTROY`
 
-**Meaning:** safe AG Grid teardown: clear root-owned `GridApi` refs, stop obsolete async/listener work, and avoid calling destroyed APIs.
+**Meaning:** safe frontend AG Grid teardown: clear root-owned `GridApi` refs, stop obsolete async/listener work, and avoid calling destroyed APIs.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - concrete Client/Infinite/SSRM grid roots (`onGridPreDestroyed`)
 - listener cleanup with `api.isDestroyed()` guards
 - datasource `destroy()` / cancellation
-- warning #26 regression coverage
+- warning #26 frontend regression coverage
 
 ### `GRIDCAP-COLUMNS`
 
 **Meaning:** feature-owned native `ColDef` composition, including row-model-specific filter parameters, editors, renderers, editability, utility columns, formatting, and conflict/interaction presentation.
 
-**Important touchpoints:**
+**Important frontend touchpoints:**
 - `frontend/src/features/transactions/grid/transactionColumns.tsx`
 - status editor/renderer
 - row interaction cell/action renderer
 - shared default column definition
 
-**Rule:** this tag identifies column composition; it does not justify building a custom column abstraction over native `ColDef`.
+**Rule:** this tag identifies frontend column composition; it does not justify building a custom column abstraction over native `ColDef`.
 
 ### `GRIDCAP-THEME`
 
-**Meaning:** shared AG Grid visual theme/global default setup without hiding concrete grid behavior.
+**Meaning:** shared frontend AG Grid visual theme/global default setup without hiding concrete grid behavior.
 
-**Important touchpoints:**
-- shared AG Grid theme/default-column setup
+**Important frontend touchpoints:**
+- `frontend/src/theme/ag-grid/agGridTheme.ts`
+- shared/global default-column setup
 - application grid provider/global options
-- `docs/theming.md`
+
+**Related docs:** `docs/theming.md`.
 
 ---
 
 # Cross-capability examples
 
-These examples show why more than one marker may appear at one boundary.
+These examples show why more than one marker may appear at one frontend boundary.
 
 ## Current Page resolver
 
@@ -554,7 +562,7 @@ GRIDCAP-EXPORT-PAGE
 
 The exact page boundary is shared; the operations performed on that page are different.
 
-## Backend logical selection resolver
+## Frontend selected-operation target
 
 Expected relationship:
 
@@ -562,10 +570,9 @@ Expected relationship:
 GRIDCAP-SEL-TARGET
 GRIDCAP-ACTION-SELECTED
 GRIDCAP-EXPORT-SELECTED
-GRIDCAP-ROW-ELIGIBILITY
 ```
 
-The resolver answers which eligible rows the user targeted; mutation/export decide what to do with them.
+The frontend target answers which rows the user intended to address. Mutation/export then send that target to their respective API operations. Backend resolution remains a separate authoritative contract and is intentionally not tagged.
 
 ## Server datasource freshness boundary
 
@@ -589,14 +596,15 @@ Concrete roots legitimately carry many tags because they are composition/integra
 When adding/changing a grid capability:
 
 1. search this registry for an existing logical tag;
-2. reuse the existing tag if the meaning is the same even when implementation differs by row model;
-3. if a genuinely new capability exists, define a stable tag here first;
-4. mark important production integration points;
-5. mark focused executable tests where useful;
-6. allow multiple tags on shared boundaries;
-7. update relevant feature/native/API/manual docs;
-8. verify a repository search for the tag gives a useful extraction map rather than dozens of meaningless comments;
-9. preserve existing useful markers during refactors;
-10. update `AGENTS.md` if the tagging/maintenance contract itself changes.
+2. reuse the existing tag if the meaning is the same even when frontend implementation differs by row model;
+3. if a genuinely new frontend capability exists, define a stable tag here first;
+4. mark important frontend production integration points;
+5. mark focused frontend executable tests where useful;
+6. do **not** add `GRIDCAP-*` markers to Python/backend files or backend tests;
+7. allow multiple tags on shared frontend boundaries;
+8. update relevant feature/native/API/manual docs;
+9. verify a frontend repository search for the tag gives a useful extraction map rather than dozens of meaningless comments;
+10. preserve existing useful frontend markers during refactors;
+11. update `AGENTS.md` if the tagging/maintenance contract itself changes.
 
-> **The goal is not to decorate the code. The goal is to make capability extraction and dependency discovery reliable.**
+> **The goal is not to decorate the code. The goal is to make frontend capability extraction and dependency discovery reliable.**

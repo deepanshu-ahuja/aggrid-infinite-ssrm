@@ -1,4 +1,3 @@
-# GRIDCAP-SEL-TARGET | GRIDCAP-ACTION-SELECTED | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-ROW-ELIGIBILITY
 from unittest.mock import patch
 
 from rest_framework.test import APISimpleTestCase

@@ -61,7 +61,7 @@ Start with:
 1. `AGENTS.md` — this working contract;
 2. `README.md` — repository entry point and current developer links;
 3. `docs/frontend-conventions.md` — code ownership, abstraction, comment, capability-marker, and testing standards;
-4. `docs/grid-capability-tags.md` — authoritative `GRIDCAP-*` registry for locating complete capability footprints;
+4. `docs/grid-capability-tags.md` — authoritative frontend `GRIDCAP-*` registry for locating frontend capability footprints;
 5. `docs/grid-backlog.md` — living roadmap / verification list;
 6. `docs/grid-capabilities.md` — logical capability catalog;
 7. `docs/ag-grid-native-usage.md` — native AG Grid APIs currently relied upon;
@@ -101,7 +101,7 @@ Expected deliverables normally include:
 - architecture / feature documentation;
 - explicit limitations and future extension points;
 - manual verification guidance where browser / AG Grid lifecycle behavior matters;
-- capability-tag registry/marker review when the capability footprint changes;
+- capability-tag registry/marker review when the frontend capability footprint changes;
 - backlog/status updates;
 - CI validation;
 - an accurate PR description.
@@ -128,34 +128,38 @@ Do not leave core behavior merely "inferable" from implementation.
 
 ## Capability-tag discoverability contract
 
-This repository is also meant to be mined later as a reference implementation. A developer may want to extract one feature such as Select All Filtered, Current Page export, tracked conflicts, or safe AG Grid teardown without remembering every file that participates in that capability.
+This repository is also meant to be mined later as a reference implementation. A developer may want to extract one frontend grid feature such as Select All Filtered, Current Page export, tracked conflicts, or safe AG Grid teardown without remembering every frontend file that participates in that capability.
 
-`docs/grid-capability-tags.md` is the **authoritative registry** of searchable `GRIDCAP-*` markers.
+`docs/grid-capability-tags.md` is the **authoritative registry** of searchable frontend `GRIDCAP-*` markers.
 
 Working rule:
 
 ```text
-need one capability
+need one frontend grid capability
 → find its GRIDCAP-* entry in docs/grid-capability-tags.md
 → read its row-model/ownership notes
-→ search the exact marker across the repository
-→ review every marked integration point + linked tests/docs before extracting/adapting it
+→ search the exact marker across frontend source/tests
+→ review every marked frontend integration point + linked docs
+→ separately inspect any API/backend contract required by that capability
 ```
 
 Important rules:
 
 - every capability marker starts with the exact prefix `GRIDCAP-`;
-- do **not** invent ad-hoc markers in source; define a genuinely new marker in the registry first;
-- use one logical marker across Client-Side, Infinite, SSRM, frontend, backend, and tests when they implement the same user/business capability differently;
-- a source location may carry multiple markers when it supports multiple capabilities;
-- mark extraction-relevant boundaries such as controllers, roots, shared algorithms, lifecycle/event boundaries, request translation, backend authority, and focused tests;
+- `GRIDCAP-*` comments belong in **frontend source and focused frontend tests only**;
+- do **not** add `GRIDCAP-*` markers to Python/backend source or backend tests;
+- do **not** invent ad-hoc markers in frontend source; define a genuinely new marker in the registry first;
+- use one logical marker across Client-Side, Infinite and SSRM frontend implementations/tests when they implement the same user/business capability differently;
+- a frontend source location may carry multiple markers when it supports multiple capabilities;
+- mark extraction-relevant frontend boundaries such as controllers, roots, shared algorithms, lifecycle/event boundaries, request/response adapters, feature API integration, columns/editors, and focused frontend tests;
 - do not tag every obvious helper/line merely to increase marker count;
-- a marker means "this location participates in the capability", **not** "this code can be copied unchanged to every row model";
-- preserve useful markers during refactors when the capability still exists;
-- when a capability is added, removed, or materially changed, review the registry and existing markers in the same work;
-- avoid casual marker renames because stable searchability across history is part of their value.
+- a marker means "this frontend location participates in the capability", **not** "this code can be copied unchanged to every row model";
+- preserve useful frontend markers during refactors when the capability still exists;
+- when a frontend capability is added, removed, or materially changed, review the registry and existing frontend markers in the same work;
+- avoid casual marker renames because stable searchability across history is part of their value;
+- backend authority, validation, eligibility and persistence remain important architecture and must still be documented/tested normally even though they are deliberately outside the marker system.
 
-For a complete row-model extraction, use the row-model tags such as:
+For a complete row-model frontend extraction, use the row-model tags such as:
 
 ```text
 GRIDCAP-ROWMODEL-CLIENT
@@ -163,7 +167,7 @@ GRIDCAP-ROWMODEL-INFINITE
 GRIDCAP-ROWMODEL-SSRM
 ```
 
-For one logical feature, use the specific tag such as:
+For one logical frontend feature, use the specific tag such as:
 
 ```text
 GRIDCAP-SEL-FILTERED
@@ -195,7 +199,7 @@ An existing explanation should normally remain when it documents:
 - cache / refresh behavior;
 - why a particular source of truth exists;
 - why an implementation intentionally differs between row models;
-- capability markers that still accurately describe the integration point.
+- frontend capability markers that still accurately describe the integration point.
 
 Remove or rewrite an existing comment only when:
 
@@ -549,7 +553,7 @@ Current high-level state/sequence:
 
 1. Client-Side, Infinite, and SSRM baseline implementations exist with focused automated coverage;
 2. browser/manual verification for the three row models remains available for a later consolidated pass and must not be falsely marked complete;
-3. capability-tag discoverability is maintained so individual patterns can be extracted safely later;
+3. frontend capability-tag discoverability is maintained so individual frontend patterns can be extracted safely later;
 4. Import/template/sample-upload remains intentionally deferred until its roadmap point;
 5. future capabilities should be evaluated across Client / Infinite / SSRM together without forcing identical implementations.
 
@@ -575,7 +579,7 @@ Meaningful behavior changes should have focused tests at stable boundaries, incl
 - eligibility;
 - edit/conflict reconciliation;
 - Client-Side native scope mapping and exact local-selection behavior;
-- capability-marker searches when a capability footprint changes.
+- frontend capability-marker searches when a frontend capability footprint changes.
 
 Test Client-Side, Infinite, and SSRM independently where their lifecycle or selection implementation differs. Share tests/helpers only for genuinely shared semantics.
 
@@ -638,13 +642,13 @@ PR descriptions should accurately state:
 - automated validation;
 - manual verification status;
 - relevant docs;
-- capability-marker/registry changes when applicable.
+- frontend capability-marker/registry changes when applicable.
 
 ---
 
 ## Key implementation entry points
 
-These are common entry points for current grid work. Search the relevant `GRIDCAP-*` marker and additional call sites before changing or extracting a shared contract.
+These are common entry points for current grid work. Search the relevant frontend `GRIDCAP-*` marker and additional frontend call sites before changing or extracting a shared frontend contract. Then inspect separately documented backend/API contracts when the feature depends on them.
 
 ### Client-Side data/selection
 
@@ -710,14 +714,14 @@ When asked to implement/review something:
 
 1. inspect current repository/GitHub state first;
 2. read this file and relevant source-of-truth docs;
-3. identify the relevant `GRIDCAP-*` marker(s) in `docs/grid-capability-tags.md` and search their current repository occurrences;
-4. inspect current implementation and tests, including cross-capability/shared touchpoints revealed by those markers;
+3. identify the relevant frontend `GRIDCAP-*` marker(s) in `docs/grid-capability-tags.md` and search their current frontend source/test occurrences;
+4. inspect current frontend implementation and tests, including cross-capability/shared touchpoints revealed by those markers, plus separately documented API/backend contracts where required;
 5. explain any important architectural issue discovered;
 6. implement the change using native-first ownership principles;
-7. preserve useful existing comments/rationale and applicable capability markers;
+7. preserve useful existing comments/rationale and applicable frontend capability markers;
 8. add local logic-level comments for new non-obvious behavior;
 9. add/update focused tests;
-10. update capability markers/registry plus feature docs, manual verification, README/backlog when relevant;
+10. update frontend capability markers/registry plus feature docs, manual verification, README/backlog when relevant;
 11. run/inspect validation and CI;
 12. keep the PR description accurate;
 13. report what changed and what still needs manual verification.
@@ -736,7 +740,7 @@ Whenever work changes any of the following, review and update this file in the s
 
 - architecture/ownership rules;
 - row-model responsibilities;
-- capability-tag/discoverability rules;
+- frontend capability-tag/discoverability rules;
 - selection/count semantics;
 - request freshness behavior;
 - eligibility behavior;
