@@ -54,6 +54,7 @@ import {
   buildTransactionSelectionActionRequest,
   buildTransactionSelectionTarget,
   hasTransactionSelection,
+  type SelectionAfterSuccessPolicy,
 } from './transactionSelectionAction';
 import { useTransactionEditPersistence } from './useTransactionEditPersistence';
 import { useTransactionExport } from './useTransactionExport';
@@ -108,6 +109,7 @@ export function TransactionsInfiniteGrid({
     selectionColumnDef,
     readSelectionIntent,
     selectedRowCount,
+    clearSelection,
     onRowsChanged: syncSelectionAfterRowsChange,
     onRowSelected,
     onSelectionChanged,
@@ -148,6 +150,17 @@ export function TransactionsInfiniteGrid({
     gridApi.current?.refreshInfiniteCache();
   }, []);
 
+  const handleSelectionActionApplied = useCallback(
+    (selectionAfterSuccess: SelectionAfterSuccessPolicy) => {
+      // GRIDCAP-ACTION-SELECTED | GRIDCAP-LIFECYCLE-REFRESH
+      // Clear through the Infinite controller so page/native and dataset-wide compact selection each
+      // use their proper owner. Do this only after backend success; failed mutations keep selection.
+      if (selectionAfterSuccess === 'clear') clearSelection();
+      handlePersistedRows();
+    },
+    [clearSelection, handlePersistedRows],
+  );
+
   const { saveRow, saveBulk, isSaving, saveError } = useTransactionEditPersistence({
     updates: payload.updates,
     acknowledgeChanges,
@@ -158,7 +171,7 @@ export function TransactionsInfiniteGrid({
     applySelectionAction,
     isApplyingSelectionAction,
     selectionActionError,
-  } = useTransactionSelectionAction({ onApplied: handlePersistedRows });
+  } = useTransactionSelectionAction({ onApplied: handleSelectionActionApplied });
 
   const {
     error: exportError,
@@ -205,7 +218,7 @@ export function TransactionsInfiniteGrid({
   }, [conflictTarget, discardRows, readSelectionIntent, state]);
 
   const handleSetSelectedStatus = useCallback(
-    (status: TransactionStatus) => {
+    (status: TransactionStatus, selectionAfterSuccess: SelectionAfterSuccessPolicy) => {
       const api = gridApi.current;
       if (!api) return;
 
@@ -224,6 +237,7 @@ export function TransactionsInfiniteGrid({
           api.getFilterModel(),
           { status },
         ),
+        selectionAfterSuccess,
       );
     },
     [applySelectionAction, readSelectionIntent, selectionScope, state],
