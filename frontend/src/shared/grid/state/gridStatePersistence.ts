@@ -1,3 +1,4 @@
+// GRIDCAP-STATE-PERSISTENCE
 import type { GridState } from 'ag-grid-community';
 
 /**
