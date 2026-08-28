@@ -138,8 +138,9 @@ The rule is **latest started request wins**, not “highest page number wins.”
 3. Confirm dataset-wide displayed counts may still include those rows under the current documented limitation.
 4. Run a selected backend business action or selected export.
 5. Confirm backend-ineligible rows are not acted on/exported.
+6. Export a current page containing a restricted row and confirm that row **is** present in the page CSV, because Current Page is a page snapshot rather than a selection-based operation.
 
-Do not expect the current UI dataset-wide count to subtract only disabled rows loaded in the browser. See [Selected-row totals](selection-counts.md).
+Do not expect the current UI dataset-wide count to subtract only disabled rows loaded in the browser. Do not expect Current Page export to apply selected-row eligibility. See [Selected-row totals](selection-counts.md) and [Grid export](grid-export.md).
 
 ## 5. Edited-row total
 
@@ -167,8 +168,9 @@ Run independently in `/infinite` and `/ssrm`.
 2. Click `Export current page`.
 3. Open the downloaded CSV.
 4. Confirm it contains only the current fully loaded page, not other cached/loaded rows.
-5. Change page and export again; confirm the file follows the new page.
-6. Trigger export while the page is unresolved/loading if practical; confirm the application refuses a partial export and shows the loading message.
+5. If the page contains `selectionDisabled` or `readOnly` rows, confirm those rows are included. Current Page exports page membership, not selected-row eligibility.
+6. Change page and export again; confirm the file follows the new page.
+7. Trigger export while the page is unresolved/loading if practical; confirm the application refuses a partial export and shows the loading message.
 
 ## 7. Export Selected — explicit rows
 
@@ -178,6 +180,7 @@ Run independently in `/infinite` and `/ssrm`.
 2. Click `Export selected`.
 3. Confirm one `POST /api/transactions/selection/export/` request is made.
 4. Open the CSV and confirm only those selected eligible rows are present.
+5. Confirm a `selectionDisabled` / `readOnly` row cannot become part of the normal explicit selection, and that backend eligibility remains authoritative for stale/crafted input.
 
 ## 8. Export Selected — All Filtered
 
@@ -189,7 +192,7 @@ Run independently in both row models using their own All Filtered selection flow
 4. Click `Export selected`.
 5. Confirm the request sends exclude-mode selection plus the current defining filters.
 6. Confirm the CSV contains matching eligible filtered rows except the explicit deselection(s).
-7. Confirm ineligible rows are not exported.
+7. Confirm `selectionDisabled` / `readOnly` rows are not exported even if the visible selected total currently counts them under the documented eligibility-count limitation.
 
 ## 9. Export Selected — All Records
 
@@ -200,6 +203,7 @@ Run independently in both row models using their own All Records flow.
 3. Click `Export selected`.
 4. Confirm the request uses exclude mode without filtered scope.
 5. Confirm the CSV contains eligible records except the explicit deselection(s).
+6. Confirm `selectionDisabled` / `readOnly` rows are not exported even though the current All Records displayed count may include them.
 
 ## 10. Existing edit/conflict regression
 
