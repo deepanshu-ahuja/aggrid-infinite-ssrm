@@ -70,7 +70,13 @@ class TransactionDetailView(APIView):
 
 
 class TransactionBulkUpdateView(APIView):
-    """Save many explicit row patches in one validated backend operation."""
+    """
+    Save many explicit row patches in one request.
+
+    The service resolves every id and validates row editability before applying changes, so a missing
+    or read-only row rejects the operation before any valid row is mutated. A future database
+    implementation should preserve that contract with a real transaction.
+    """
 
     def patch(self, request):
         bulk_serializer = TransactionBulkUpdateSerializer(data=request.data)
@@ -101,7 +107,13 @@ class TransactionBulkUpdateView(APIView):
 
 
 class TransactionSelectionUpdateView(APIView):
-    """Apply one validated patch to backend-eligible rows in the grid's logical selection."""
+    """
+    Apply one validated patch to backend-eligible rows in the grid's logical selection.
+
+    The service resolves include/exclude/filter semantics through the same operation-neutral resolver
+    used by selected export. This view therefore owns only HTTP validation/error mapping + mutation
+    response shape; it does not implement a second interpretation of what "selected" means.
+    """
 
     def patch(self, request):
         serializer = TransactionSelectionUpdateSerializer(data=request.data)
@@ -115,6 +127,8 @@ class TransactionSelectionUpdateView(APIView):
                 data["changes"],
             )
         except TransactionNotFoundError:
+            # Only explicit/include selection resolves exact ids. Dataset-wide exclude selection can
+            # safely ignore stale exception ids because they do not identify rows to mutate.
             return Response(
                 {"detail": "One or more selected transactions were not found."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -124,7 +138,13 @@ class TransactionSelectionUpdateView(APIView):
 
 
 class TransactionSelectionExportView(APIView):
-    """Resolve the logical server-backed selection and return its eligible rows as CSV."""
+    """
+    Resolve the logical server-backed selection and return its eligible rows as CSV.
+
+    This endpoint is intentionally backend-owned for Infinite/SSRM selected export. Dataset-wide
+    selection may represent unloaded rows, so the browser must not fetch every selected record merely
+    to construct a file. The same resolver used by selection mutation keeps export semantics aligned.
+    """
 
     CSV_FIELDS = (
         "id",
@@ -154,6 +174,8 @@ class TransactionSelectionExportView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        # Use Python's CSV writer rather than manual string concatenation so commas, quotes and newlines
+        # in exported values remain standards-compliant without duplicating escaping rules.
         buffer = StringIO()
         writer = csv.DictWriter(buffer, fieldnames=self.CSV_FIELDS, extrasaction="ignore")
         writer.writeheader()
