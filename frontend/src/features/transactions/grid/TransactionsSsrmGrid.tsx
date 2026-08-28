@@ -20,6 +20,7 @@ import {
 import { useCurrentPageEditActions } from '@/shared/grid/editing/useCurrentPageEditActions';
 import { useTrackedGridEditing } from '@/shared/grid/editing/useTrackedGridEditing';
 import { GridErrorOverlay } from '@/shared/grid/overlays/GridErrorOverlay';
+import { getLogicalSelectedRowCount } from '@/shared/grid/selection/selectionCount';
 import { useSsrmSelectionController } from '@/shared/grid/selection/server-side/useSsrmSelectionController';
 import type { ServerSelectionIntent } from '@/shared/grid/selection/serverSelection';
 import { useGridStatePersistence } from '@/shared/grid/state/useGridStatePersistence';
@@ -96,6 +97,7 @@ export function TransactionsSsrmGrid({
   const {
     datasource,
     error: loadError,
+    totalCount,
     retry: retryLoad,
     clearError: clearLoadError,
   } = useServerSideRowLoading({
@@ -153,6 +155,16 @@ export function TransactionsSsrmGrid({
   );
 
   const selectionIntent = isGridReady ? readSelectionIntent() : EMPTY_SELECTION;
+
+  // Native SSRM gives us the selection rule, not the dataset size represented by selectAll=true.
+  // All Records therefore uses the API's filter-independent total. Custom All Filtered uses AG Grid's
+  // accepted current model size, which already reflects the active server filter. Explicit include IDs
+  // remain exact and the helper intentionally ignores this scope total for them.
+  const selectionScopeTotal = isFilteredSelectAllActive
+    ? gridApi.current?.getDisplayedRowCount() ?? 0
+    : totalCount;
+  const selectedRowCount = getLogicalSelectedRowCount(selectionIntent, selectionScopeTotal);
+
   const selectedDirtyUpdates = isGridReady
     ? buildSelectedTrackedGridUpdatePayload(state, selectionIntent).updates
     : [];
@@ -290,6 +302,7 @@ export function TransactionsSsrmGrid({
     <Stack spacing={2}>
       <TransactionSelectionActions
         hasSelection={hasTransactionSelection(selectionIntent)}
+        selectedRowCount={selectedRowCount}
         isApplying={isApplyingSelectionAction}
         statusActionBlockedByConflict={statusActionBlockedByConflict}
         error={selectionActionError}
