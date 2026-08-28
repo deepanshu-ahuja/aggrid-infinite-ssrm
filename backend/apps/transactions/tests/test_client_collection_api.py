@@ -1,4 +1,3 @@
-# GRIDCAP-ROWMODEL-CLIENT | GRIDCAP-DATA-LOAD | GRIDCAP-ROW-ELIGIBILITY
 from rest_framework.test import APISimpleTestCase
 
 
