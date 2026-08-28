@@ -1,3 +1,4 @@
+// GRIDCAP-EDIT-SAVE-ROW | GRIDCAP-EDIT-SAVE-SELECTED | GRIDCAP-EDIT-TRACKED | GRIDCAP-LIFECYCLE-REFRESH
 import { useCallback } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { queryClient } from '@/shared/query/queryClient';
@@ -64,6 +65,7 @@ export function useTransactionEditPersistence({
     queryClient,
   );
 
+  // GRIDCAP-EDIT-SAVE-ROW
   const saveRow = useCallback(
     (rowId: string) => {
       const update = updates.find((item) => item.id === rowId);
@@ -73,6 +75,7 @@ export function useTransactionEditPersistence({
     [isPending, mutate, updates],
   );
 
+  // GRIDCAP-EDIT-SAVE-SELECTED
   const saveBulk = useCallback(
     (bulkUpdates: TransactionUpdate[]) => {
       if (bulkUpdates.length === 0 || isPending) return;
