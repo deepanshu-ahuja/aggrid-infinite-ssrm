@@ -2,6 +2,16 @@ import { ApiError } from './apiError';
 
 const API_BASE_URL = '/api';
 
+async function readJsonResponse<TResponse>(response: Response): Promise<TResponse> {
+  const payload: unknown = await response.json().catch(() => undefined);
+
+  if (!response.ok) {
+    throw new ApiError(`Request failed with status ${response.status}.`, response.status, payload);
+  }
+
+  return payload as TResponse;
+}
+
 async function requestJson<TResponse, TRequest>(
   method: 'POST' | 'PATCH',
   path: string,
@@ -17,13 +27,17 @@ async function requestJson<TResponse, TRequest>(
     signal,
   });
 
-  const payload: unknown = await response.json().catch(() => undefined);
+  return readJsonResponse<TResponse>(response);
+}
 
-  if (!response.ok) {
-    throw new ApiError(`Request failed with status ${response.status}.`, response.status, payload);
-  }
+/** GET shares the same typed JSON/error boundary without inventing feature semantics here. */
+export async function getJson<TResponse>(path: string, signal?: AbortSignal): Promise<TResponse> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'GET',
+    signal,
+  });
 
-  return payload as TResponse;
+  return readJsonResponse<TResponse>(response);
 }
 
 /** Shared HTTP/JSON error handling stays here; feature modules still own their concrete endpoints. */
