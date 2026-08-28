@@ -179,7 +179,6 @@ describe('TransactionsClientGrid production wiring', () => {
     await waitFor(() => {
       expect(transactionApi.updateTransactionsBySelection).toHaveBeenCalledWith({
         selection: { mode: 'include', ids: ['txn-a', 'txn-b'] },
-        filters: [],
         changes: { status: 'Failed' },
       });
     });
