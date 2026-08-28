@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-CLIENT | GRIDCAP-EXPORT-SELECTED
 import { describe, expect, it, vi } from 'vitest';
 import type { GridApi } from 'ag-grid-community';
 import { exportSelectedRowsCsv } from './exportSelectedRowsCsv';
