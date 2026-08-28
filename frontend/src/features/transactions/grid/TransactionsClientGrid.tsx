@@ -210,10 +210,10 @@ export function TransactionsClientGrid({
       }
 
       // Every Client-Side selected row is concrete and therefore expressible as an explicit include
-      // target. No backend filter translation or dataset-wide exclude state is needed.
+      // target. The wire contract deliberately omits filters for include selections because exact IDs
+      // already define the complete target; backend filter translation is only needed for exclude mode.
       applySelectionAction({
         selection: currentSelection,
-        filters: [],
         changes: { status },
       });
     },
