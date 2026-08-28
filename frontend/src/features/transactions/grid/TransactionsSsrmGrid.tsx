@@ -82,7 +82,6 @@ export function TransactionsSsrmGrid({
   const gridApi = useRef<GridApi<Transaction> | null>(null);
   const [isGridReady, setIsGridReady] = useState(false);
   const [, setSelectionRevision] = useState(0);
-  const [filteredSelectionTotal, setFilteredSelectionTotal] = useState(0);
   const [conflictTarget, setConflictTarget] = useState<ConflictTarget | null>(null);
 
   const {
@@ -102,6 +101,7 @@ export function TransactionsSsrmGrid({
     datasource,
     error: loadError,
     totalCount,
+    filteredCount,
     retry: retryLoad,
     clearError: clearLoadError,
   } = useServerSideRowLoading({
@@ -167,7 +167,11 @@ export function TransactionsSsrmGrid({
 
   const selectionIntent = isGridReady ? readSelectionIntent() : EMPTY_SELECTION;
   const hasSelection = hasTransactionSelection(selectionIntent);
-  const selectionScopeTotal = isFilteredSelectAllActive ? filteredSelectionTotal : totalCount;
+
+  // Dataset-wide selected totals come from the same normal API response that loads the grid. Native
+  // SSRM owns the All Records selection rule, while our custom All Filtered mode owns its filter scope;
+  // neither requires enumerating unloaded RowNodes just to display a number.
+  const selectionScopeTotal = isFilteredSelectAllActive ? filteredCount : totalCount;
   const selectedRowCount = getLogicalSelectedRowCount(selectionIntent, selectionScopeTotal);
 
   const selectedDirtyUpdates = isGridReady
@@ -191,7 +195,10 @@ export function TransactionsSsrmGrid({
     const api = gridApi.current;
     if (!api) return;
     const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
-    discardRows(api, updates.map((update) => update.id));
+    discardRows(
+      api,
+      updates.map((update) => update.id),
+    );
     if (conflictTarget && updates.some((update) => update.id === conflictTarget.rowId)) {
       setConflictTarget(null);
     }
@@ -205,7 +212,9 @@ export function TransactionsSsrmGrid({
       if (
         !hasTransactionSelection(currentSelection) ||
         hasSelectedTrackedGridFieldConflict(state, currentSelection, ['status'])
-      ) return;
+      ) {
+        return;
+      }
 
       applySelectionAction(
         buildTransactionSelectionActionRequest(
@@ -238,16 +247,6 @@ export function TransactionsSsrmGrid({
       ),
     );
   }, [exportSelected, isFilteredSelectAllActive, readSelectionIntent]);
-
-  const handleSelectAllFiltered = useCallback(() => {
-    const api = gridApi.current;
-    if (!api) return;
-
-    // Capture the accepted filtered universe while handling the user action. React renders the stored
-    // number later; it never reaches through `gridApi.current` during render just to display a count.
-    setFilteredSelectionTotal(api.getDisplayedRowCount());
-    selectAllFiltered();
-  }, [selectAllFiltered]);
 
   const rowEditActionsContext = useMemo<TransactionRowEditActionsContext>(
     () => ({
@@ -287,13 +286,8 @@ export function TransactionsSsrmGrid({
   const handleModelUpdated = useCallback(() => {
     syncSelectionAfterRowsChange();
     const api = gridApi.current;
-    if (!api) return;
-
-    // A filtered result can change after a server refresh while filtered-wide selection remains active.
-    // Publish that event-derived count into React instead of reading the API ref during render.
-    if (isFilteredSelectAllActive) setFilteredSelectionTotal(api.getDisplayedRowCount());
-    restoreTrackedEdits(api);
-  }, [isFilteredSelectAllActive, restoreTrackedEdits, syncSelectionAfterRowsChange]);
+    if (api) restoreTrackedEdits(api);
+  }, [restoreTrackedEdits, syncSelectionAfterRowsChange]);
 
   const handleSelectionChanged = useCallback(
     (event: SelectionChangedEvent<Transaction>) => {
@@ -305,7 +299,6 @@ export function TransactionsSsrmGrid({
 
   const handleFilterChanged = useCallback(() => {
     clearLoadError();
-    setFilteredSelectionTotal(0);
     resetFilterDependentSelection();
   }, [clearLoadError, resetFilterDependentSelection]);
 
@@ -366,13 +359,25 @@ export function TransactionsSsrmGrid({
       />
 
       {editActionError ? (
-        <Typography variant="body2" color="warning.main">{editActionError}</Typography>
+        <Typography variant="body2" color="warning.main">
+          {editActionError}
+        </Typography>
       ) : null}
 
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
-        <Button variant="outlined" size="small" onClick={selectCurrentPage}>Select current page</Button>
-        <Button variant="outlined" size="small" onClick={handleSelectAllFiltered}>Select all filtered</Button>
-        <Button variant="outlined" size="small" onClick={clearSelection}>Clear selection</Button>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={1}
+        alignItems={{ xs: 'stretch', sm: 'center' }}
+      >
+        <Button variant="outlined" size="small" onClick={selectCurrentPage}>
+          Select current page
+        </Button>
+        <Button variant="outlined" size="small" onClick={selectAllFiltered}>
+          Select all filtered
+        </Button>
+        <Button variant="outlined" size="small" onClick={clearSelection}>
+          Clear selection
+        </Button>
       </Stack>
 
       <Typography variant="caption" color="text.secondary">
@@ -402,7 +407,11 @@ export function TransactionsSsrmGrid({
           activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={loadError ? { message: loadError, onRetry: retryLoad } : undefined}
           onGridReady={handleGridReady}
-          onGridPreDestroyed={() => { gridApi.current = null; }}
+          // The concrete root owns the GridApi ref. Clearing it before AG Grid destroys the instance
+          // prevents later React callbacks from accidentally reaching a destroyed Enterprise API.
+          onGridPreDestroyed={() => {
+            gridApi.current = null;
+          }}
           onModelUpdated={handleModelUpdated}
           onRowSelected={onRowSelected}
           onSelectionChanged={handleSelectionChanged}
