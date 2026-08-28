@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-CLIENT | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-COUNT-SELECTED | GRIDCAP-ROW-ELIGIBILITY
 import { useCallback, useMemo, useState } from 'react';
 import type { RefObject } from 'react';
 import type { GridApi, IsRowSelectable, SelectionChangedEvent } from 'ag-grid-community';
@@ -80,6 +81,7 @@ export function useClientSideSelectionController<TData>({
     [getRowId, onSelectionChange],
   );
 
+  // GRIDCAP-SEL-FILTERED
   const onFilterChanged = useCallback(() => {
     if (scope !== 'filtered') return;
 
@@ -93,6 +95,7 @@ export function useClientSideSelectionController<TData>({
     setSelectedRowCount(0);
   }, [gridApi, scope]);
 
+  // GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-ROW-ELIGIBILITY
   const rowSelection = useMemo(
     () => ({
       mode: 'multiRow' as const,
