@@ -14,6 +14,16 @@ import { mapTransactionFilterModel } from './transactionRequest.mapper';
 
 export type TransactionExcludeScope = GridSelectionExcludeScope;
 
+/**
+ * Frontend-only post-success selection policy chosen by each business action.
+ *
+ * This never belongs in the backend request: selection answers WHICH rows the action targeted, while
+ * this policy answers what the UI should do with checkbox state after that action succeeds. Keeping the
+ * policy explicit per action avoids a hidden shared-grid default as more Transaction/Payables/etc.
+ * actions are added.
+ */
+export type SelectionAfterSuccessPolicy = 'clear' | 'preserve';
+
 /** Transactions exposes the shared empty-selection rule without creating a second implementation. */
 export const hasTransactionSelection = hasGridSelection;
 
