@@ -18,10 +18,10 @@ interface UseInfiniteRowLoadingOptions<TData> {
 /**
  * Reusable Infinite Row Model loading lifecycle.
  *
- * Besides datasource identity/error/retry mechanics, this hook exposes the complete unfiltered count
- * returned by the NORMAL page request. That avoids a second count-only request for All Records
- * selection. The current filtered/query count still belongs to AG Grid's accepted row model and is
- * read there by the selection controller, avoiding stale overlapping-request races.
+ * The normal API response already contains the two dataset-wide counts needed by selection UI:
+ * `totalCount` for All Records and `filteredCount` for All Filtered. The datasource marks whether a
+ * response belongs to the latest started request so an older response cannot overwrite newer count
+ * metadata, regardless of whether the user paged forward or backward.
  */
 export function useInfiniteRowLoading<TData>({
   gridApi,
@@ -30,27 +30,28 @@ export function useInfiniteRowLoading<TData>({
 }: UseInfiniteRowLoadingOptions<TData>) {
   const [error, setError] = useState<string>();
   const [totalCount, setTotalCount] = useState(0);
-
-  const loadRowsWithRecovery = useCallback<GridRowsLoader<TData>>(
-    async (request, context) => {
-      const result = await loadRows(request, context);
-
-      // `totalCount` is independent of the current filter, so any successful normal page response
-      // can safely publish it even when multiple row requests overlap.
-      setTotalCount(result.totalCount);
-      setError(undefined);
-      return result;
-    },
-    [loadRows],
-  );
+  const [filteredCount, setFilteredCount] = useState(0);
 
   const datasource = useMemo(
     () =>
       createInfiniteDatasource<TData>({
-        loadRows: loadRowsWithRecovery,
+        loadRows,
+        onFilterChanged: () => {
+          // The old filtered universe stops being authoritative as soon as a new filter request starts.
+          setFilteredCount(0);
+        },
+        onLoadSuccess: (result, _request, { isLatestRequest }) => {
+          if (!isLatestRequest) return;
+
+          // Both displayed dataset-wide counts come from one accepted normal API response. This keeps
+          // Infinite aligned with SSRM and avoids a separate count endpoint or AG Grid-derived count.
+          setTotalCount(result.totalCount);
+          setFilteredCount(result.filteredCount);
+          setError(undefined);
+        },
         onError: () => setError(errorMessage),
       }),
-    [errorMessage, loadRowsWithRecovery],
+    [errorMessage, loadRows],
   );
 
   const retry = useCallback(() => {
@@ -66,6 +67,7 @@ export function useInfiniteRowLoading<TData>({
     datasource,
     error,
     totalCount,
+    filteredCount,
     retry,
     clearError,
   };
