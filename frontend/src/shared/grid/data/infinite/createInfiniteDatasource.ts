@@ -1,5 +1,15 @@
 import type { IDatasource, IGetRowsParams } from 'ag-grid-community';
-import type { GridLoadErrorHandler, GridRowsLoader } from '../gridData.types';
+import type {
+  FlatGridBlockRequest,
+  GridBlockResult,
+  GridLoadErrorHandler,
+  GridRowsLoader,
+} from '../gridData.types';
+
+interface InfiniteLoadSuccessMeta {
+  /** True only for the most recently started request in this datasource instance. */
+  isLatestRequest: boolean;
+}
 
 /**
  * Dependencies required to build an AG Grid Infinite Row Model datasource.
@@ -9,88 +19,86 @@ import type { GridLoadErrorHandler, GridRowsLoader } from '../gridData.types';
  * endpoints, Django, Databricks, or feature-specific request mapping.
  */
 interface CreateInfiniteDatasourceOptions<TData> {
-  /**
-   * Application-owned function that loads one block of rows.
-   *
-   * Keeping the actual data-loading function outside this adapter prevents AG Grid-specific APIs from
-   * leaking into feature/API code. The feature decides how start/end row, sort and filter models map
-   * into its backend contract.
-   */
+  /** Application-owned function that loads one range of rows. */
   loadRows: GridRowsLoader<TData>;
 
-  /**
-   * Optional application-level error handler.
-   *
-   * AG Grid still receives `failCallback()` for a real failure. This callback lets the application
-   * additionally display/log the error without coupling presentation concerns to the datasource.
-   */
+  /** Optional application-level error handler in addition to AG Grid's `failCallback()`. */
   onError?: GridLoadErrorHandler;
+
+  /** Called when the request stream moves to a different filter universe. */
+  onFilterChanged?: () => void;
+
+  /**
+   * Publishes successful API metadata without making the React hook inspect AG Grid internals.
+   *
+   * `isLatestRequest` is intentionally about request start order, not page number. If the user moves
+   * 1 -> 2 -> 3 or 3 -> 2 -> 1, the last request they caused is the only one allowed to replace the
+   * displayed count metadata when older requests finish later.
+   */
+  onLoadSuccess?: (
+    result: GridBlockResult<TData>,
+    request: FlatGridBlockRequest,
+    meta: InfiniteLoadSuccessMeta,
+  ) => void;
 }
 
 /**
  * Creates the datasource consumed by AG Grid's Infinite Row Model.
  *
- * AG Grid does not receive the complete dataset up front. As scrolling/pagination needs another
- * block, it calls `getRows(params)` with a half-open range such as 0..100 (rows 0 through 99).
- *
- * This adapter owns four row-model responsibilities:
- * 1. translate AG Grid's block request into our generic loading request;
- * 2. forward server-side sort/filter metadata to the feature loader;
- * 3. report success/failure back through AG Grid's datasource callbacks;
- * 4. abort unfinished requests when AG Grid destroys/replaces this datasource.
- *
  * COUNT OWNERSHIP
  * ---------------
- * The generic loader now returns two different counts:
+ * The normal API response contains:
  * - `totalCount`: complete dataset size before filters;
  * - `filteredCount`: current query result size.
  *
- * AG Grid MUST receive `filteredCount`, because its visible pagination/cache represents the current
- * query. Passing `totalCount` while a filter is active would make the grid believe rows exist beyond
- * the filtered result. `totalCount` remains application metadata consumed elsewhere (for example,
- * Infinite All Records selection) and is intentionally not interpreted by this adapter.
+ * AG Grid receives `filteredCount` as the current Infinite row-model size. The application receives the
+ * same successful response through `onLoadSuccess` so All Records / All Filtered selection totals can
+ * use API `totalCount` / `filteredCount` directly. We do not make a second count-only request.
  */
 export function createInfiniteDatasource<TData>({
   loadRows,
   onError,
+  onFilterChanged,
+  onLoadSuccess,
 }: CreateInfiniteDatasourceOptions<TData>): IDatasource {
-  /**
-   * Every `getRows` call may be in flight independently. A shared AbortController would be incorrect:
-   * cancelling one block could cancel unrelated blocks. Tracking each request lets `destroy()` abort
-   * exactly the work that belongs to this datasource instance.
-   */
   const activeRequests = new Set<AbortController>();
+  let activeFilterKey: string | undefined;
+  let latestRequestSequence = 0;
 
   return {
-    /** Called whenever Infinite Row Model needs another block of rows. */
+    /** Called whenever Infinite Row Model needs another range of rows. */
     async getRows(params: IGetRowsParams) {
       const controller = new AbortController();
       activeRequests.add(controller);
 
+      const request: FlatGridBlockRequest = {
+        startRow: params.startRow,
+        endRow: params.endRow,
+        sortModel: params.sortModel,
+        filterModel: params.filterModel ?? {},
+      };
+      const filterKey = JSON.stringify(request.filterModel);
+      const requestSequence = ++latestRequestSequence;
+
+      if (activeFilterKey !== filterKey) {
+        activeFilterKey = filterKey;
+        onFilterChanged?.();
+      }
+
       try {
-        const result = await loadRows(
-          {
-            /** AG Grid uses a half-open range: `endRow` is excluded. */
-            startRow: params.startRow,
-            endRow: params.endRow,
+        const result = await loadRows(request, { signal: controller.signal });
 
-            /** Backend sorting/filtering semantics remain the feature mapper's responsibility. */
-            sortModel: params.sortModel,
-            filterModel: params.filterModel,
-          },
-          { signal: controller.signal },
-        );
+        onLoadSuccess?.(result, request, {
+          // A response can be correct for its own page/filter and still be stale for UI metadata.
+          // Request sequence, not row/page number, decides which completed call may publish counts.
+          isLatestRequest: requestSequence === latestRequestSequence,
+        });
 
-        /**
-         * Resolving `loadRows` alone does not update AG Grid; its callback must be invoked. The second
-         * argument is the size of the CURRENT query, so use `filteredCount`, not the all-record total.
-         */
+        // AG Grid sizes THIS request's query with the backend filtered total. Its own datasource lifecycle
+        // decides whether an older response still belongs to the current row model.
         params.successCallback(result.rows, result.filteredCount);
       } catch (error) {
-        /**
-         * `destroy()` intentionally aborts old requests. Those aborts are lifecycle cleanup, not user-
-         * visible load failures, so only genuine non-aborted errors are reported to the app/grid.
-         */
+        // Datasource destruction intentionally aborts old work; only genuine failures reach the UI/grid.
         if (!controller.signal.aborted) {
           onError?.(error);
           params.failCallback();
@@ -100,10 +108,6 @@ export function createInfiniteDatasource<TData>({
       }
     },
 
-    /**
-     * AG Grid calls this when the datasource is replaced/destroyed. Cancelling outstanding requests
-     * prevents stale async work from reporting into a grid that has moved to another datasource/query.
-     */
     destroy() {
       activeRequests.forEach((controller) => controller.abort());
       activeRequests.clear();
