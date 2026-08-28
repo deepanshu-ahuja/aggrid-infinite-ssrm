@@ -1,3 +1,4 @@
+// GRIDCAP-SETUP-MODULES | GRIDCAP-SETUP-ENTERPRISE | GRIDCAP-ROWMODEL-CLIENT | GRIDCAP-ROWMODEL-INFINITE | GRIDCAP-ROWMODEL-SSRM
 import { AllCommunityModule, enableDevValidations, type Module } from 'ag-grid-community';
 import { ServerSideRowModelApiModule, ServerSideRowModelModule } from 'ag-grid-enterprise';
 
