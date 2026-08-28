@@ -1,3 +1,4 @@
+// GRIDCAP-QUERY-FILTER | GRIDCAP-ROWMODEL-INFINITE | GRIDCAP-ROWMODEL-SSRM
 import type { IDateFilterParams, INumberFilterParams, ITextFilterParams } from 'ag-grid-community';
 
 /**
