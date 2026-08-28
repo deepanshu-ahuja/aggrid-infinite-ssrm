@@ -80,4 +80,75 @@ describe('grid datasources', () => {
       { signal: expect.any(AbortSignal) },
     );
   });
+
+  it('marks a late response from an older SSRM filter as stale for count metadata', async () => {
+    type ResolveRows = (result: {
+      rows: Row[];
+      totalCount: number;
+      filteredCount: number;
+    }) => void;
+
+    let resolveOldFilter: ResolveRows | undefined;
+    let resolveNewFilter: ResolveRows | undefined;
+
+    const loadRows = vi.fn((request) =>
+      new Promise<{
+        rows: Row[];
+        totalCount: number;
+        filteredCount: number;
+      }>((resolve) => {
+        const filterModel = request.filterModel as { status?: { filter?: string } };
+        if (filterModel.status?.filter === 'Old') resolveOldFilter = resolve;
+        else resolveNewFilter = resolve;
+      }),
+    );
+    const onFilterChanged = vi.fn();
+    const onLoadSuccess = vi.fn();
+    const datasource = createServerSideDatasource<Row>({
+      loadRows,
+      onFilterChanged,
+      onLoadSuccess,
+    });
+
+    const makeParams = (filter: string) =>
+      ({
+        request: {
+          startRow: 0,
+          endRow: 50,
+          sortModel: [],
+          filterModel: { status: { filterType: 'text', type: 'equals', filter } },
+          rowGroupCols: [],
+          valueCols: [],
+          pivotCols: [],
+          pivotMode: false,
+          groupKeys: [],
+        },
+        success: vi.fn(),
+        fail: vi.fn(),
+      }) as unknown as IServerSideGetRowsParams<Row>;
+
+    datasource.getRows(makeParams('Old'));
+    datasource.getRows(makeParams('New'));
+
+    // The newer filter completes first and is the only response allowed to publish current-filter
+    // metadata. The older request may still finish later, but its count must be marked stale.
+    resolveNewFilter?.({ rows: [{ id: 'new' }], totalCount: 900, filteredCount: 25 });
+    await vi.waitFor(() =>
+      expect(onLoadSuccess).toHaveBeenCalledWith(
+        expect.objectContaining({ filteredCount: 25 }),
+        expect.any(Object),
+        { isLatestFilter: true },
+      ),
+    );
+
+    resolveOldFilter?.({ rows: [{ id: 'old' }], totalCount: 900, filteredCount: 400 });
+    await vi.waitFor(() => expect(onLoadSuccess).toHaveBeenCalledTimes(2));
+
+    expect(onLoadSuccess).toHaveBeenLastCalledWith(
+      expect.objectContaining({ filteredCount: 400 }),
+      expect.any(Object),
+      { isLatestFilter: false },
+    );
+    expect(onFilterChanged).toHaveBeenCalledTimes(2);
+  });
 });
