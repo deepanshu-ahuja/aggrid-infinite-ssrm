@@ -52,6 +52,7 @@ import {
   buildTransactionSelectionActionRequest,
   buildTransactionSelectionTarget,
   hasTransactionSelection,
+  type SelectionAfterSuccessPolicy,
 } from './transactionSelectionAction';
 import { useTransactionEditPersistence } from './useTransactionEditPersistence';
 import { useTransactionExport } from './useTransactionExport';
@@ -143,6 +144,17 @@ export function TransactionsSsrmGrid({
     gridApi.current?.refreshServerSide();
   }, []);
 
+  const handleSelectionActionApplied = useCallback(
+    (selectionAfterSuccess: SelectionAfterSuccessPolicy) => {
+      // GRIDCAP-ACTION-SELECTED | GRIDCAP-LIFECYCLE-REFRESH
+      // SSRM selection can be native or custom filtered-wide state. The controller knows which owner
+      // is active, so the feature action only chooses the clear/preserve policy after backend success.
+      if (selectionAfterSuccess === 'clear') clearSelection();
+      handlePersistedRows();
+    },
+    [clearSelection, handlePersistedRows],
+  );
+
   const { saveRow, saveBulk, isSaving, saveError } = useTransactionEditPersistence({
     updates: payload.updates,
     acknowledgeChanges,
@@ -153,7 +165,7 @@ export function TransactionsSsrmGrid({
     applySelectionAction,
     isApplyingSelectionAction,
     selectionActionError,
-  } = useTransactionSelectionAction({ onApplied: handlePersistedRows });
+  } = useTransactionSelectionAction({ onApplied: handleSelectionActionApplied });
 
   const {
     error: exportError,
@@ -212,7 +224,7 @@ export function TransactionsSsrmGrid({
   }, [conflictTarget, discardRows, readSelectionIntent, state]);
 
   const handleSetSelectedStatus = useCallback(
-    (status: TransactionStatus) => {
+    (status: TransactionStatus, selectionAfterSuccess: SelectionAfterSuccessPolicy) => {
       const api = gridApi.current;
       if (!api) return;
       const currentSelection = readSelectionIntent();
@@ -230,6 +242,7 @@ export function TransactionsSsrmGrid({
           api.getFilterModel(),
           { status },
         ),
+        selectionAfterSuccess,
       );
     },
     [applySelectionAction, isFilteredSelectAllActive, readSelectionIntent, state],
