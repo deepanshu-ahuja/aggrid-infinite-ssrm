@@ -5,9 +5,10 @@ import type { GridApi, IRowNode } from 'ag-grid-community';
  *
  * WHY THIS IS SHARED
  * ------------------
- * Infinite, SSRM and feature-level editing all need the same page boundary. If each caller calculates
- * page indexes separately, one implementation can easily confuse a user-visible page with a server
- * cache block. Those are different things.
+ * Client-Side, Infinite, SSRM and feature-level editing all need the same user-facing page boundary.
+ * If each caller calculates page indexes separately, a server-backed implementation can easily confuse
+ * a user-visible page with a server cache block. Those are different things, while Client-Side has no
+ * server cache block at all.
  *
  * IMPORTANT AG GRID DETAIL
  * ------------------------
@@ -15,9 +16,9 @@ import type { GridApi, IRowNode } from 'ag-grid-community';
  * `paginationGetPageSize()` is the visible page size, not Infinite/SSRM `cacheBlockSize`.
  *
  * Server-backed row models can temporarily expose a page before every row on that page has finished
- * loading. In that case `getDisplayedRowAtIndex()` may return an empty/stub node. We return
- * `undefined` instead of a partial list so callers never silently edit/select only the rows that
- * happened to arrive first.
+ * loading. Client-Side normally has concrete row data immediately after its collection load, but the
+ * same all-or-nothing contract keeps every Current Page caller consistent. If an expected RowNode has
+ * no data, return `undefined` instead of a partial list.
  */
 export function getCurrentPageNodes<TData>(api: GridApi<TData>): IRowNode<TData>[] | undefined {
   // These values come directly from AG Grid's pagination model. We intentionally do not keep a
@@ -32,12 +33,12 @@ export function getCurrentPageNodes<TData>(api: GridApi<TData>): IRowNode<TData>
   const nodes: IRowNode<TData>[] = [];
 
   for (let rowIndex = startIndex; rowIndex < endIndex; rowIndex += 1) {
-    // `getDisplayedRowAtIndex` is the correct API here because pagination is based on AG Grid's
-    // displayed row model after its current sort/filter/server response has been accepted.
+    // `getDisplayedRowAtIndex` is the correct API here because pagination follows AG Grid's displayed
+    // row model after the current sort/filter/data-loading result has been accepted.
     const node = api.getDisplayedRowAtIndex(rowIndex);
 
-    // Never return a half-loaded page. A Current Page action must be all-or-nothing for the visible
-    // page boundary; otherwise a user can click once and unknowingly affect only some loaded rows.
+    // Never return a half-resolved page. A Current Page action must be all-or-nothing for the visible
+    // page boundary; otherwise a user can click once and unknowingly affect only some available rows.
     if (!node?.data) return undefined;
 
     nodes.push(node);
