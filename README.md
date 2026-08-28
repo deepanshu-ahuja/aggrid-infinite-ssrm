@@ -68,14 +68,14 @@ Read [AGENTS.md](AGENTS.md) **first**. It is the repository-owned project handof
 
 `AGENTS.md` is intentionally maintained in the repository so continuation does not depend on access to an earlier ChatGPT/Codex conversation. When architecture, capability contracts, workflow rules, discoverability rules, or roadmap sequencing change, review and update that file in the same work.
 
-When you want to extract or change one grid capability, use the [Grid capability tag registry](docs/grid-capability-tags.md). Find the relevant `GRIDCAP-*` tag there, read its row-model/ownership notes, then search the exact marker across source and focused tests so hidden integration points are not missed.
+When you want to extract or change one grid capability, use the [Grid capability tag registry](docs/grid-capability-tags.md). Find the relevant `GRIDCAP-*` tag there, read its row-model/ownership notes, then search the exact marker across frontend source and focused frontend tests so hidden integration points are not missed. Backend contracts remain documented/tested normally but are intentionally not decorated with `GRIDCAP-*` comments.
 
 ## Project documentation
 
 Start with these grid-foundation entry points:
 
 - [Project handoff / working contract](AGENTS.md) — read first when starting a new developer or coding-agent session; points to the live sources of truth and records durable project rules.
-- [Grid capability tag registry](docs/grid-capability-tags.md) — authoritative list of searchable `GRIDCAP-*` markers for locating complete capability footprints across Client, Infinite, SSRM, frontend, backend and tests.
+- [Grid capability tag registry](docs/grid-capability-tags.md) — authoritative list of searchable frontend `GRIDCAP-*` markers for locating capability footprints across Client, Infinite and SSRM implementations and focused frontend tests.
 - [Grid foundation backlog](docs/grid-backlog.md) — the single living TODO/control list for unfinished capabilities, risks, verification work, and deferred decisions.
 - [Grid capability catalog](docs/grid-capabilities.md) — what the current grid foundation can do logically, independent of one UI flow.
 - [Client-Side Row Model foundation](docs/client-side-grid.md) — Client data ownership, capability matrix, native selection/filtering/export, editing reconciliation, limitations, and manual verification.
