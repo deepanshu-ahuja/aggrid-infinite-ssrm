@@ -7,6 +7,12 @@ interface Row {
   id: string;
 }
 
+type ResolveRows = (result: {
+  rows: Row[];
+  totalCount: number;
+  filteredCount: number;
+}) => void;
+
 describe('grid datasources', () => {
   it('adapts Infinite Row Model callbacks to the shared row loader', async () => {
     const loadRows = vi.fn().mockResolvedValue({
@@ -81,13 +87,112 @@ describe('grid datasources', () => {
     );
   });
 
-  it('marks a late response from an older SSRM filter as stale for count metadata', async () => {
-    type ResolveRows = (result: {
-      rows: Row[];
-      totalCount: number;
-      filteredCount: number;
-    }) => void;
+  it('Infinite keeps count metadata from the latest request when paging backward', async () => {
+    let resolveLaterPage: ResolveRows | undefined;
+    let resolveEarlierPage: ResolveRows | undefined;
 
+    const loadRows = vi.fn((request) =>
+      new Promise<{
+        rows: Row[];
+        totalCount: number;
+        filteredCount: number;
+      }>((resolve) => {
+        if (request.startRow === 100) resolveLaterPage = resolve;
+        else resolveEarlierPage = resolve;
+      }),
+    );
+    const onLoadSuccess = vi.fn();
+    const datasource = createInfiniteDatasource<Row>({ loadRows, onLoadSuccess });
+
+    const makeParams = (startRow: number) =>
+      ({
+        startRow,
+        endRow: startRow + 50,
+        sortModel: [],
+        filterModel: { status: { filterType: 'text', type: 'equals', filter: 'Pending' } },
+        successCallback: vi.fn(),
+        failCallback: vi.fn(),
+      }) as unknown as IGetRowsParams;
+
+    // User is on a later page, then moves backward. Page number is irrelevant: the second request is
+    // the current one and therefore owns renderable total/filtered metadata.
+    datasource.getRows(makeParams(100));
+    datasource.getRows(makeParams(0));
+
+    resolveEarlierPage?.({ rows: [{ id: 'current' }], totalCount: 750, filteredCount: 120 });
+    await vi.waitFor(() =>
+      expect(onLoadSuccess).toHaveBeenCalledWith(
+        expect.objectContaining({ filteredCount: 120 }),
+        expect.objectContaining({ startRow: 0 }),
+        { isLatestRequest: true },
+      ),
+    );
+
+    resolveLaterPage?.({ rows: [{ id: 'old' }], totalCount: 700, filteredCount: 90 });
+    await vi.waitFor(() => expect(onLoadSuccess).toHaveBeenCalledTimes(2));
+    expect(onLoadSuccess).toHaveBeenLastCalledWith(
+      expect.objectContaining({ filteredCount: 90 }),
+      expect.objectContaining({ startRow: 100 }),
+      { isLatestRequest: false },
+    );
+  });
+
+  it('SSRM keeps count metadata from the latest request when paging forward', async () => {
+    let resolveEarlierPage: ResolveRows | undefined;
+    let resolveLaterPage: ResolveRows | undefined;
+
+    const loadRows = vi.fn((request) =>
+      new Promise<{
+        rows: Row[];
+        totalCount: number;
+        filteredCount: number;
+      }>((resolve) => {
+        if (request.startRow === 0) resolveEarlierPage = resolve;
+        else resolveLaterPage = resolve;
+      }),
+    );
+    const onLoadSuccess = vi.fn();
+    const datasource = createServerSideDatasource<Row>({ loadRows, onLoadSuccess });
+
+    const makeParams = (startRow: number) =>
+      ({
+        request: {
+          startRow,
+          endRow: startRow + 50,
+          sortModel: [],
+          filterModel: { status: { filterType: 'text', type: 'equals', filter: 'Pending' } },
+          rowGroupCols: [],
+          valueCols: [],
+          pivotCols: [],
+          pivotMode: false,
+          groupKeys: [],
+        },
+        success: vi.fn(),
+        fail: vi.fn(),
+      }) as unknown as IServerSideGetRowsParams<Row>;
+
+    datasource.getRows(makeParams(0));
+    datasource.getRows(makeParams(100));
+
+    resolveLaterPage?.({ rows: [{ id: 'current' }], totalCount: 750, filteredCount: 120 });
+    await vi.waitFor(() =>
+      expect(onLoadSuccess).toHaveBeenCalledWith(
+        expect.objectContaining({ filteredCount: 120 }),
+        expect.objectContaining({ startRow: 100 }),
+        { isLatestRequest: true },
+      ),
+    );
+
+    resolveEarlierPage?.({ rows: [{ id: 'old' }], totalCount: 700, filteredCount: 90 });
+    await vi.waitFor(() => expect(onLoadSuccess).toHaveBeenCalledTimes(2));
+    expect(onLoadSuccess).toHaveBeenLastCalledWith(
+      expect.objectContaining({ filteredCount: 90 }),
+      expect.objectContaining({ startRow: 0 }),
+      { isLatestRequest: false },
+    );
+  });
+
+  it('marks a late response from an older SSRM filter as stale for count metadata', async () => {
     let resolveOldFilter: ResolveRows | undefined;
     let resolveNewFilter: ResolveRows | undefined;
 
@@ -130,14 +235,12 @@ describe('grid datasources', () => {
     datasource.getRows(makeParams('Old'));
     datasource.getRows(makeParams('New'));
 
-    // The newer filter completes first and is the only response allowed to publish current-filter
-    // metadata. The older request may still finish later, but its count must be marked stale.
     resolveNewFilter?.({ rows: [{ id: 'new' }], totalCount: 900, filteredCount: 25 });
     await vi.waitFor(() =>
       expect(onLoadSuccess).toHaveBeenCalledWith(
         expect.objectContaining({ filteredCount: 25 }),
         expect.any(Object),
-        { isLatestFilter: true },
+        { isLatestRequest: true },
       ),
     );
 
@@ -147,7 +250,7 @@ describe('grid datasources', () => {
     expect(onLoadSuccess).toHaveBeenLastCalledWith(
       expect.objectContaining({ filteredCount: 400 }),
       expect.any(Object),
-      { isLatestFilter: false },
+      { isLatestRequest: false },
     );
     expect(onFilterChanged).toHaveBeenCalledTimes(2);
   });
