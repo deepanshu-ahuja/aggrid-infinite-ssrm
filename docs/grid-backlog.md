@@ -37,9 +37,9 @@ When something is fully implemented and verified, remove it from Active backlog,
    - do NOT force the three row models through identical implementation
 
 4. Product-driven work continues when needed
-   - import
    - richer validation/permissions
    - concurrency
+   - import
    - advanced SSRM
    - named views/mass editing/create-delete/etc.
 ```
@@ -168,7 +168,7 @@ Assume Client Grid A/B/C/D have different columns, rows, endpoints and business 
 
 Feature owns domain data, columns, validation/business rules, actions, formatting and restriction reasons. Shared Client-Side code owns only repeated Client-Side mechanics. AG Grid owns native behavior whenever possible.
 
-The first Transactions implementation establishes shared Client-Side mechanics for pagination defaults, selection and local selected export without creating a universal grid wrapper. A second real Client table should validate whether any additional extraction is actually justified.
+The current foundation is intentionally shaped so additional real tables can compose the existing row-model mechanics without introducing one universal grid wrapper. A second real Client table should validate whether any **additional** extraction is actually justified; it is not a prerequisite for treating multi-table reuse as a foundation goal.
 
 Do not create a universal `AgGridReact` wrapper or giant `useGrid()` just to remove a few repeated props.
 
@@ -216,20 +216,17 @@ When a frontend capability footprint changes, review the registry and current fr
 
 ## D. Core/product decisions that do not block current implementation unless a real defect requires them
 
-### D1. Post-business-action selection behavior
-**Status:** DESIGN
-
-Decide whether successful actions preserve selection, clear selection, or let each action choose. This is a feature/action decision, not a hidden shared-grid default.
-
 ### D2. Field validation + backend validation errors
 **Status:** DESIGN
 
 Design domain-neutral mechanics for invalid local values, field errors, Save guards, backend error mapping, preserving rejected LOCAL input, validation + conflict coexistence, and clearing errors on correction/revert. Business rules/messages stay feature/backend-owned.
 
-### D3. Application-level unsaved-draft lifetime
-**Status:** DESIGN
+The exact metadata/rule-key contract is intentionally still open for discussion; do not lock in a verbose rule-array or another schema until that design discussion is resumed.
 
-Decide behavior across route change, grid destroy/remount, browser refresh, and leaving/returning to the feature. Cache/RowNode persistence is not the same as application/session persistence.
+### D3. Application-level unsaved-draft lifetime
+**Status:** DEFERRED / hold until a real product need
+
+Do not add application/session draft persistence now. Revisit only if a future product requires unsaved edits to survive route changes, grid destroy/remount, browser refresh, or leaving/returning to the feature. Cache/RowNode persistence is not the same as application/session persistence.
 
 ### D4. Backend optimistic concurrency / stale-write protection
 **Status:** DESIGN / DEFERRED until multi-user contract discussion
@@ -281,9 +278,12 @@ Client-Side A/B/C/D reuse is a related proof: shared Client-Side plumbing must n
 - clipboard / range / fill-handle / mass editing;
 - row create/delete.
 
-Each requires explicit product semantics before implementation.
+Each requires explicit product semantics before implementation. Grouping/tree/aggregation/pivot are explicitly on hold for now rather than part of the near-term foundation sequence.
 
 # Completed history
+
+## 2026-08 — Post-business-action selection policy
+Selected business actions now make an explicit frontend choice between `clear` and `preserve` after success. The policy is feature/action-owned and is never serialized to the backend. Current Transaction status mutations choose `clear`; non-mutating export remains separate and preserves selection. Client, Infinite and SSRM each clear through their own native/custom selection owner, and failures leave selection intact.
 
 ## 2026-08 — Row eligibility / selectability
 Implemented `enabled / selectionDisabled / readOnly`, native loaded-row guards, backend eligibility for unloaded actions, and consistent editing/action behavior. See `docs/row-interaction.md`.

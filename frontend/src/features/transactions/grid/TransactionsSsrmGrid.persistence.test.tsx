@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-SSRM | GRIDCAP-ACTION-SELECTED
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -62,6 +63,7 @@ function createApi(
       selectAll: false,
       toggledNodes: selectedIds,
     })),
+    setServerSideSelectionState: vi.fn(),
     getFilterModel: vi.fn(() => ({})),
     setGridOption: vi.fn(),
     refreshServerSide: vi.fn(),
@@ -107,7 +109,7 @@ describe('TransactionsSsrmGrid edit persistence', () => {
     });
   });
 
-  it('updates native explicit selection through the action bar and refreshes SSRM', async () => {
+  it('updates native explicit selection through the action bar, clears it after success, and refreshes SSRM', async () => {
     const api = createApi(['txn-a', 'txn-b']);
     transactionApi.updateTransactionsBySelection.mockResolvedValue({ updatedCount: 2 });
 
@@ -126,6 +128,10 @@ describe('TransactionsSsrmGrid edit persistence', () => {
           ids: ['txn-a', 'txn-b'],
         },
         changes: { status: 'Failed' },
+      });
+      expect(api.setServerSideSelectionState).toHaveBeenCalledWith({
+        selectAll: false,
+        toggledNodes: [],
       });
       expect(api.refreshServerSide).toHaveBeenCalledTimes(1);
     });

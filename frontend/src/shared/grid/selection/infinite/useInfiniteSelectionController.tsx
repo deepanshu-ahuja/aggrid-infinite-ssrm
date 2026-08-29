@@ -84,6 +84,7 @@ export function useInfiniteSelectionController<TData>({
     headerState,
     headerLabel,
     setHeaderSelected,
+    clearSelection: clearDatasetSelection,
     onFilterChanged: resetDatasetSelectionForFilter,
   } = useDatasetSelection({
     // `useDatasetSelection` itself only needs to distinguish "all" from "filtered". Page mode never
@@ -276,10 +277,27 @@ export function useInfiniteSelectionController<TData>({
     }
   }, [resetDatasetSelectionForFilter, scope]);
 
+  // GRIDCAP-ACTION-SELECTED
+  const clearSelection = useCallback(() => {
+    if (scope === 'page') {
+      // Page/manual selection is native AG Grid state. Clear it natively and update the small React
+      // derivative immediately so the action bar does not temporarily retain the old selected count.
+      gridApi.current?.deselectAll();
+      setPageSelectedCount(0);
+      onSelectionChange?.({ mode: 'include', ids: [] });
+      return;
+    }
+
+    // Filtered/all modes are application-owned only because Infinite cannot represent unloaded rows.
+    // Clear that compact intent; the existing effect reconciles currently loaded RowNodes/header UI.
+    clearDatasetSelection();
+  }, [clearDatasetSelection, gridApi, onSelectionChange, scope]);
+
   return {
     selectionColumnDef,
     readSelectionIntent,
     selectedRowCount,
+    clearSelection,
     onRowsChanged,
     onRowSelected,
     onSelectionChanged,

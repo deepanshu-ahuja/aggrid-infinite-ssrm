@@ -1,3 +1,4 @@
+// GRIDCAP-ROWMODEL-CLIENT | GRIDCAP-ACTION-SELECTED | GRIDCAP-EXPORT-SELECTED
 import type { ReactElement } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -143,7 +144,7 @@ describe('TransactionsClientGrid production wiring', () => {
     ).toBe(false);
   });
 
-  it('exports selected Client rows locally across pagination pages', async () => {
+  it('exports selected Client rows locally across pagination pages without clearing selection', async () => {
     const selectedRows = [createTransaction('txn-a'), createTransaction('txn-b')];
     const api = createApi(selectedRows);
 
@@ -162,10 +163,11 @@ describe('TransactionsClientGrid production wiring', () => {
       onlySelected: true,
       onlySelectedAllPages: true,
     });
+    expect(api.deselectAll).not.toHaveBeenCalled();
     expect(transactionApi.exportTransactionsBySelection).not.toHaveBeenCalled();
   });
 
-  it('sends selected Client rows as explicit backend IDs and refetches authoritative rowData', async () => {
+  it('sends selected Client rows as explicit backend IDs, clears selection after success, and refetches authoritative rowData', async () => {
     const selectedRows = [createTransaction('txn-a'), createTransaction('txn-b')];
     const api = createApi(selectedRows);
     transactionApi.updateTransactionsBySelection.mockResolvedValue({ updatedCount: 2 });
@@ -185,6 +187,7 @@ describe('TransactionsClientGrid production wiring', () => {
         selection: { mode: 'include', ids: ['txn-a', 'txn-b'] },
         changes: { status: 'Failed' },
       });
+      expect(api.deselectAll).toHaveBeenCalledTimes(1);
     });
 
     await waitFor(() => expect(transactionApi.listAllTransactions).toHaveBeenCalledTimes(2));
