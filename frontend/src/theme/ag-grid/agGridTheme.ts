@@ -10,12 +10,11 @@ export const appAgGridTheme = themeQuartz.withParams({
   foregroundColor: tokens.colors.textPrimary,
   headerBackgroundColor: tokens.colors.background,
   borderColor: tokens.colors.border,
-  // An indeterminate checkbox means an ACTIVE partial selection, not a disabled control. Quartz's
-  // neutral default is too close to our disabled-row treatment, so keep the box/border on the same
-  // primary-blue visual language as a checked checkbox and render the dash with surface contrast.
-  checkboxIndeterminateBackgroundColor: tokens.colors.primary,
-  checkboxIndeterminateBorderColor: tokens.colors.primary,
-  checkboxIndeterminateShapeColor: tokens.colors.surface,
+  // TEMP DIAGNOSTIC: leave AG Grid's indeterminate checkbox colours at their Quartz defaults.
+  // This lets us prove whether the grey header dash comes from AG Grid or our row-restriction CSS.
+  // checkboxIndeterminateBackgroundColor: tokens.colors.primary,
+  // checkboxIndeterminateBorderColor: tokens.colors.primary,
+  // checkboxIndeterminateShapeColor: tokens.colors.surface,
   fontFamily: tokens.typography.fontFamily,
   borderRadius: tokens.radius.small,
   spacing: tokens.spacing.grid,
