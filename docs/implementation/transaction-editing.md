@@ -14,7 +14,7 @@ Shared editing behavior receives the root-owned API where it needs AG Grid opera
 
 ## Editable fields
 
-Transactions currently exposes these editable fields:
+Transactions exposes:
 
 ```text
 account
@@ -23,15 +23,62 @@ currency
 status
 ```
 
-The feature owns that field list, field access and row-editability rules.
+The feature owns the editable field list, field access, row-editability rules, validation rule selection and user-facing validation messages.
 
-Shared grid code owns how committed edits are tracked and reconciled.
+Shared grid code owns how committed edits are tracked, reconciled and coordinated with validation state.
+
+## End-to-end editing flow
+
+```text
+                         ┌───────────────────────────┐
+                         │ User / programmatic edit  │
+                         └─────────────┬─────────────┘
+                                       │
+                                       ▼
+                         ┌───────────────────────────┐
+                         │ useTrackedGridEditing     │
+                         │ records LOCAL draft       │
+                         └─────────────┬─────────────┘
+                                       │
+                       ┌───────────────┴────────────────┐
+                       │                                │
+                       ▼                                ▼
+          BASE / LOCAL / REMOTE state       Transaction validation rules
+          dirty + conflict tracking         validate effective LOCAL value
+                       │                                │
+                       └───────────────┬────────────────┘
+                                       ▼
+                            Cell / row presentation
+                                       │
+                         ┌─────────────┴─────────────┐
+                         │                           │
+                         ▼                           ▼
+                      Discard                      Save
+                         │                           │
+             restore BASE / REMOTE        guard conflict + validation
+                         │                           │
+              clear LOCAL + errors                  ▼
+                                             PATCH backend
+                                                    │
+                               ┌────────────────────┴───────────────────┐
+                               │                                        │
+                               ▼                                        ▼
+                            success                                  400 field errors
+                               │                                        │
+                      acknowledge exact value                 keep LOCAL dirty/visible
+                               │                              map errors to rowId + field
+                               ▼                                        │
+                    authoritative refresh                              ▼
+                               │                              validationState update
+                               ▼
+                 reconcile remaining LOCAL work
+```
+
+Editing, conflict state and validation state participate in one lifecycle but remain distinct state concerns.
 
 ## Durable editing state
 
 Unsaved editing state is application-owned and keyed by stable backend row ID rather than RowNode identity.
-
-The shared state stores:
 
 ```text
 changesById
@@ -44,7 +91,14 @@ conflictsById
 → latest REMOTE values for unresolved field conflicts
 ```
 
-This stable-ID state is used across all three row models because authoritative row objects can be replaced:
+Validation is stored separately:
+
+```text
+validationState[rowId][field]
+→ client or server validation errors for the effective LOCAL field value
+```
+
+This stable-ID ownership is used across all three row models because authoritative row objects can be replaced:
 
 - Client receives new editable `rowData` objects after authoritative TanStack Query data changes;
 - Infinite can recreate/evict RowNodes as cache blocks change;
@@ -56,15 +110,21 @@ AG Grid's committed `cellValueChanged` event is the boundary for recording a dir
 
 A user can edit a row without selecting it.
 
-For an ordinary non-conflicted field:
-
 ```text
 BASE value
-→ user commits a different LOCAL value
+→ user commits different LOCAL value
 → field/row becomes dirty
+→ effective LOCAL value is validated
+
+invalid LOCAL
+→ remains visible
+→ remains dirty
+→ validation error is shown
+→ editor remains available for correction
 
 LOCAL returned to BASE
 → field draft clears
+→ validation clears
 → row becomes clean when no other dirty fields remain
 ```
 
@@ -72,7 +132,7 @@ Programmatic writes performed by the editing engine are marked/guarded so AG Gri
 
 ## Current-page programmatic edit actions
 
-The editing controls can apply changes to concrete rows on the current pagination page.
+The editing controls can apply changes to concrete rows on the exact current pagination page.
 
 Implemented flows include:
 
@@ -80,13 +140,11 @@ Implemented flows include:
 - apply an explicit set of opted-in editable field/value pairs;
 - target all editable rows on the current page or editable selected rows on the current page.
 
-Current Page is a pagination scope, not a cache-block scope.
+Current Page is a pagination scope, not a cache-block scope. If the expected page is not fully resolved, the operation refuses partial application.
 
-If the expected page is not fully resolved, the operation refuses partial application rather than acting on whichever RowNodes happen to be loaded.
+Programmatic edits use the same validation callback as direct cell edits. They do not bypass validation, and invalid values are still recorded as LOCAL drafts so the user can see/correct/discard them.
 
 ## Row interaction and editing
-
-Current generic row interaction modes are:
 
 ```text
 enabled
@@ -101,15 +159,13 @@ readOnly
 → not editable
 ```
 
-Editable columns use native AG Grid `editable` callbacks.
+Editable columns use native AG Grid `editable` callbacks. Programmatic current-page editing uses the same feature-owned row-editability predicate so application code cannot bypass the read-only rule through `RowNode.setDataValue(...)`.
 
-Programmatic current-page editing uses the same feature-owned row-editability predicate so application code cannot bypass the read-only rule through `RowNode.setDataValue(...)`.
-
-If a row becomes read-only after fresh authoritative data arrives while a LOCAL draft already exists, the existing LOCAL draft can remain visible for conflict review; new editing and persistence remain guarded by current row policy.
+If a row becomes read-only after fresh authoritative data arrives while a LOCAL draft already exists, the existing LOCAL draft can remain visible for review; new editing and persistence remain governed by current row policy.
 
 ## Dirty-row count
 
-Edited count means the number of dirty rows, not dirty fields.
+Edited count means dirty rows, not dirty fields.
 
 ```text
 one row with three dirty fields
@@ -122,18 +178,31 @@ The count comes from the tracked update payload rather than visible RowNodes.
 
 A dirty row can be saved independently of checkbox selection.
 
-Flow:
+Before persistence:
+
+```text
+row has unresolved conflict
+→ Save blocked
+
+row has validation error
+→ Save blocked
+
+otherwise
+→ PATCH /api/transactions/{id}/
+```
+
+Successful flow:
 
 ```text
 tracked row changes
 → PATCH /api/transactions/{id}/
-→ backend validates the explicit patch and row policy
+→ backend validates explicit patch + row policy
 → authoritative updated row returned
-→ acknowledged tracked values clear
+→ exact submitted tracked values acknowledged
 → row-model-specific authoritative refresh/cache update
 ```
 
-A row with an unresolved conflict cannot be saved.
+A rejected 400 field validation response does not acknowledge the draft. The LOCAL value therefore stays visible and dirty while backend messages are mapped into the same stable validation state.
 
 ## Save Selected Edits
 
@@ -151,7 +220,9 @@ Therefore:
 - unselected dirty rows remain untouched;
 - touched rows are sent as explicit IDs + explicit field changes;
 - Select All does not manufacture edits for untouched/unloaded rows;
-- if the exact selected-dirty update set contains an unresolved conflict, Save Selected is blocked rather than partially omitting conflicted rows.
+- the exact selected-dirty update set is checked for conflicts and validation errors;
+- if that exact target contains either, the entire selected Save is blocked rather than silently omitting problematic rows;
+- an invalid dirty row outside the selected target does not block Save Selected.
 
 Persistence uses:
 
@@ -159,17 +230,67 @@ Persistence uses:
 PATCH /api/transactions/bulk/
 ```
 
-The backend validates the requested rows before applying the batch.
+The backend validates the requested batch before applying it. Indexed DRF field errors are mapped back to the corresponding submitted stable row IDs and fields.
+
+## Validation and conflict are separate
+
+```text
+validation
+→ is the effective LOCAL value acceptable?
+
+conflict
+→ did REMOTE diverge from BASE while LOCAL exists?
+```
+
+A field can therefore be:
+
+```text
+valid + no conflict
+invalid + no conflict
+valid + conflict
+invalid + conflict
+```
+
+Cell presentation supports both states at the same time. Validation does not disable editing; conflict does, because conflict requires an explicit `Use server` / `Keep my edit` decision first.
+
+Detailed validation behavior: [Grid validation](grid-validation.md).
+
+Detailed BASE/LOCAL/REMOTE behavior: [Edit conflict reconciliation](edit-conflict-reconciliation.md).
+
+## Conflict resolution + validation
+
+### Use server
+
+```text
+visible value → REMOTE
+LOCAL draft removed
+conflict removed
+validation for discarded LOCAL removed
+```
+
+Other dirty fields on the row remain untouched.
+
+### Keep my edit
+
+```text
+BASE → latest REMOTE
+LOCAL retained
+conflict removed
+LOCAL revalidated
+```
+
+Revalidation replaces stale backend validation messages with the current client-rule result for the value the user explicitly chose to keep.
 
 ## Discard
 
-Discard forgets LOCAL unsaved work without making a backend write.
+Discard forgets LOCAL unsaved work without a backend write.
 
 For ordinary dirty fields:
 
 ```text
 visible value → BASE
 LOCAL draft → removed
+validation → removed
 ```
 
 For conflicted fields:
@@ -177,6 +298,7 @@ For conflicted fields:
 ```text
 visible value → latest REMOTE
 LOCAL draft/conflict → removed
+validation → removed
 ```
 
 Discard is idempotent. The editing engine's own programmatic restore event cannot recreate the discarded draft.
@@ -185,15 +307,23 @@ Discard is idempotent. The editing engine's own programmatic restore event canno
 
 Persistence acknowledgement clears only the exact value that was successfully submitted.
 
-If a user changes the same field again while an older save request is in flight, the newer LOCAL value remains dirty after the older request succeeds.
+If a user changes the same field again while an older successful save request is in flight, the newer LOCAL value remains dirty after the older request succeeds.
 
-This prevents an older response from erasing newer unsaved work.
+This prevents an older success response from erasing newer unsaved work.
 
 ## Authoritative refresh and LOCAL restoration
 
 When fresh authoritative row data arrives, `restoreTrackedEdits(...)` first reconciles dirty fields and then overlays remaining LOCAL values back into concrete rows.
 
 The hook distinguishes fresh authoritative row objects from row data that it already mutated for LOCAL presentation. That prevents page/model revisits from falsely looking like server convergence.
+
+If fresh REMOTE already equals LOCAL:
+
+```text
+REMOTE == LOCAL
+→ field auto-cleans
+→ validation for that no-longer-local field clears
+```
 
 Authoritative arrival differs by row model:
 
@@ -203,7 +333,7 @@ Authoritative arrival differs by row model:
 TanStack Query authoritative data changes
 → new editable rowData projection
 → onRowDataUpdated
-→ reconcile + restore tracked LOCAL values
+→ reconcile + restore remaining LOCAL values
 ```
 
 ### Infinite
@@ -211,7 +341,7 @@ TanStack Query authoritative data changes
 ```text
 cache rows load/refresh/recreate
 → model/pagination lifecycle
-→ reconcile + restore tracked LOCAL values
+→ reconcile + restore remaining LOCAL values
 ```
 
 ### SSRM
@@ -219,18 +349,8 @@ cache rows load/refresh/recreate
 ```text
 server-side store rows load/refresh/recreate
 → model lifecycle
-→ reconcile + restore tracked LOCAL values
+→ reconcile + restore remaining LOCAL values
 ```
-
-## Conflict relationship
-
-For an unresolved conflict:
-
-- LOCAL remains visible;
-- conflict metadata records REMOTE;
-- the conflicted field's normal editor is blocked;
-- Transactions shows `Use server` / `Keep my edit` resolution UI;
-- relevant Save/business mutations are guarded until resolution.
 
 ## Selection relationship
 
@@ -246,8 +366,6 @@ Selection and editing remain separate concerns:
 
 ## Backend contracts
 
-The write endpoints have distinct responsibilities:
-
 ```text
 PATCH /api/transactions/{id}/
 → save one explicit dirty row
@@ -261,6 +379,8 @@ PATCH /api/transactions/selection/
 
 `/bulk/` persists already-existing LOCAL drafts. `/selection/` applies a business action and can target unloaded server rows. They are intentionally separate operations.
 
+`TransactionChangesSerializer` is authoritative for persisted edit validation. Frontend rules provide immediate UX and Save guards but never replace backend validation.
+
 ## Reusable implementation boundaries
 
 ```text
@@ -268,18 +388,30 @@ frontend/src/shared/grid/editing/trackedGridEditing.ts
 → pure dirty/conflict state transitions and queries
 
 frontend/src/shared/grid/editing/useTrackedGridEditing.ts
-→ durable draft lifecycle, RowNode value restoration, authoritative reconciliation
+→ durable draft lifecycle, RowNode restoration, authoritative reconciliation,
+  and coordination of separate validation state
+
+frontend/src/shared/grid/validation/gridValidation.ts
+→ domain-neutral validation execution/state/query primitives
+
+frontend/src/shared/grid/validation/defaultGridValidationRules.ts
+→ registered executable validators
 
 frontend/src/shared/grid/editing/useCurrentPageEditActions.ts
 → exact current-page targeting and programmatic application
 
 frontend/src/features/transactions/grid/transactionEditing.ts
-→ Transaction editable fields + row editability configuration
+→ Transaction editable fields + row editability + validation callback configuration
+
+frontend/src/features/transactions/grid/transactionValidation.ts
+→ Transaction validation rules/messages + backend field-error mapping
 
 frontend/src/features/transactions/grid/useTransactionEditPersistence.ts
-→ Transaction Save request lifecycle
+→ Transaction Save lifecycle + server validation error routing
 ```
 
 ## Verification expectations
 
-Tests should cover pure tracked state, programmatic-write guarding, Discard behavior, persistence acknowledgement and concrete-grid integration.
+Automated tests cover pure tracked state, direct/programmatic validation, correction, Discard, conflict resolution, backend field-error mapping, programmatic-write guarding, persistence acknowledgement and concrete-grid integration.
+
+Manual/browser verification must be recorded separately and is not implied by automated coverage.
