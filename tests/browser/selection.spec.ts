@@ -78,7 +78,9 @@ test('/infinite: custom header selects only the fully materialised current page'
 
   await rowById(page, SEEDED_ROWS.enabled).getByRole('checkbox').first().click();
   await expect(page.getByText(`${FIRST_PAGE_ELIGIBLE_COUNT - 1} selected`, { exact: true }).first()).toBeVisible();
-  await expect(currentPageHeader).toBePartiallyChecked();
+  // MUI represents indeterminate on the checkbox input with data-indeterminate rather than a
+  // Playwright-specific matcher/native checked state.
+  await expect(currentPageHeader).toHaveAttribute('data-indeterminate', 'true');
 
   await expectNoPageErrors(pageErrors, '/infinite Current Page selection');
 });
