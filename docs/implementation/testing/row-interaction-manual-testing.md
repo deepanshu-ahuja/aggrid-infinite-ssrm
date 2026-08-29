@@ -66,12 +66,14 @@ The backend also returns `interactionReason` for presentation.
 
 Useful deterministic rows with a fresh backend process:
 
-| Reference | Initial account | Initial status | Expected mode |
-| --- | --- | --- | --- |
-| `TRX-100000` | Operating | Completed | `enabled` |
-| `TRX-100001` | Treasury | Pending | `selectionDisabled` |
-| `TRX-100002` | Payroll | Failed | `enabled` |
-| `TRX-100003` | Settlement | Completed | `readOnly` |
+| Reference | ID | Initial account | Initial status | Expected mode |
+| --- | --- | --- | --- | --- |
+| `TRX-100000` | `txn-00001` | Operating | Completed | `enabled` |
+| `TRX-100001` | `txn-00002` | Treasury | Pending | `selectionDisabled` |
+| `TRX-100002` | `txn-00003` | Payroll | Failed | `enabled` |
+| `TRX-100003` | `txn-00004` | Settlement | Completed | `readOnly` |
+| `TRX-100005` | `txn-00006` | Treasury | Failed | `enabled` |
+| `TRX-100007` | `txn-00008` | Settlement | Pending | `enabled` |
 
 The demo dataset is mutable in memory. Restart Django before a clean sequence if earlier tests changed these rows.
 
@@ -160,18 +162,60 @@ Verify:
 
 This is a lifecycle check, not only a data-value check. The Access indicator, row treatment and native checkbox eligibility must all reflect the same latest authoritative mode after refresh.
 
-### Save: `selectionDisabled → enabled`
+Run each mutation-path scenario independently on `/client`, `/infinite`, and `/ssrm`, resetting/restarting the demo dataset between scenarios when needed.
 
-Use `TRX-100001` (`Pending + Treasury`).
+### Single-row Save: `selectionDisabled → enabled`
 
-1. edit Account from `Treasury` to `Operating`;
+Use `TRX-100001` / `txn-00002` (`Pending + Treasury`).
+
+1. edit Status from `Pending` to `Completed`;
 2. Save the row;
-3. wait for authoritative data refresh;
+3. wait for the detail PATCH to succeed and for the server-backed row model to refresh when applicable;
 4. confirm the `Selection disabled` indicator disappears;
 5. confirm the cream/warning restricted-row treatment disappears;
 6. confirm the checkbox becomes enabled;
 7. click the checkbox and confirm the row receives a normal checked state;
 8. with only that row selected, confirm the header represents a normal partial selection rather than a disabled-row artifact.
+
+### Save Selected / bulk persistence: enabled rows become restricted
+
+Use these two initially enabled rows:
+
+```text
+TRX-100005 / txn-00006
+Treasury + Failed
+
+TRX-100007 / txn-00008
+Settlement + Pending
+```
+
+1. select both rows while they are still enabled;
+2. edit `txn-00006` Status to `Pending`;
+3. edit `txn-00008` Status to `Completed`;
+4. confirm both rows are dirty and selected;
+5. use `Save selected edits (2)`;
+6. wait for `PATCH /api/transactions/bulk/` and the authoritative refresh;
+7. confirm `txn-00006` becomes `selectionDisabled`, shows warning/cream treatment and has a disabled checkbox;
+8. confirm `txn-00008` becomes `readOnly`, shows locked treatment and has a disabled checkbox;
+9. confirm neither row remains selected after the authoritative policy makes it non-selectable;
+10. confirm the selected count returns to `0`.
+
+This scenario is important because it proves native selection state and mutable row presentation move together when a row was already selected before becoming restricted.
+
+### Selected Change Status: `enabled → selectionDisabled`
+
+Use `TRX-100005` / `txn-00006` (`Treasury + Failed`).
+
+1. select the row;
+2. confirm `1 selected`;
+3. click `Mark Pending`;
+4. wait for `PATCH /api/transactions/selection/` and the authoritative refresh;
+5. confirm the successful selected action clears the old selection;
+6. confirm the row now shows `Selection disabled`;
+7. confirm cream/warning row treatment appears;
+8. confirm its checkbox is disabled.
+
+This proves the selected business-action refresh path obeys the same dynamic row-interaction contract as direct/bulk persistence.
 
 ### Import: exercise all mutable directions together
 
@@ -209,7 +253,7 @@ enabled → readOnly
 
 A stale visual class is a failure even if the underlying checkbox can technically be selected. A newly enabled selected checkbox must not still look grey/disabled because of an old `selectionDisabled` class.
 
-The Playwright Import regression automates this exact three-row transition on all three row models; this manual section exists to make the expected UI contract explicit.
+The Playwright row-interaction regression covers the Import, single-row Save, Save Selected/bulk and selected Change Status mutation paths on all three row models; this manual section makes the expected UI/native-selection contract explicit.
 
 ## 3. Client-Side selection
 
