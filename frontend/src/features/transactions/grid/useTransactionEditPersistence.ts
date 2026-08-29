@@ -1,6 +1,7 @@
-// GRIDCAP-EDIT-SAVE-ROW | GRIDCAP-EDIT-SAVE-SELECTED | GRIDCAP-EDIT-TRACKED | GRIDCAP-LIFECYCLE-REFRESH
+// GRIDCAP-EDIT-SAVE-ROW | GRIDCAP-EDIT-SAVE-SELECTED | GRIDCAP-EDIT-TRACKED | GRIDCAP-EDIT-VALIDATION | GRIDCAP-LIFECYCLE-REFRESH
 import { useCallback } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { ApiError } from '@/shared/api/apiError';
 import { queryClient } from '@/shared/query/queryClient';
 import { bulkUpdateTransactions, updateTransaction } from '../api/transactions.api';
 import type { Transaction } from '../api/transactions.contracts';
@@ -9,6 +10,7 @@ import {
   mapTransactionBulkUpdateItems,
   mapTransactionUpdateChanges,
 } from './transactionUpdate.mapper';
+import { mapTransactionServerValidationErrors } from './transactionValidation';
 
 type TransactionUpdate = TransactionUpdatePayload['updates'][number];
 
@@ -20,25 +22,17 @@ interface UseTransactionEditPersistenceOptions {
   updates: TransactionUpdate[];
   acknowledgeChanges: (updates: TransactionUpdate[]) => void;
   onPersistedRows: (rows: Transaction[]) => void;
+  onServerValidationErrors: ReturnType<typeof mapTransactionServerValidationErrors> extends infer TResult
+    ? (errors: TResult) => void
+    : never;
 }
 
-/**
- * Transactions persistence lifecycle for tracked grid edits.
- *
- * TanStack Query owns request lifecycle. The feature hook chooses single vs bulk backend endpoint and
- * maps the generic tracked-edit shape into the strict Transactions contract. Authoritative-row
- * reconciliation remains at the concrete grid root because the row models receive fresh data through
- * different native/application lifecycles: Infinite cache refresh, SSRM store refresh, or Client
- * TanStack Query/`rowData` replacement.
- *
- * Bulk selection semantics intentionally stay OUTSIDE this hook. The concrete grid root owns current
- * selection, intersects that selection with dirty drafts, then passes only those explicit updates to
- * `saveBulk`. This prevents an unselected dirty row from leaking into a bulk request.
- */
+/** Transactions persistence lifecycle for tracked grid edits. */
 export function useTransactionEditPersistence({
   updates,
   acknowledgeChanges,
   onPersistedRows,
+  onServerValidationErrors,
 }: UseTransactionEditPersistenceOptions) {
   const { mutate, isPending, error } = useMutation(
     {
@@ -60,6 +54,14 @@ export function useTransactionEditPersistence({
       onSuccess: (rows, command) => {
         acknowledgeChanges(command.updates);
         onPersistedRows(rows);
+      },
+      onError: (mutationError, command) => {
+        if (!(mutationError instanceof ApiError) || mutationError.status !== 400) return;
+        const fieldErrors = mapTransactionServerValidationErrors(
+          mutationError.details,
+          command.updates,
+        );
+        if (fieldErrors.length > 0) onServerValidationErrors(fieldErrors);
       },
     },
     queryClient,
