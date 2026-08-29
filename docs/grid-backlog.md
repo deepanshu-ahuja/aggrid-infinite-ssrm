@@ -26,22 +26,28 @@ When something is fully implemented and verified, remove it from Active backlog,
    - manual browser verification remains pending and can be consolidated later
    - manual verification is important but is not a blocker for architecture/reference work
 
-2. Maintain frontend capability discoverability
-   - GRIDCAP-* registry is authoritative for frontend source/tests
-   - important roots/controllers/frontend integration boundaries/tests carry searchable markers
+2. Implement field/input validation
+   - validation is required independently of configurable-table metadata
+   - keep invalid LOCAL input visible and dirty
+   - block relevant Save paths while invalid
+   - map backend field errors into the same validation state
+   - keep validation and BASE/LOCAL/REMOTE conflict state separate but able to coexist
+   - use resolved rule arrays built from registered rule keys + JSON-safe params
+
+3. Design and implement Import as its own workflow
+   - file/template format, mapping, preview, identifiers and create/update/upsert semantics
+   - row/field validation, duplicates, atomic/partial success, error reporting and refresh
+
+4. Build an isolated fourth configurable SSRM-based grid experiment
+   - do not modify the three proven Transaction grids merely to make the experiment work
+   - do not rewrite shared row-model mechanics while the composition/compiler boundary is still being proven
+   - duplicate/adapt feature-level composition in a separate area when that is safer for the experiment
+   - frontend/application chooses the supported AG Grid row model; backend table metadata does not dynamically choose Client/Infinite/SSRM
+   - prove metadata/compiler/registry boundaries before considering migration into existing grids
+
+5. Maintain frontend capability discoverability throughout
+   - GRIDCAP-* registry remains authoritative for frontend source/tests
    - backend contracts remain documented/tested normally but are intentionally untagged
-   - tags identify capability participation, not copy-paste equivalence
-
-3. From the three-row-model baseline onward
-   - evaluate new grid-foundation capabilities across Client / Infinite / SSRM together
-   - do NOT force the three row models through identical implementation
-
-4. Product-driven work continues when needed
-   - richer validation/permissions
-   - concurrency
-   - import
-   - advanced SSRM
-   - named views/mass editing/create-delete/etc.
 ```
 
 Manual verification remains important, but it is intentionally schedulable as a later consolidated pass. Only a genuine core correctness defect should interrupt other agreed foundation work.
@@ -217,11 +223,33 @@ When a frontend capability footprint changes, review the registry and current fr
 ## D. Core/product decisions that do not block current implementation unless a real defect requires them
 
 ### D2. Field validation + backend validation errors
-**Status:** DESIGN
+**Status:** DESIGN / IMPLEMENT NEXT
 
-Design domain-neutral mechanics for invalid local values, field errors, Save guards, backend error mapping, preserving rejected LOCAL input, validation + conflict coexistence, and clearing errors on correction/revert. Business rules/messages stay feature/backend-owned.
+Validation is a first-class capability independent of configurable-table metadata. Static Transaction configuration should be able to use it directly; future metadata may later compile to the same inputs.
 
-The exact metadata/rule-key contract is intentionally still open for discussion; do not lock in a verbose rule-array or another schema until that design discussion is resumed.
+Implement domain-neutral mechanics for:
+- invalid LOCAL values remaining visible rather than being immediately reverted;
+- validation state keyed outside transient RowNodes by stable row ID + field;
+- dirty state continuing to represent unsaved LOCAL work even when invalid;
+- row Save and selected/bulk Save guards for relevant invalid fields;
+- backend structured field-error mapping into the same validation state;
+- preserving rejected LOCAL input after backend validation failure;
+- clearing/re-evaluating errors when the user corrects or reverts a value;
+- validation and BASE/LOCAL/REMOTE conflict state coexisting without being collapsed into one concept;
+- UI/editor/cell presentation and help text;
+- rule-registry failure behavior and focused tests across Client / Infinite / SSRM integration points.
+
+Primary validation input should be a resolved rule array using stable registered keys plus JSON-safe params/messages, conceptually:
+
+```text
+rules: [
+  { key: required },
+  { key: maxLength, params: { max: 100 } },
+  { key: numberRange, params: { min: 0, max: 1000000 } }
+]
+```
+
+A higher-level reusable `ruleSetKey` may be added later only when repeated real rule combinations justify it. The validation engine itself should consume resolved rules rather than depend on metadata or opaque business profiles.
 
 ### D3. Application-level unsaved-draft lifetime
 **Status:** DEFERRED / hold until a real product need
@@ -241,11 +269,21 @@ Do not enable spreadsheet-style undo/redo until its interaction with durable dir
 ## E. Product-driven capabilities
 
 ### E1. Import
-**Status:** DEFERRED
+**Status:** TODO / NEXT AFTER VALIDATION
 
-When required, design file formats, create/update/upsert semantics, identifiers, mapping, preview, validation, duplicates, atomic/partial success, error reports, progress and post-import refresh as a separate workflow.
+Design Import as a separate workflow before the configurable-grid experiment. Cover:
+- accepted file/template formats;
+- create/update/upsert semantics and stable identifiers;
+- column/field mapping;
+- preview/dry-run behavior;
+- reuse of field/business validation where appropriate;
+- duplicate handling;
+- atomic versus partial-success semantics;
+- row/field error reporting and downloadable error output if useful;
+- progress/cancellation behavior for large jobs if required;
+- authoritative post-import refresh.
 
-Import/template/sample upload is not part of the Client-Side foundation and does not block completing the three-row-model baseline.
+Import/template/sample upload is not part of the Client-Side foundation and must not be hidden inside normal grid editing.
 
 ### E2. Conditional styling / lock indicators
 **Status:** Core native approach implemented; further abstraction DEFERRED
@@ -261,6 +299,19 @@ Current row capability is intentionally small: `enabled`, `selectionDisabled`, `
 **Status:** DEFERRED
 
 Current native Grid State is behind replaceable browser storage. Add backend/user persistence only when preferences must follow users across devices/sessions.
+
+### E5. Isolated configurable SSRM experiment
+**Status:** PLANNED / AFTER IMPORT
+
+Build a fourth grid path in a separate feature/composition area, initially using SSRM semantics as the reference. The experiment exists to prove the correct metadata compiler/resolver/registry boundary without risking the three proven Transaction grids.
+
+Rules:
+- do not refactor `/client`, `/infinite`, or `/ssrm` merely to accommodate the experiment;
+- do not rewrite shared loading, selection, tracked-editing, conflict, freshness, lifecycle or Grid State algorithms while the experiment is still proving its boundary;
+- intentional temporary feature-level duplication is acceptable when it protects proven behavior and makes comparison explicit;
+- metadata should describe table/business composition such as fields, renderers, editors, validation, authorization and actions;
+- backend metadata should not dynamically select the AG Grid row model. The frontend/application decides which row model(s) the real product supports;
+- once the fourth grid proves the architecture, review whether its composition boundary should replace Transaction-specific composition in existing grids. Do not migrate automatically.
 
 ## F. Reuse proof
 
@@ -282,8 +333,8 @@ Each requires explicit product semantics before implementation. Grouping/tree/ag
 
 # Completed history
 
-## 2026-08 — Post-business-action selection policy
-Selected business actions now make an explicit frontend choice between `clear` and `preserve` after success. The policy is feature/action-owned and is never serialized to the backend. Current Transaction status mutations choose `clear`; non-mutating export remains separate and preserves selection. Client, Infinite and SSRM each clear through their own native/custom selection owner, and failures leave selection intact.
+## 2026-08 — Selected status success lifecycle simplification
+The Transaction Change Status action family now carries only the real business status/request. After a successful update, each concrete grid root directly calls its row-model selection controller's existing `clearSelection()` and refreshes authoritative rows. Failed updates leave selection untouched because the success callback never runs. Selected export remains non-mutating and simply does not clear selection. A configurable clear/preserve policy is deliberately not carried through hardcoded actions; a future config-driven action registry may introduce behavior keys only if real dynamic actions require them.
 
 ## 2026-08 — Row eligibility / selectability
 Implemented `enabled / selectionDisabled / readOnly`, native loaded-row guards, backend eligibility for unloaded actions, and consistent editing/action behavior. See `docs/row-interaction.md`.
