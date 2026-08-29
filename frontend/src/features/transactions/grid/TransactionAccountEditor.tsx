@@ -28,6 +28,9 @@ export function TransactionAccountEditor({
         value={currentValue}
         error={Boolean(message)}
         helperText={message ?? ' '}
+        slotProps={{
+          htmlInput: { 'data-testid': 'transaction-account-editor-input' },
+        }}
         onChange={(event) => onValueChange(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Enter') stopEditing();
