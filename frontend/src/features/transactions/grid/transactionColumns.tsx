@@ -1,4 +1,4 @@
-// GRIDCAP-COLUMNS | GRIDCAP-QUERY-SORT | GRIDCAP-QUERY-FILTER | GRIDCAP-ROW-ELIGIBILITY | GRIDCAP-EDIT-TRACKED | GRIDCAP-EDIT-CONFLICT | GRIDCAP-EDIT-SAVE-ROW
+// GRIDCAP-COLUMNS | GRIDCAP-QUERY-SORT | GRIDCAP-QUERY-FILTER | GRIDCAP-ROW-ELIGIBILITY | GRIDCAP-EDIT-TRACKED | GRIDCAP-EDIT-CONFLICT | GRIDCAP-EDIT-VALIDATION | GRIDCAP-EDIT-SAVE-ROW
 import type { ColDef, EditableCallbackParams } from 'ag-grid-community';
 import {
   serverDateFilterParams,
@@ -8,6 +8,8 @@ import {
 import { formatCurrency } from '@/shared/grid/formatters/formatCurrency';
 import { formatDate } from '@/shared/grid/formatters/formatDate';
 import type { Transaction } from '../api/transactions.contracts';
+import { TransactionAccountEditor } from './TransactionAccountEditor';
+import { TransactionDateEditor } from './TransactionDateEditor';
 import { TransactionInteractionCell } from './TransactionInteractionCell';
 import {
   TransactionRowEditActions,
@@ -18,37 +20,49 @@ import { isTransactionCellEditable } from './transactionRowInteraction';
 import { TransactionStatusCell } from './TransactionStatusCell';
 import { TransactionStatusEditor } from './TransactionStatusEditor';
 
-function getConflictContext(params: { context?: unknown }) {
+function getEditContext(params: { context?: unknown }) {
   return params.context as TransactionRowEditActionsContext | undefined;
 }
 
 /**
  * Compose the normal row editability rule with conflict state. A conflicted field cannot open its editor
  * until the user explicitly chooses the server value or keeps the local value from the conflict popover.
+ * Validation does not disable editing because correction must remain possible in-place.
  */
 function isConflictAwareEditable(
   params: EditableCallbackParams<Transaction>,
   field: TransactionEditableField,
 ) {
   if (!isTransactionCellEditable(params) || !params.data) return false;
-  return !getConflictContext(params)?.isCellConflicted(params.data.id, field);
+  return !getEditContext(params)?.isCellConflicted(params.data.id, field);
 }
 
-/** Shared presentation callbacks for the four Transaction fields that participate in tracked editing. */
-function conflictPresentation(field: TransactionEditableField): Pick<
+/** Shared presentation callbacks for fields participating in tracked editing, conflict and validation. */
+function editStatePresentation(field: TransactionEditableField): Pick<
   ColDef<Transaction>,
   'cellClassRules' | 'tooltipValueGetter'
 > {
   return {
     cellClassRules: {
       'grid-cell--edit-conflict': (params) =>
-        Boolean(params.data && getConflictContext(params)?.isCellConflicted(params.data.id, field)),
+        Boolean(params.data && getEditContext(params)?.isCellConflicted(params.data.id, field)),
+      'grid-cell--validation-error': (params) =>
+        Boolean(params.data && getEditContext(params)?.isCellInvalid(params.data.id, field)),
     },
     tooltipValueGetter: (params) => {
       if (!params.data) return undefined;
-      const conflict = getConflictContext(params)?.getCellConflict(params.data.id, field);
-      if (!conflict) return undefined;
-      return `Your edit: ${String(conflict.localValue)}. Server value: ${String(conflict.remoteValue)}. Click to resolve.`;
+      const context = getEditContext(params);
+      const conflict = context?.getCellConflict(params.data.id, field);
+      const validationMessages = context?.getCellValidationMessages(params.data.id, field) ?? [];
+
+      const parts: string[] = [];
+      if (validationMessages.length > 0) parts.push(`Validation: ${validationMessages.join(' ')}`);
+      if (conflict) {
+        parts.push(
+          `Conflict — your edit: ${String(conflict.localValue)}. Server value: ${String(conflict.remoteValue)}. Click to resolve.`,
+        );
+      }
+      return parts.length > 0 ? parts.join(' ') : undefined;
     },
   };
 }
@@ -59,15 +73,7 @@ interface TransactionColumnFilterParams {
   date?: typeof serverDateFilterParams;
 }
 
-/**
- * Build the Transaction domain columns while allowing each row model to supply only its filtering
- * mechanics.
- *
- * The data fields, renderers, editors, formatting and interaction rules are Transaction semantics and
- * should not be copied into three row-model files. Filter parameters are different: Infinite/SSRM are
- * intentionally restricted to the backend query contract, while Client-Side has the full working set
- * locally and should use AG Grid's native Client filter behavior instead of inheriting server limits.
- */
+/** Build Transaction columns while allowing each row model to supply only its filtering mechanics. */
 function createTransactionColumns(filterParams: TransactionColumnFilterParams): ColDef<Transaction>[] {
   return [
     {
@@ -94,7 +100,12 @@ function createTransactionColumns(filterParams: TransactionColumnFilterParams): 
       filter: 'agTextColumnFilter',
       ...(filterParams.text ? { filterParams: filterParams.text } : {}),
       editable: (params) => isConflictAwareEditable(params, 'account'),
-      ...conflictPresentation('account'),
+      // One explicit MUI text-editor example. Popup space lets helper text explain the exact validation
+      // failure without forcing AG Grid row height/column geometry to accommodate form-field chrome.
+      cellEditor: TransactionAccountEditor,
+      cellEditorPopup: true,
+      cellEditorPopupPosition: 'under',
+      ...editStatePresentation('account'),
     },
     {
       field: 'amount',
@@ -107,7 +118,7 @@ function createTransactionColumns(filterParams: TransactionColumnFilterParams): 
       cellEditor: 'agNumberCellEditor',
       valueFormatter: ({ value, data }) =>
         typeof value === 'number' ? formatCurrency(value, data?.currency ?? 'USD') : '',
-      ...conflictPresentation('amount'),
+      ...editStatePresentation('amount'),
     },
     {
       field: 'currency',
@@ -116,7 +127,7 @@ function createTransactionColumns(filterParams: TransactionColumnFilterParams): 
       filter: 'agTextColumnFilter',
       ...(filterParams.text ? { filterParams: filterParams.text } : {}),
       editable: (params) => isConflictAwareEditable(params, 'currency'),
-      ...conflictPresentation('currency'),
+      ...editStatePresentation('currency'),
     },
     {
       field: 'status',
@@ -127,7 +138,7 @@ function createTransactionColumns(filterParams: TransactionColumnFilterParams): 
       cellRenderer: TransactionStatusCell,
       editable: (params) => isConflictAwareEditable(params, 'status'),
       cellEditor: TransactionStatusEditor,
-      ...conflictPresentation('status'),
+      ...editStatePresentation('status'),
     },
     {
       field: 'transactionDate',
@@ -135,7 +146,12 @@ function createTransactionColumns(filterParams: TransactionColumnFilterParams): 
       minWidth: 180,
       filter: 'agDateColumnFilter',
       ...(filterParams.date ? { filterParams: filterParams.date } : {}),
+      editable: (params) => isConflictAwareEditable(params, 'transactionDate'),
+      cellEditor: TransactionDateEditor,
+      cellEditorPopup: true,
+      cellEditorPopupPosition: 'under',
       valueFormatter: ({ value }) => (typeof value === 'string' ? formatDate(value) : ''),
+      ...editStatePresentation('transactionDate'),
     },
     {
       colId: 'editActions',
@@ -150,18 +166,10 @@ function createTransactionColumns(filterParams: TransactionColumnFilterParams): 
   ];
 }
 
-/**
- * Server-backed Transaction columns.
- *
- * Editing remains feature-owned. Conflict detection/state lives in shared tracked editing, while these
- * columns compose Transaction-specific editability and visual treatment without duplicating the state machine.
- * Server filter parameters deliberately match the allow-listed Django query contract.
- */
 export const transactionColumns = createTransactionColumns({
   text: serverTextFilterParams,
   number: serverNumberFilterParams,
   date: serverDateFilterParams,
 });
 
-/** Client-Side uses the same Transaction semantics with native local AG Grid filter behavior. */
 export const transactionClientColumns = createTransactionColumns({});

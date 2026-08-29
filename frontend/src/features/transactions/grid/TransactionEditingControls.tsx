@@ -1,3 +1,4 @@
+// GRIDCAP-EDIT-SAVE-SELECTED | GRIDCAP-EDIT-VALIDATION | GRIDCAP-EDIT-CONFLICT
 import { useMemo, useState } from 'react';
 import {
   Alert,
@@ -17,16 +18,15 @@ import type {
   TransactionEditTarget,
   TransactionLastEdit,
 } from './transactionEditing';
+import { validateTransactionField } from './transactionValidation';
 
 interface TransactionEditingControlsProps {
-  /** All real drafts, whether currently selected or not. */
   editedRowCount: number;
-  /** Number of unresolved field conflicts across all tracked drafts. */
   conflictCount: number;
-  /** Only drafts whose row is currently included by the logical checkbox selection. */
+  validationErrorCount: number;
   selectedEditedRowCount: number;
-  /** Selected dirty rows cannot be saved while any of those rows still contains a conflict. */
   selectedEditsHaveConflict: boolean;
+  selectedEditsHaveValidationError: boolean;
   lastEdit?: TransactionLastEdit;
   isSaving: boolean;
   saveError?: string;
@@ -38,12 +38,23 @@ interface TransactionEditingControlsProps {
 
 const STATUSES: readonly TransactionStatus[] = ['Completed', 'Pending', 'Failed'];
 
+function firstValidationMessage(
+  enabled: boolean,
+  field: 'account' | 'amount' | 'currency',
+  value: string | number | null,
+) {
+  if (!enabled) return undefined;
+  return validateTransactionField(field, value)[0]?.message;
+}
+
 /** Transactions editing presentation for current-page edit helpers and explicit draft persistence. */
 export function TransactionEditingControls({
   editedRowCount,
   conflictCount,
+  validationErrorCount,
   selectedEditedRowCount,
   selectedEditsHaveConflict,
+  selectedEditsHaveValidationError,
   lastEdit,
   isSaving,
   saveError,
@@ -62,10 +73,17 @@ export function TransactionEditingControls({
   const [useStatus, setUseStatus] = useState(false);
   const [status, setStatus] = useState<TransactionStatus>('Pending');
 
+  const amountDraft = amount === '' ? null : Number(amount);
+  const accountError = firstValidationMessage(useAccount, 'account', account);
+  const amountError = firstValidationMessage(useAmount, 'amount', amountDraft);
+  const currencyError = firstValidationMessage(useCurrency, 'currency', currency);
+
   const bulkChanges = useMemo<TransactionChanges>(() => {
     const changes: TransactionChanges = {};
     if (useAccount) changes.account = account;
-    if (useAmount && amount !== '') changes.amount = Number(amount);
+    // Checked + blank is an intentional invalid LOCAL draft, not "field omitted". This keeps Flow 2
+    // semantically aligned with clearing the same numeric field through direct cell editing.
+    if (useAmount) changes.amount = amount === '' ? null : Number(amount);
     if (useCurrency) changes.currency = currency;
     if (useStatus) changes.status = status;
     return changes;
@@ -73,6 +91,7 @@ export function TransactionEditingControls({
 
   const hasBulkChanges = Object.keys(bulkChanges).length > 0;
   const hasSelectedEdits = selectedEditedRowCount > 0;
+  const selectedSaveBlocked = selectedEditsHaveConflict || selectedEditsHaveValidationError;
 
   return (
     <Stack spacing={1.5}>
@@ -80,6 +99,13 @@ export function TransactionEditingControls({
         <Alert severity="warning">
           {conflictCount} field conflict{conflictCount === 1 ? '' : 's'} need review. Click a highlighted
           cell and choose <strong>Use server</strong> or <strong>Keep my edit</strong> before saving that row.
+        </Alert>
+      ) : null}
+
+      {validationErrorCount > 0 ? (
+        <Alert severity="error">
+          {validationErrorCount} validation error{validationErrorCount === 1 ? '' : 's'} need correction.
+          Invalid local edits stay visible and dirty until corrected or discarded.
         </Alert>
       ) : null}
 
@@ -125,18 +151,44 @@ export function TransactionEditingControls({
         <Stack spacing={1}>
           <Typography variant="subtitle2">Flow 2 — bulk edit current page</Typography>
           <Typography variant="body2" color="text.secondary">
-            Only checked fields are changed; unchecked fields remain untouched.
+            Only checked fields are changed; unchecked fields remain untouched. Invalid values are applied
+            as local drafts and highlighted so they can be corrected before Save.
           </Typography>
 
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} useFlexGap flexWrap="wrap">
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} useFlexGap flexWrap="wrap" alignItems="flex-start">
             <FormControlLabel control={<Checkbox checked={useAccount} onChange={(event) => setUseAccount(event.target.checked)} />} label="Account" />
-            <TextField size="small" value={account} onChange={(event) => setAccount(event.target.value)} disabled={!useAccount || isSaving} />
+            <TextField
+              size="small"
+              value={account}
+              onChange={(event) => setAccount(event.target.value)}
+              disabled={!useAccount || isSaving}
+              error={Boolean(accountError)}
+              helperText={accountError ?? ' '}
+              slotProps={{ htmlInput: { 'data-testid': 'flow2-account-input' } }}
+            />
 
             <FormControlLabel control={<Checkbox checked={useAmount} onChange={(event) => setUseAmount(event.target.checked)} />} label="Amount" />
-            <TextField size="small" type="number" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={!useAmount || isSaving} />
+            <TextField
+              size="small"
+              type="number"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              disabled={!useAmount || isSaving}
+              error={Boolean(amountError)}
+              helperText={amountError ?? ' '}
+              slotProps={{ htmlInput: { 'data-testid': 'flow2-amount-input' } }}
+            />
 
             <FormControlLabel control={<Checkbox checked={useCurrency} onChange={(event) => setUseCurrency(event.target.checked)} />} label="Currency" />
-            <TextField size="small" value={currency} onChange={(event) => setCurrency(event.target.value)} disabled={!useCurrency || isSaving} />
+            <TextField
+              size="small"
+              value={currency}
+              onChange={(event) => setCurrency(event.target.value)}
+              disabled={!useCurrency || isSaving}
+              error={Boolean(currencyError)}
+              helperText={currencyError ?? ' '}
+              slotProps={{ htmlInput: { 'data-testid': 'flow2-currency-input' } }}
+            />
 
             <FormControlLabel control={<Checkbox checked={useStatus} onChange={(event) => setUseStatus(event.target.checked)} />} label="Status" />
             <Select<TransactionStatus> size="small" value={status} onChange={(event) => setStatus(event.target.value as TransactionStatus)} disabled={!useStatus || isSaving} sx={{ minWidth: 140 }}>
@@ -156,7 +208,7 @@ export function TransactionEditingControls({
         <Button
           size="small"
           variant="contained"
-          disabled={!hasSelectedEdits || isSaving || selectedEditsHaveConflict}
+          disabled={!hasSelectedEdits || isSaving || selectedSaveBlocked}
           onClick={onSaveSelected}
         >
           {isSaving ? 'Saving…' : `Save selected edits (${selectedEditedRowCount})`}
@@ -169,6 +221,11 @@ export function TransactionEditingControls({
       {selectedEditsHaveConflict ? (
         <Typography variant="caption" color="warning.main">
           Selected edits include unresolved conflicts. Resolve the highlighted cells before saving the selection.
+        </Typography>
+      ) : null}
+      {selectedEditsHaveValidationError ? (
+        <Typography variant="caption" color="error.main">
+          Selected edits include invalid fields. Correct or discard the highlighted values before saving the selection.
         </Typography>
       ) : null}
       {saveError ? <Alert severity="error">{saveError}</Alert> : null}

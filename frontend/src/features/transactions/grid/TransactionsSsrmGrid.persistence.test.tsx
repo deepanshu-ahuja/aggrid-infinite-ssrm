@@ -145,7 +145,6 @@ describe('TransactionsSsrmGrid edit persistence', () => {
         const oldValue = transaction[field];
         (transaction as unknown as Record<string, unknown>)[field] = value;
 
-        // AG Grid can emit this event for an application write through setDataValue.
         props().onCellValueChanged?.({
           data: transaction,
           colDef: { field },
@@ -178,10 +177,8 @@ describe('TransactionsSsrmGrid edit persistence', () => {
       const latestContext = vi.mocked(api.setGridOption).mock.calls.at(-1)?.[1] as
         TransactionRowEditActionsContext | undefined;
       expect(latestContext?.isRowDirty('txn-a')).toBe(false);
-      // Editing context drives editable/conflict presentation as well as the row Actions renderer.
-      // Refresh all of those columns so a Discard cannot leave stale dirty/conflict UI in any cell.
       expect(api.refreshCells).toHaveBeenLastCalledWith({
-        columns: ['account', 'amount', 'currency', 'status', 'editActions'],
+        columns: ['account', 'amount', 'currency', 'status', 'transactionDate', 'editActions'],
         force: true,
       });
     });

@@ -42,12 +42,19 @@ Use these when you are interested in one capability across the supported row mod
 - [Foundation status](ag-grid-foundation-status.md)
 - [Application architecture](architecture.md)
 
-## Manual verification
+## Verification
 
+Browser/manual verification material lives under `docs/implementation/testing/`:
+
+- [Browser regression architecture](testing/browser-regression.md) — TypeScript Playwright flow, per-test data reset/isolation, selector/readiness rules, CI diagnostics, future E2E database/auth boundary, and local execution.
+- [Regression coverage matrix](testing/coverage-matrix.md) — current cross-layer inventory of focused frontend/backend tests and Client/Infinite/SSRM Playwright coverage/gaps.
+- [Grid validation manual regression](testing/validation-manual-testing.md)
 - [Server-backed Infinite + SSRM manual regression](testing/server-backed-manual-testing.md)
 - [Row interaction manual verification](testing/row-interaction-manual-testing.md)
 
-Manual verification documents describe scenarios to run; they must never claim a browser pass was completed unless it actually was.
+Browser-visible or AG Grid lifecycle work must add/update concrete manual steps in the same change. Automated Playwright coverage should be added for high-value integration contracts where the real grid/backend/browser combination can expose failures that unit/component tests cannot.
+
+Manual verification documents describe scenarios to run; they must never claim a browser pass was completed unless it actually was. A narrower Playwright pass must not be presented as proof that every item in a broader manual checklist was exercised.
 
 ## Documentation maintenance rule
 
@@ -58,7 +65,13 @@ When implementation changes:
 3. update the relevant row-model guide when ownership/behavior differs by Client, Infinite, or SSRM;
 4. update `grid-capability-tags.md` when the frontend capability footprint changes;
 5. update repository entry points such as `README.md` / `AGENTS.md` when navigation or durable rules change;
-6. keep unimplemented design out of current implementation documents.
+6. add/update manual verification steps for browser-visible or AG Grid lifecycle behavior;
+7. update the regression coverage matrix when the applicable automated/manual coverage changes;
+8. keep unimplemented design out of current implementation documents.
+
+When ownership, call flow, lifecycle, or state transitions are easier to understand visually, add a small diagram to the relevant implementation document. **Portable plain-text/ASCII diagrams are the default** because they remain readable in raw Markdown, GitHub, IDE previews, and local viewers. Do not rely on Mermaid-only diagrams unless the repository explicitly guarantees Mermaid rendering for the intended reader.
+
+Do not add diagrams merely for decoration. Use them where they reduce the effort needed to understand which layer calls which layer, who owns state, or how a lifecycle/state transition works.
 
 Cross-row-model capability docs may describe all three implementations in one document when the user-facing capability is shared, but they must explicitly call out meaningful Client/Infinite/SSRM differences. Do not create three duplicate copies of a shared capability merely for folder symmetry.
 

@@ -239,7 +239,6 @@ describe('TransactionsInfiniteGrid production wiring', () => {
       } as unknown as CellValueChangedEvent<Transaction>);
     });
 
-    // modelUpdated happens later, after React has stored the edit from cellValueChanged.
     act(() => {
       getGridProps().onModelUpdated?.();
     });
@@ -263,7 +262,6 @@ describe('TransactionsInfiniteGrid production wiring', () => {
       } as unknown as CellValueChangedEvent<Transaction>);
     });
 
-    // paginationChanged is also a later AG Grid event, not part of the cell edit update.
     act(() => {
       getGridProps().onPaginationChanged?.({ api } as PaginationChangedEvent<Transaction>);
     });
@@ -279,7 +277,6 @@ describe('TransactionsInfiniteGrid production wiring', () => {
         const oldValue = row[field];
         (row as unknown as Record<string, unknown>)[field] = value;
 
-        // AG Grid can emit this event for an application write through setDataValue.
         getGridProps().onCellValueChanged?.({
           data: row,
           colDef: { field },
@@ -311,10 +308,8 @@ describe('TransactionsInfiniteGrid production wiring', () => {
       const latestContext = vi.mocked(api.setGridOption).mock.calls.at(-1)?.[1] as
         TransactionRowEditActionsContext | undefined;
       expect(latestContext?.isRowDirty('txn-a')).toBe(false);
-      // Editing context drives editable/conflict presentation as well as the row Actions renderer.
-      // Refresh all of those columns so a Discard cannot leave stale dirty/conflict UI in any cell.
       expect(api.refreshCells).toHaveBeenLastCalledWith({
-        columns: ['account', 'amount', 'currency', 'status', 'editActions'],
+        columns: ['account', 'amount', 'currency', 'status', 'transactionDate', 'editActions'],
         force: true,
       });
     });

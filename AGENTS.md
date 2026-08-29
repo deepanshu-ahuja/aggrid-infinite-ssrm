@@ -84,6 +84,8 @@ Do not put these into current implementation docs merely because they were discu
 
 Current limitations are appropriate when they state what the implementation does or does not support today. Do not add a speculative future solution merely to explain a limitation.
 
+When ownership, call flow, lifecycle or state transitions are materially easier to understand visually, add a small diagram to the relevant implementation document. Portable plain-text/ASCII diagrams are the default because they remain readable in raw Markdown and ordinary local viewers. Do not rely on Mermaid-only diagrams unless rendering is explicitly guaranteed, and do not add diagrams merely for decoration.
+
 ### Row-model implementation entry points
 
 A developer must be able to understand one row model without first reading all three.
@@ -106,6 +108,7 @@ Examples:
 
 - `docs/implementation/selection-counts.md`;
 - `docs/implementation/transaction-editing.md`;
+- `docs/implementation/grid-validation.md`;
 - `docs/implementation/edit-conflict-reconciliation.md`;
 - `docs/implementation/grid-export.md`;
 - `docs/implementation/row-interaction.md`.
@@ -118,7 +121,47 @@ Current browser/manual verification guides live under:
 
 - `docs/implementation/testing/`.
 
-They describe scenarios to run. Never claim a manual/browser pass was completed unless it actually was.
+**Manual verification steps are a required deliverable for every meaningful browser-visible or AG Grid lifecycle capability/change.** Do not wait for the user to ask for them.
+
+When such a capability changes, in the same work:
+
+1. create or update the relevant guide under `docs/implementation/testing/`;
+2. cover each applicable row model independently when mechanics/lifecycle differ;
+3. include concrete setup, actions, expected visible/state/network outcomes, important negative cases and pass criteria;
+4. include interactions with existing lifecycle/state that can regress, such as selection, dirty state, validation, conflicts, refresh/recreation, Save/Discard, errors or export as applicable;
+5. link the guide from `docs/implementation/README.md` and the relevant capability document when useful.
+
+Automated tests do not replace these documented browser/manual steps. If a change truly has no meaningful browser/manual surface, a separate checklist is not required, but that should be evident from the capability's scope rather than silently omitted.
+
+If the active execution environment provides a usable browser and the application can be run/accessed, perform the relevant browser verification as part of the work where practical. If the environment cannot run or access the application, keep the steps documented and report that execution limitation precisely.
+
+Never claim a manual/browser pass was completed unless it actually was.
+
+### Browser automation and regression inventory
+
+TypeScript Playwright is the repository's real-browser integration layer.
+
+Canonical references:
+
+- `docs/implementation/testing/browser-regression.md` — architecture, CI flow, deterministic test-data reset, selector/readiness rules, diagnostics, future dedicated E2E database/auth boundary and local execution;
+- `docs/implementation/testing/coverage-matrix.md` — cross-layer inventory of implemented capability coverage and remaining gaps.
+
+Rules:
+
+- browser specs must import `test` / `expect` from `tests/browser/fixtures.ts`, not directly from `@playwright/test`;
+- the automatic fixture must reset authoritative E2E Transaction data before every test and retry;
+- no browser test may depend on data mutated by an earlier test, file order, retry order or another row model's scenario;
+- use stable seeded row IDs for known business-policy rows rather than positional "first matching row" assumptions;
+- prefer unique semantic selectors; use explicit test IDs for custom editor internals when the same accessible label legitimately identifies another control;
+- wait for real authoritative data/materialisation/network preconditions rather than using arbitrary sleeps to mask lifecycle races;
+- keep pure algorithms/combinatorial state transitions in focused tests when a browser adds no useful evidence;
+- use Playwright for material real React + AG Grid + backend integration, rendering, editor, selection, lifecycle, network and uncaught-page-error risks;
+- update the coverage matrix when automated/manual coverage materially changes;
+- a written Playwright test is not a passed browser check until the exact code head actually executes successfully.
+
+The current Transaction source is an in-process deterministic Python list. The Playwright fixture resets it through a default-off E2E-only backend boundary. When Transactions become database-backed, preserve the Playwright reset contract and move its backend implementation to a dedicated seeded/reset E2E database; never use developer or production data.
+
+The current app has no authentication. When authentication exists, use a Playwright setup project to log in once with dedicated test credentials from environment/CI secrets, save `storageState`, and reuse it across normal browser specs. Do not hardcode real credentials.
 
 ### Backlog and proposal material
 
@@ -149,11 +192,15 @@ A meaningful capability is not complete with code alone.
 Expected deliverables normally include:
 
 - production-quality implementation;
-- focused automated tests;
+- focused automated tests at the strongest deterministic boundaries;
+- backend/API tests when backend authority/contracts change;
+- TypeScript Playwright coverage when real browser/AG Grid/backend integration materially matters;
 - useful comments/JSDoc for non-obvious ownership, state or lifecycle logic;
 - current implementation documentation;
 - explicit current limitations;
-- manual verification guidance when browser/AG Grid lifecycle behavior matters;
+- **documented manual/browser verification steps for every meaningful browser-visible or AG Grid lifecycle capability/change**;
+- execution of those browser steps when the active environment can run/access the application;
+- regression coverage-matrix review/update when the capability footprint or coverage changes;
 - capability-tag review when the frontend capability footprint changes;
 - backlog/status updates when sequencing/status changes;
 - CI validation;
@@ -452,7 +499,10 @@ Current editing includes:
 - Save/Discard selected dirty rows;
 - safe in-flight acknowledgement;
 - BASE/LOCAL/REMOTE conflict reconciliation;
-- local-overlay protection so programmatic values are not mistaken for fresh REMOTE data.
+- local-overlay protection so programmatic values are not mistaken for fresh REMOTE data;
+- field validation integrated with direct/programmatic LOCAL edits;
+- Row Save and exact Save Selected validation guards;
+- backend field validation error mapping without losing rejected LOCAL work.
 
 For a dirty field:
 
@@ -471,13 +521,13 @@ REMOTE differs from BASE and LOCAL
 
 ---
 
-## Validation — next implementation
+## Validation — implemented baseline
 
 Validation is a first-class capability independent of configurable-table metadata.
 
-Static Transaction configuration must be able to use it directly.
+Static Transaction configuration uses it directly.
 
-The validation engine should consume resolved rule arrays with stable registered rule keys plus JSON-safe params/messages, conceptually:
+The validation engine consumes resolved rule arrays with stable registered rule keys plus JSON-safe params/messages:
 
 ```text
 rules: [
@@ -489,20 +539,24 @@ rules: [
 
 Frontend owns executable validator functions. Do not accept arbitrary executable JavaScript/expressions from backend/configuration.
 
-Required state behavior:
+Current state behavior:
 
 ```text
 invalid LOCAL value
 → keep LOCAL visible
 → keep row dirty
 → record field error by stable row ID + field
-→ block relevant Save
+→ block relevant Row Save / exact Save Selected target
 → correction/revert revalidates and clears stale errors
 ```
 
-Backend structured field errors should map into the same validation state while rejected LOCAL input remains visible.
+Direct cell edits and current-page programmatic edits run the same validation semantics.
 
-Validation and conflict remain separate:
+Backend structured field errors map into the same validation state while rejected LOCAL input remains visible and dirty.
+
+Discard clears validation for discarded work. `Use server` clears validation for the LOCAL value it removes. `Keep my edit` revalidates the retained LOCAL value.
+
+Validation and conflict remain separate and may coexist:
 
 ```text
 Validation
@@ -512,17 +566,19 @@ Conflict
 → did REMOTE diverge from BASE while LOCAL exists?
 ```
 
-A field may be invalid, conflicted, or both.
+Current implementation reference:
 
-Review `docs/implementation/grid-capability-tags.md` before adding/reusing a validation marker.
+- `docs/implementation/grid-validation.md`.
+
+Review `docs/implementation/grid-capability-tags.md` when the validation footprint changes.
 
 ---
 
-## Import — after validation
+## Import — after existing-capability regression hardening
 
 Import is a separate workflow, not normal grid editing.
 
-Design/implementation should cover the required file format, identifiers, mapping, preview, validation, duplicate/error semantics and authoritative refresh without hiding Import inside normal tracked editing.
+Do not start Import while the active regression-hardening backlog still contains agreed high-value gaps. Once that hardening is complete, design/implementation should cover the required file format, identifiers, mapping, preview, validation reuse, duplicate/error semantics and authoritative refresh without hiding Import inside normal tracked editing.
 
 ---
 
@@ -551,8 +607,8 @@ Always inspect `docs/grid-backlog.md` before deciding the next capability.
 Current agreed sequence:
 
 ```text
-1. maintain existing Client/Infinite/SSRM baseline verification
-2. implement validation
+1. complete regression hardening for already-implemented Client/Infinite/SSRM capabilities
+2. keep manual baseline verification guides current
 3. design/implement Import
 4. build isolated configurable SSRM-based experiment
 5. evaluate reuse/migration only after the experiment proves its boundary
@@ -563,6 +619,22 @@ When sequencing changes, update this file and `docs/grid-backlog.md` together.
 ---
 
 ## Testing expectations
+
+Use layered testing deliberately:
+
+```text
+pure/state tests
+→ deterministic algorithms, transforms, validation, selection math, BASE/LOCAL/REMOTE transitions, request races
+
+component/integration tests
+→ React wiring, callbacks, request mapping, save guards and feature composition
+
+backend tests
+→ serializers, authoritative policy, selected-row resolution, persistence/error contracts
+
+TypeScript Playwright
+→ real Django + Vite + Chromium + AG Grid DOM/network/lifecycle/editor integration
+```
 
 Meaningful behavior changes should have focused tests at stable boundaries, including as applicable:
 
@@ -584,6 +656,12 @@ Meaningful behavior changes should have focused tests at stable boundaries, incl
 
 Test Client, Infinite and SSRM independently where lifecycle or selection implementation differs.
 
+For every browser-visible/AG Grid lifecycle change, automated tests and documented manual/browser steps are complementary deliverables. Keep the manual checklist current in `docs/implementation/testing/`; do not treat green CI as a substitute for documenting what a human/browser regression pass should verify.
+
+For material real-browser integration, add/update TypeScript Playwright coverage and follow `docs/implementation/testing/browser-regression.md`. Browser tests must use the repository fixture, deterministic per-test reset, stable row identities/selectors and real readiness conditions. Never make one test rely on a mutation from another test.
+
+Review and update `docs/implementation/testing/coverage-matrix.md` when a capability or its protection changes. Existing capabilities are being brought up to this standard before the next product capability is started.
+
 Typical frontend verification:
 
 ```bash
@@ -598,6 +676,13 @@ Typical backend verification:
 ```bash
 python backend/manage.py check
 python backend/manage.py test apps.transactions
+```
+
+Typical browser verification (with the E2E backend + Vite running as documented):
+
+```bash
+cd tests/browser
+npx playwright test
 ```
 
 Inspect GitHub Actions after pushes.
@@ -639,8 +724,11 @@ If the user says a PR was merged, verify GitHub state first.
 - `docs/implementation/selected-action-selection-lifecycle.md`
 - `docs/implementation/row-interaction.md`
 - `docs/implementation/transaction-editing.md`
+- `docs/implementation/grid-validation.md`
 - `docs/implementation/edit-conflict-reconciliation.md`
 - `docs/implementation/grid-export.md`
+- `docs/implementation/testing/browser-regression.md`
+- `docs/implementation/testing/coverage-matrix.md`
 
 ---
 
@@ -666,12 +754,15 @@ If the user says a PR was merged, verify GitHub state first.
 - `frontend/src/shared/grid/data/server-side/createServerSideDatasource.ts`
 - `frontend/src/shared/grid/data/server-side/useServerSideRowLoading.ts`
 
-### Editing
+### Editing and validation
 
 - `frontend/src/shared/grid/editing/trackedGridEditing.ts`
 - `frontend/src/shared/grid/editing/useTrackedGridEditing.ts`
 - `frontend/src/shared/grid/editing/useCurrentPageEditActions.ts`
+- `frontend/src/shared/grid/validation/gridValidation.ts`
+- `frontend/src/shared/grid/validation/defaultGridValidationRules.ts`
 - `frontend/src/features/transactions/grid/transactionEditing.ts`
+- `frontend/src/features/transactions/grid/transactionValidation.ts`
 - `frontend/src/features/transactions/grid/useTransactionEditPersistence.ts`
 
 ### Backend authority
@@ -679,6 +770,14 @@ If the user says a PR was merged, verify GitHub state first.
 - `backend/apps/transactions/services.py`
 - `backend/apps/transactions/api/serializers.py`
 - `backend/apps/transactions/api/views.py`
+
+### Browser regression
+
+- `tests/browser/fixtures.ts`
+- `tests/browser/gridTestSupport.ts`
+- `tests/browser/*.spec.ts`
+- `backend/apps/transactions/e2e.py`
+- `backend/apps/transactions/api/e2e_views.py`
 
 ---
 
@@ -688,20 +787,25 @@ When asked to implement or review something:
 
 1. inspect current GitHub/repository state;
 2. read this file and `docs/implementation/README.md`;
-3. choose relevant row-model/capability docs;
-4. locate relevant capability markers;
-5. inspect implementation/tests/backend contracts;
-6. identify architecture issues before coding;
-7. implement native-first and row-model-specific where appropriate;
-8. preserve useful comments and markers;
-9. add focused tests;
-10. update implementation docs only with implemented behavior;
-11. update relevant row-model guides when ownership/behavior changes;
-12. keep planning/proposal material out of implementation docs;
-13. update backlog/working contract when roadmap or durable rules change;
-14. inspect CI;
-15. keep the open PR accurate;
-16. report manual verification truthfully.
+3. inspect `docs/implementation/testing/coverage-matrix.md` for the affected capability;
+4. choose relevant row-model/capability docs;
+5. locate relevant capability markers;
+6. inspect implementation/tests/backend contracts;
+7. identify architecture issues before coding;
+8. implement native-first and row-model-specific where appropriate;
+9. preserve useful comments and markers;
+10. add/update the appropriate pure/component/backend test layers;
+11. add/update TypeScript Playwright for material real-browser/AG Grid integration and use the repository auto-reset fixture;
+12. update implementation docs only with implemented behavior;
+13. **add/update manual/browser verification steps for every meaningful browser-visible or AG Grid lifecycle change**;
+14. update the regression coverage matrix;
+15. update relevant row-model guides when ownership/behavior changes;
+16. keep planning/proposal material out of implementation docs;
+17. update backlog/working contract when roadmap or durable rules change;
+18. inspect CI;
+19. run browser verification when the active environment can run/access the app;
+20. keep the open PR accurate;
+21. report manual/browser verification truthfully and distinguish documented steps from actually executed scenarios.
 
 Push back when a requested approach weakens architecture or creates an abstraction without a real responsibility.
 

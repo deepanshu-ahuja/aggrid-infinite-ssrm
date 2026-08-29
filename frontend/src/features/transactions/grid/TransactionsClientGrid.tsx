@@ -1,4 +1,4 @@
-// GRIDCAP-ROWMODEL-CLIENT | GRIDCAP-DATA-LOAD | GRIDCAP-ROW-ID | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-COUNT-SELECTED | GRIDCAP-ACTION-SELECTED | GRIDCAP-EDIT-TRACKED | GRIDCAP-EDIT-SAVE-ROW | GRIDCAP-EDIT-SAVE-SELECTED | GRIDCAP-EDIT-DISCARD | GRIDCAP-EDIT-CONFLICT | GRIDCAP-COUNT-EDITED | GRIDCAP-EXPORT-PAGE | GRIDCAP-EXPORT-SELECTED | GRIDCAP-STATE-PERSISTENCE | GRIDCAP-ERROR-RETRY | GRIDCAP-LIFECYCLE-REFRESH | GRIDCAP-LIFECYCLE-DESTROY | GRIDCAP-ROW-ELIGIBILITY | GRIDCAP-COLUMNS
+// GRIDCAP-ROWMODEL-CLIENT | GRIDCAP-DATA-LOAD | GRIDCAP-ROW-ID | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-COUNT-SELECTED | GRIDCAP-ACTION-SELECTED | GRIDCAP-EDIT-TRACKED | GRIDCAP-EDIT-SAVE-ROW | GRIDCAP-EDIT-SAVE-SELECTED | GRIDCAP-EDIT-DISCARD | GRIDCAP-EDIT-CONFLICT | GRIDCAP-EDIT-VALIDATION | GRIDCAP-COUNT-EDITED | GRIDCAP-EXPORT-PAGE | GRIDCAP-EXPORT-SELECTED | GRIDCAP-STATE-PERSISTENCE | GRIDCAP-ERROR-RETRY | GRIDCAP-LIFECYCLE-REFRESH | GRIDCAP-LIFECYCLE-DESTROY | GRIDCAP-ROW-ELIGIBILITY | GRIDCAP-COLUMNS
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 import type {
@@ -27,6 +27,11 @@ import {
   type ClientSideSelectionScope,
 } from '@/shared/grid/selection/client-side/useClientSideSelectionController';
 import { useGridStatePersistence } from '@/shared/grid/state/useGridStatePersistence';
+import {
+  hasGridFieldValidationError,
+  hasGridRowValidationError,
+  hasGridUpdateValidationError,
+} from '@/shared/grid/validation/gridValidation';
 import { useClientTransactions } from '../api/transactions.queries';
 import type { Transaction, TransactionStatus } from '../api/transactions.contracts';
 import {
@@ -69,17 +74,7 @@ export interface TransactionsClientGridProps {
   onSelectionChange?: (selection: ClientSideSelectionIntent) => void;
 }
 
-/**
- * Concrete Transactions Client-Side Row Model root.
- *
- * The complete bounded working set is fetched once through TanStack Query and passed to native AG Grid
- * `rowData`. From that point AG Grid owns sorting, filtering, pagination and checkbox selection locally.
- * Shared Transaction editing/conflict/row-policy mechanics are reused, but no Infinite datasource,
- * SSRM store state, or unloaded-row selection representation is imported into this root.
- *
- * This concrete root is intentionally a multi-capability integration boundary. The GRIDCAP markers at
- * the top are an extraction map, not a signal that these concerns should be hidden behind one wrapper.
- */
+/** Concrete Transactions Client-Side Row Model root. */
 export function TransactionsClientGrid({
   selectionScope: selectionScopeOverride,
   gridOptions: gridOptionsOverride,
@@ -103,8 +98,6 @@ export function TransactionsClientGrid({
 
   const publishSelection = useCallback(
     (selection: ClientSideSelectionIntent) => {
-      // This React snapshot exists only for renderable selected/dirty intersections. AG Grid remains
-      // authoritative and every business action re-reads native selected rows at action time.
       setSelectionSnapshot(selection);
       onSelectionChange?.(selection);
     },
@@ -128,9 +121,11 @@ export function TransactionsClientGrid({
 
   const {
     state,
+    validationState,
     payload,
     editedRowCount,
     conflictCount,
+    validationErrorCount,
     lastEdit,
     applyChangesToNodes,
     restoreTrackedEdits,
@@ -140,6 +135,7 @@ export function TransactionsClientGrid({
     discardRows,
     resolveConflictWithRemote,
     resolveConflictWithLocal,
+    setServerValidationErrors,
   } = useTrackedGridEditing(transactionEditingConfig);
 
   const {
@@ -151,19 +147,14 @@ export function TransactionsClientGrid({
   const { saveRow, saveBulk, isSaving, saveError } = useTransactionEditPersistence({
     updates: payload.updates,
     acknowledgeChanges,
-    // Explicit Save endpoints already return authoritative rows, including recomputed interaction
-    // policy. Merge those rows directly into the Client query cache instead of refetching all 750 rows.
     onPersistedRows: applyAuthoritativeRows,
+    onServerValidationErrors: (rowErrors) => {
+      for (const error of rowErrors) setServerValidationErrors(error.rowId, error.fields);
+    },
   });
 
   const handleSelectedTransactionUpdateApplied = useCallback(() => {
-    // GRIDCAP-ACTION-SELECTED | GRIDCAP-LIFECYCLE-REFRESH
-    // Change Status has one known completion behavior: clear the successful target. Client selection is
-    // fully native, so call the existing row-model controller directly instead of carrying a policy key.
     clearSelection();
-
-    // Selection status API returns only updatedCount. Refetch the bounded collection so Client rowData
-    // receives authoritative changed values/policy; stable getRowId lets AG Grid reconcile row identity.
     void refetch();
   }, [clearSelection, refetch]);
 
@@ -176,6 +167,10 @@ export function TransactionsClientGrid({
   const hasSelection = selectedRowCount > 0;
   const selectedDirtyUpdates = buildSelectedTrackedGridUpdatePayload(state, selectionSnapshot).updates;
   const selectedEditsHaveConflict = hasTrackedGridUpdateConflict(state, selectedDirtyUpdates);
+  const selectedEditsHaveValidationError = hasGridUpdateValidationError(
+    validationState,
+    selectedDirtyUpdates,
+  );
   const statusActionBlockedByConflict = hasSelectedTrackedGridFieldConflict(
     state,
     selectionSnapshot,
@@ -194,9 +189,14 @@ export function TransactionsClientGrid({
 
   const handleSaveSelected = useCallback(() => {
     const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
-    if (hasTrackedGridUpdateConflict(state, updates)) return;
+    if (
+      hasTrackedGridUpdateConflict(state, updates) ||
+      hasGridUpdateValidationError(validationState, updates)
+    ) {
+      return;
+    }
     saveBulk(updates);
-  }, [readSelectionIntent, saveBulk, state]);
+  }, [readSelectionIntent, saveBulk, state, validationState]);
 
   const handleDiscardSelected = useCallback(() => {
     const api = gridApi.current;
@@ -219,9 +219,6 @@ export function TransactionsClientGrid({
         return;
       }
 
-      // Every Client-Side selected row is concrete and therefore expressible as an explicit include
-      // target. The wire contract deliberately omits filters for include selections because exact IDs
-      // already define the complete target; backend filter translation is only needed for exclude mode.
       updateSelectedTransactions({
         selection: currentSelection,
         changes: { status },
@@ -233,7 +230,6 @@ export function TransactionsClientGrid({
   const handleExportCurrentPage = useCallback(() => {
     const api = gridApi.current;
     if (!api) return;
-
     const result = exportCurrentPageCsv(api, 'transactions-client-current-page.csv');
     setExportError(result.ok ? undefined : result.error);
   }, []);
@@ -241,7 +237,6 @@ export function TransactionsClientGrid({
   const handleExportSelected = useCallback(() => {
     const api = gridApi.current;
     if (!api) return;
-
     const result = exportSelectedRowsCsv(api, 'transactions-client-selected.csv');
     setExportError(result.ok ? undefined : result.error);
   }, []);
@@ -250,7 +245,11 @@ export function TransactionsClientGrid({
     () => ({
       isRowDirty: (rowId) => Boolean(state.changesById[rowId]),
       isRowConflicted: (rowId) => hasTrackedGridRowConflict(state, rowId),
+      isRowInvalid: (rowId) => hasGridRowValidationError(validationState, rowId),
       isCellConflicted: (rowId, field) => hasTrackedGridFieldConflict(state, rowId, field),
+      isCellInvalid: (rowId, field) => hasGridFieldValidationError(validationState, rowId, field),
+      getCellValidationMessages: (rowId, field) =>
+        validationState[rowId]?.[field]?.map((error) => error.message) ?? [],
       getCellConflict: (rowId, field) => {
         const conflict = state.conflictsById[rowId]?.[field];
         const localValue = state.changesById[rowId]?.[field];
@@ -260,17 +259,21 @@ export function TransactionsClientGrid({
       },
       isSaving,
       onSaveRow: (rowId) => {
-        if (!hasTrackedGridRowConflict(state, rowId)) saveRow(rowId);
+        if (
+          !hasTrackedGridRowConflict(state, rowId) &&
+          !hasGridRowValidationError(validationState, rowId)
+        ) {
+          saveRow(rowId);
+        }
       },
       onDiscardRow: handleDiscardRow,
     }),
-    [handleDiscardRow, isSaving, saveRow, state],
+    [handleDiscardRow, isSaving, saveRow, state, validationState],
   );
 
   useEffect(() => {
     const api = gridApi.current;
     if (!api) return;
-
     api.setGridOption('context', rowEditActionsContext);
     api.refreshCells({ columns: [...TRANSACTION_EDITABLE_FIELDS, 'editActions'], force: true });
   }, [rowEditActionsContext]);
@@ -285,9 +288,6 @@ export function TransactionsClientGrid({
 
   const handleRowDataUpdated = useCallback(
     (event: RowDataUpdatedEvent<Transaction>) => {
-      // GRIDCAP-EDIT-CONFLICT | GRIDCAP-LIFECYCLE-REFRESH
-      // A new Client rowData projection represents authoritative query data. Reconcile it against
-      // durable LOCAL drafts before overlaying those drafts back onto the newly-created row objects.
       restoreTrackedEdits(event.api);
     },
     [restoreTrackedEdits],
@@ -303,15 +303,11 @@ export function TransactionsClientGrid({
       const target = event.event?.target;
       const anchorEl = target instanceof Element ? target.closest('.ag-cell') : null;
       if (!(anchorEl instanceof HTMLElement)) return;
-
       setConflictTarget({ rowId: event.data.id, field: candidateField, anchorEl });
     },
     [state],
   );
 
-  // The popover is React presentation, so derive it directly from React editing state. Do not route
-  // render-time reads through AG Grid context callbacks: those callbacks are intended for grid events
-  // and cell renderers, while the React tree should render from React-owned tracked-edit state.
   const activeConflict = useMemo(() => {
     if (!conflictTarget) return undefined;
     const conflict = state.conflictsById[conflictTarget.rowId]?.[conflictTarget.field];
@@ -343,8 +339,10 @@ export function TransactionsClientGrid({
       <TransactionEditingControls
         editedRowCount={editedRowCount}
         conflictCount={conflictCount}
+        validationErrorCount={validationErrorCount}
         selectedEditedRowCount={selectedDirtyUpdates.length}
         selectedEditsHaveConflict={selectedEditsHaveConflict}
+        selectedEditsHaveValidationError={selectedEditsHaveValidationError}
         lastEdit={lastEdit}
         isSaving={isSaving}
         saveError={saveError}
@@ -377,9 +375,6 @@ export function TransactionsClientGrid({
             loadError ? { message: loadError, onRetry: () => void refetch() } : undefined
           }
           onGridReady={handleGridReady}
-          // GRIDCAP-LIFECYCLE-DESTROY
-          // The concrete root owns this API ref. Clear it before AG Grid destroys the instance so
-          // asynchronous callbacks/effects cannot retain and call a stale GridApi during teardown.
           onGridPreDestroyed={() => {
             gridApi.current = null;
           }}

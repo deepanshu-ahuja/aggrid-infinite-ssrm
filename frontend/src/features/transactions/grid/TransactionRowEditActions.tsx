@@ -1,3 +1,4 @@
+// GRIDCAP-EDIT-SAVE-ROW | GRIDCAP-EDIT-VALIDATION | GRIDCAP-EDIT-CONFLICT
 import { Button, Stack, Tooltip } from '@mui/material';
 import type { CustomCellRendererProps } from 'ag-grid-react';
 import type { Transaction } from '../api/transactions.contracts';
@@ -5,15 +6,17 @@ import type { TransactionEditableField, TransactionEditableValue } from './trans
 import { isTransactionRowReadOnly } from './transactionRowInteraction';
 
 /**
- * Feature context consumed by Transactions cell renderers and conflict-aware column callbacks.
- *
- * Durable dirty/conflict state remains owned by `useTrackedGridEditing`; renderers only ask questions
- * and invoke feature/root callbacks. This keeps AG Grid presentation from becoming a second state store.
+ * Feature context consumed by Transactions cell renderers and conflict/validation-aware column callbacks.
+ * Durable dirty/conflict/validation state remains outside AG Grid; renderers only query it and invoke
+ * feature/root callbacks so presentation never becomes a second state store.
  */
 export interface TransactionRowEditActionsContext {
   isRowDirty: (rowId: string) => boolean;
   isRowConflicted: (rowId: string) => boolean;
+  isRowInvalid: (rowId: string) => boolean;
   isCellConflicted: (rowId: string, field: TransactionEditableField) => boolean;
+  isCellInvalid: (rowId: string, field: TransactionEditableField) => boolean;
+  getCellValidationMessages: (rowId: string, field: TransactionEditableField) => readonly string[];
   getCellConflict: (
     rowId: string,
     field: TransactionEditableField,
@@ -31,20 +34,28 @@ export function TransactionRowEditActions({
   if (!data || isTransactionRowReadOnly(data) || !context?.isRowDirty(data.id)) return null;
 
   const hasConflict = context.isRowConflicted(data.id);
+  const hasValidationError = context.isRowInvalid(data.id);
+  const blocked = hasConflict || hasValidationError;
   const saveButton = (
     <Button
       size="small"
-      disabled={context.isSaving || hasConflict}
+      disabled={context.isSaving || blocked}
       onClick={() => context.onSaveRow(data.id)}
     >
       Save
     </Button>
   );
 
+  const blockedReason = hasConflict
+    ? 'Resolve the highlighted field conflict before saving this row.'
+    : hasValidationError
+      ? 'Correct the highlighted validation errors before saving this row.'
+      : undefined;
+
   return (
     <Stack direction="row" spacing={0.5} alignItems="center" height="100%">
-      {hasConflict ? (
-        <Tooltip title="Resolve the highlighted field conflict before saving this row.">
+      {blockedReason ? (
+        <Tooltip title={blockedReason}>
           <span>{saveButton}</span>
         </Tooltip>
       ) : (
