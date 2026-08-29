@@ -3,6 +3,9 @@ import type {
   Transaction,
   TransactionBulkUpdateRequest,
   TransactionBulkUpdateResponse,
+  TransactionImportApplyResponse,
+  TransactionImportPreviewResponse,
+  TransactionImportRequest,
   TransactionListRequest,
   TransactionListResponse,
   TransactionSelectionActionRequest,
@@ -51,6 +54,24 @@ export function bulkUpdateTransactions(
 ) {
   return patchJson<TransactionBulkUpdateResponse, TransactionBulkUpdateRequest>(
     '/transactions/bulk/',
+    request,
+    signal,
+  );
+}
+
+/** GRIDCAP-IMPORT: validate the chosen CSV without applying any Transaction changes. */
+export function previewTransactionImport(request: TransactionImportRequest, signal?: AbortSignal) {
+  return postJson<TransactionImportPreviewResponse, TransactionImportRequest>(
+    '/transactions/import/preview/',
+    request,
+    signal,
+  );
+}
+
+/** GRIDCAP-IMPORT: revalidate and atomically apply the chosen update-only CSV. */
+export function applyTransactionImport(request: TransactionImportRequest, signal?: AbortSignal) {
+  return postJson<TransactionImportApplyResponse, TransactionImportRequest>(
+    '/transactions/import/apply/',
     request,
     signal,
   );
