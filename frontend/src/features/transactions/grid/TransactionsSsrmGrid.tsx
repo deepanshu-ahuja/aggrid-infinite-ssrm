@@ -53,7 +53,6 @@ import { mapTransactionGridRequest } from './transactionRequest.mapper';
 import {
   getTransactionRowClass,
   isTransactionRowSelectable,
-  refreshTransactionRowSelectability,
 } from './transactionRowInteraction';
 import {
   buildTransactionSelectionActionRequest,
@@ -317,9 +316,8 @@ export function TransactionsSsrmGrid({
   }, []);
 
   const handleModelUpdated = useCallback(() => {
-    const api = gridApi.current;
-    if (api) refreshTransactionRowSelectability(api);
     syncSelectionAfterRowsChange();
+    const api = gridApi.current;
     if (api) restoreTrackedEdits(api);
   }, [restoreTrackedEdits, syncSelectionAfterRowsChange]);
 
