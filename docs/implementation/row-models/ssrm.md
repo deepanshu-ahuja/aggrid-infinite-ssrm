@@ -1,9 +1,5 @@
 # Server-Side Row Model (SSRM) implementation guide
 
-This document is the current source of truth for the repository's AG Grid Enterprise **Server-Side Row Model (SSRM)** implementation.
-
-Its scope is SSRM only. Shared capabilities are linked where useful, but this guide does not document other row-model implementations.
-
 ## Current ownership
 
 ```text
@@ -36,8 +32,6 @@ SSRM uses:
 
 The current backend contract is flat. Grouping, tree data, aggregation and pivot request semantics are not implemented.
 
-See [API and data flow](../api-data-flow.md), [AG Grid native usage](../ag-grid-native-usage.md), and [Reusable server-backed grid guide](../server-backed-grid-reuse.md).
-
 ## Selection
 
 SSRM uses native Enterprise selection where AG Grid represents the required meaning:
@@ -58,7 +52,7 @@ All Filtered
 
 The logical operation target remains `include | exclude` plus IDs, with backend eligibility authoritative for the final business operation.
 
-Read the full [SSRM selection contract](ssrm-selection.md).
+Custom All Filtered state resets when its defining filter changes. Native explicit and All Records selection remain stable across ordinary visible filter changes.
 
 ## Selected count
 
@@ -73,33 +67,96 @@ All Records
 → API totalCount - user exceptions
 ```
 
-See [Selected-row totals](../selection-counts.md).
+`totalCount` / `filteredCount` describe query membership, not exact backend operation eligibility for unloaded rows, so the backend can ultimately act on fewer rows than a dataset-wide displayed count.
 
 ## Editing and conflicts
 
-SSRM uses the shared stable-ID tracked editing engine. Unsaved LOCAL work is not stored only in RowNodes because SSRM store refresh/recreation can replace them.
+SSRM uses stable-ID tracked editing state outside transient RowNodes because store refresh/recreation can replace them.
 
 Fresh SSRM rows are reconciled against BASE / LOCAL / REMOTE state before remaining LOCAL values are restored.
 
-See [Transaction editing](../transaction-editing.md) and [Edit conflict reconciliation](../edit-conflict-reconciliation.md).
+For a dirty field:
+
+```text
+REMOTE == BASE
+→ keep LOCAL dirty
+
+REMOTE == LOCAL
+→ clean automatically
+
+REMOTE differs from BASE and LOCAL
+→ keep LOCAL visible
+→ retain REMOTE
+→ mark conflict
+```
+
+Row Save persists one explicit dirty row. Save Selected Dirty persists only existing dirty rows that are also in the current logical selection.
 
 ## Row interaction
 
-Loaded-row selectability/editability uses native AG Grid callbacks over the shared `enabled | selectionDisabled | readOnly` meaning. Backend authority protects unloaded rows and server-wide operations.
+Loaded-row selection/editability uses:
 
-See [Row interaction](../row-interaction.md).
+```text
+enabled
+→ selectable + editable
+
+selectionDisabled
+→ not selectable + individually editable
+
+readOnly
+→ not selectable + not editable
+```
+
+Native callbacks enforce loaded-row browser interaction. Backend authority protects unloaded rows and server-wide operations.
+
+Restricted rows are not converted into user deselection exception IDs.
+
+## Selected Change Status action
+
+The current Transaction action builds the SSRM logical selection target and sends it to the selected status endpoint.
+
+On success:
+
+```text
+backend succeeds
+→ SSRM clearSelection()
+→ refreshServerSide()
+```
+
+On failure, the success callback does not run and selection remains available.
 
 ## Export
 
-Current Page uses native AG Grid CSV over the exact resolved pagination page.
+### Current Page
+
+Current Page resolves the exact AG Grid pagination page and delegates CSV serialization to native AG Grid.
+
+If the expected page is not fully materialised, the operation is refused rather than exporting a partial page.
+
+### Selected
 
 Selected export is backend-owned because SSRM selection can represent unloaded rows.
 
-See [Grid export](../grid-export.md).
+```text
+logical SSRM selection
+→ backend selection target
+→ authoritative eligible rows
+→ backend CSV
+```
 
 ## Grid State and lifecycle
 
 The concrete SSRM root owns its `GridApi`, datasource/store lifecycle, Grid State persistence, native selection APIs, retry, refresh and teardown.
+
+Current persisted view preferences include column order/pinning/sizing/visibility, filters and sort. Pagination position and row selection remain transient.
+
+Datasource destroy/replacement cancels obsolete in-flight requests. The root clears its authoritative GridApi ref during pre-destroy lifecycle.
+
+## Current limitations
+
+The current SSRM selection adapter assumes flat server-side selection with `groupSelects: 'self'`.
+
+Grouping/tree selection requires separate semantics before hierarchical selection state can be treated as equivalent to this flat contract.
 
 ## Main implementation entry points
 
@@ -110,10 +167,26 @@ The concrete SSRM root owns its `GridApi`, datasource/store lifecycle, Grid Stat
 - `frontend/src/shared/grid/gridModules.ts`
 - `frontend/src/features/transactions/grid/transactionRequest.mapper.ts`
 
-For the searchable frontend footprint, use `GRIDCAP-ROWMODEL-SSRM` in the [capability tag registry](../grid-capability-tags.md).
+Search `GRIDCAP-ROWMODEL-SSRM` across frontend source/tests to locate the SSRM row-model footprint.
 
 ## Verification
 
-Use [Server-backed manual regression](../testing/server-backed-manual-testing.md) for the current SSRM browser scenarios.
+Verify at least:
 
-Manual verification must not be marked complete unless the SSRM scenarios were actually run.
+1. datasource requests use the current sort/filter mapping;
+2. stale older requests cannot overwrite count metadata owned by a later-started request;
+3. explicit selection uses native SSRM selection state;
+4. All Records uses native SSRM server-side selection state;
+5. Current Page operates only on the fully resolved selectable page RowNodes;
+6. All Filtered uses the custom logical state and resets when its defining filter changes;
+7. dataset-wide selected count follows `filteredCount` / `totalCount` minus user exceptions;
+8. dirty drafts survive store refresh/recreation;
+9. BASE / LOCAL / REMOTE reconciliation preserves or conflicts drafts correctly;
+10. successful Change Status clears selection and refreshes SSRM;
+11. failed Change Status keeps selection;
+12. failed datasource loads retry through `retryServerSideLoads()`;
+13. Current Page export refuses a partially materialised page;
+14. Selected export uses the backend target rather than loaded RowNodes;
+15. datasource teardown cancels obsolete work and does not use a destroyed GridApi.
+
+Do not mark manual verification complete unless the SSRM browser scenarios were actually run.
