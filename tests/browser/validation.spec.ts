@@ -1,19 +1,13 @@
-import { expect, test, type Page } from '@playwright/test';
-
-const routes = ['/client', '/infinite', '/ssrm'] as const;
-
-async function openGrid(page: Page, route: (typeof routes)[number]) {
-  const pageErrors: Error[] = [];
-  page.on('pageerror', (error) => pageErrors.push(error));
-  await page.goto(route);
-  await expect(page.locator('.ag-root')).toBeVisible();
-  await expect(page.locator('.ag-row').first()).toBeVisible();
-  return pageErrors;
-}
-
-async function expectNoPageErrors(pageErrors: Error[], scenario: string) {
-  expect(pageErrors.map((error) => error.message), `${scenario} produced page errors`).toEqual([]);
-}
+import { expect, test } from './fixtures';
+import {
+  SEEDED_ROWS,
+  accountEditorInput,
+  dateEditorInput,
+  expectNoPageErrors,
+  openGrid,
+  rowById,
+  routes,
+} from './gridTestSupport';
 
 for (const route of routes) {
   test(`${route}: Flow 2 blank Currency stays field-local and never crashes rendering`, async ({ page }) => {
@@ -54,37 +48,40 @@ for (const route of routes) {
   test(`${route}: MUI Account editor explains its own validation failure`, async ({ page }) => {
     const pageErrors = await openGrid(page, route);
 
-    const editableAccountCell = page.locator('.ag-cell[col-id="account"]')
-      .filter({ hasNot: page.locator('.grid-row--read-only') })
-      .first();
+    const editableAccountCell = rowById(page, SEEDED_ROWS.enabled).locator('.ag-cell[col-id="account"]');
     await editableAccountCell.dblclick();
 
-    const accountInput = page.getByLabel('Account', { exact: true }).last();
+    const accountInput = accountEditorInput(page);
     await expect(accountInput).toBeVisible();
     await accountInput.fill('');
     await expect(page.getByText('Account is required.', { exact: true })).toBeVisible();
     await accountInput.press('Enter');
 
-    await expect(page.locator('.ag-cell[col-id="account"].grid-cell--validation-error').first()).toBeVisible();
+    await expect(
+      rowById(page, SEEDED_ROWS.enabled).locator(
+        '.ag-cell[col-id="account"].grid-cell--validation-error',
+      ),
+    ).toBeVisible();
     await expectNoPageErrors(pageErrors, `${route} MUI Account editor`);
   });
 
   test(`${route}: date picker shows field-specific required error and keeps invalid LOCAL draft`, async ({ page }) => {
     const pageErrors = await openGrid(page, route);
 
-    const dateCell = page.locator('.ag-cell[col-id="transactionDate"]').first();
+    const dateCell = rowById(page, SEEDED_ROWS.enabled).locator('.ag-cell[col-id="transactionDate"]');
     await dateCell.dblclick();
 
-    const dateInput = page.getByLabel('Transaction date', { exact: true }).last();
+    const dateInput = dateEditorInput(page);
     await expect(dateInput).toBeVisible();
     await dateInput.fill('');
     await expect(page.getByText('Transaction date is required.', { exact: true })).toBeVisible();
     await dateInput.press('Enter');
 
-    const invalidDate = page.locator('.ag-cell[col-id="transactionDate"].grid-cell--validation-error');
-    await expect(invalidDate.first()).toBeVisible();
-    const row = invalidDate.first().locator('xpath=ancestor::*[contains(@class,"ag-row")][1]');
-    await expect(row.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+    const invalidDate = rowById(page, SEEDED_ROWS.enabled).locator(
+      '.ag-cell[col-id="transactionDate"].grid-cell--validation-error',
+    );
+    await expect(invalidDate).toBeVisible();
+    await expect(rowById(page, SEEDED_ROWS.enabled).getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 
     await expectNoPageErrors(pageErrors, `${route} Transaction date editor`);
   });
