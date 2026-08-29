@@ -1,11 +1,5 @@
 # AG Grid Foundation Status
 
-This document is a **current implementation snapshot** of the AG Grid foundation.
-
-It is not the backlog and does not record discarded designs. Planned work belongs in `docs/grid-backlog.md`; configurable-table target architecture belongs in the dedicated architecture documents.
-
-For a capability-first catalog, see `docs/grid-capabilities.md`. For the native AG Grid surface currently used by the code, see `docs/ag-grid-native-usage.md`.
-
 ## Current foundation rules
 
 - use native AG Grid behavior/API first;
@@ -233,4 +227,4 @@ Current protections include:
 
 Focused automated coverage exists across the implemented capabilities and CI runs frontend lint/typecheck/tests/build plus backend Django checks/tests.
 
-Manual browser regression for all three row models remains separately pending until it is actually run; this document does not mark manual verification complete.
+Manual browser regression for all three row models remains pending until it is actually run.
