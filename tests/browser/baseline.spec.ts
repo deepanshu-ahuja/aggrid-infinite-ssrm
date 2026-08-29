@@ -28,14 +28,15 @@ for (const route of routes) {
     const readOnlyRow = page.locator('.grid-row--read-only').first();
     await expect(readOnlyRow).toBeVisible();
     const readOnlyCheckbox = readOnlyRow.getByRole('checkbox').first();
-    await expect(readOnlyCheckbox).toHaveAttribute('aria-disabled', 'true');
+    // AG Grid uses the native disabled attribute for an unselectable row rather than aria-disabled.
+    await expect(readOnlyCheckbox).toBeDisabled();
 
     await readOnlyRow.locator('.ag-cell[col-id="account"]').dblclick();
     await expect(page.getByLabel('Account', { exact: true }).last()).not.toBeVisible();
 
     const selectionDisabledRow = page.locator('.grid-row--selection-disabled').first();
     await expect(selectionDisabledRow).toBeVisible();
-    await expect(selectionDisabledRow.getByRole('checkbox').first()).toHaveAttribute('aria-disabled', 'true');
+    await expect(selectionDisabledRow.getByRole('checkbox').first()).toBeDisabled();
 
     // selectionDisabled is still individually editable. The MUI editor proves the weaker policy is not
     // accidentally treated like readOnly by the browser integration.
