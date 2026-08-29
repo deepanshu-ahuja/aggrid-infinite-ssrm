@@ -14,18 +14,42 @@ Shared editing behavior receives the root-owned API where it needs AG Grid opera
 
 ## Editable fields
 
-Transactions exposes:
+Transactions currently exposes five persisted editable fields:
 
 ```text
 account
 amount
 currency
 status
+transactionDate
 ```
 
-The feature owns the editable field list, field access, row-editability rules, validation rule selection and user-facing validation messages.
+The feature owns the editable field list, field access, row-editability rules, editor choice, validation rule selection and user-facing validation messages.
 
 Shared grid code owns how committed edits are tracked, reconciled and coordinated with validation state.
+
+Current editor examples deliberately demonstrate more than one AG Grid integration style:
+
+```text
+Account
+→ custom MUI TextField popup editor
+→ exact validation helper text is visible beside the input while editing
+
+Amount
+→ native AG Grid number editor
+
+Currency
+→ native AG Grid text editing
+
+Status
+→ custom MUI Select editor
+
+Transaction date
+→ custom MUI date-input popup editor
+→ browser date picker + exact validation helper text
+```
+
+The MUI editors are examples of feature-owned executable UI. They do not justify wrapping every AG Grid editor in a universal abstraction.
 
 ## End-to-end editing flow
 
@@ -48,7 +72,7 @@ Shared grid code owns how committed edits are tracked, reconciled and coordinate
                        │                                │
                        └───────────────┬────────────────┘
                                        ▼
-                            Cell / row presentation
+                            Cell / editor presentation
                                        │
                          ┌─────────────┴─────────────┐
                          │                           │
@@ -104,6 +128,30 @@ This stable-ID ownership is used across all three row models because authoritati
 - Infinite can recreate/evict RowNodes as cache blocks change;
 - SSRM can recreate RowNodes/store data during refresh.
 
+## Draft values versus persisted values
+
+The authoritative Transaction/API shape remains strict:
+
+```text
+amount          → finite number
+transactionDate → ISO calendar date string
+```
+
+The LOCAL draft layer additionally permits `null` for a deliberately cleared editor value.
+
+That distinction is required because validation intentionally keeps invalid LOCAL work visible:
+
+```text
+user clears Amount or Transaction date
+→ LOCAL draft = null
+→ draft remains visible/dirty
+→ validation records the field error
+→ Save is blocked
+→ user may correct or Discard
+```
+
+The persistence mapper never sends those invalid draft-only values. A valid save must first pass validation and then be converted back to the strict API patch shape.
+
 ## Direct cell editing
 
 AG Grid's committed `cellValueChanged` event is the boundary for recording a direct user edit.
@@ -119,7 +167,7 @@ BASE value
 invalid LOCAL
 → remains visible
 → remains dirty
-→ validation error is shown
+→ exact field error is available from the field/editor presentation
 → editor remains available for correction
 
 LOCAL returned to BASE
@@ -129,6 +177,30 @@ LOCAL returned to BASE
 ```
 
 Programmatic writes performed by the editing engine are marked/guarded so AG Grid events caused by our own `setDataValue(...)` calls are not recorded again as fake user edits.
+
+## Field-specific validation presentation
+
+A red/invalid cell is not intended to be the only explanation of an error.
+
+Current field-specific presentation is:
+
+```text
+MUI Account editor
+→ helper text such as "Account is required."
+
+MUI Transaction date editor
+→ helper text such as "Transaction date is required."
+
+Flow 2 MUI inputs
+→ helper text for each checked invalid value
+
+committed invalid grid cell
+→ field-local validation styling + tooltip containing that field's message
+```
+
+Validation decoration must not alter AG Grid column geometry. Invalid styling is therefore geometry-neutral and may not push, overlap or visually invade a neighboring cell.
+
+Renderers and formatters must also tolerate invalid LOCAL drafts. For example, temporarily blank/invalid Currency must not make Amount formatting throw an `Intl.NumberFormat` exception, and a blank/invalid Date draft must not crash date presentation.
 
 ## Current-page programmatic edit actions
 
@@ -143,6 +215,17 @@ Implemented flows include:
 Current Page is a pagination scope, not a cache-block scope. If the expected page is not fully resolved, the operation refuses partial application.
 
 Programmatic edits use the same validation callback as direct cell edits. They do not bypass validation, and invalid values are still recorded as LOCAL drafts so the user can see/correct/discard them.
+
+A checked blank numeric Flow 2 input is significant rather than silently ignored:
+
+```text
+Amount checked + blank
+→ amount: null LOCAL draft
+→ number validation fails
+→ affected editable rows remain dirty/invalid
+```
+
+Likewise, blank Currency is applied as invalid LOCAL work without allowing dependent Amount formatting to crash.
 
 ## Row interaction and editing
 
@@ -195,12 +278,15 @@ Successful flow:
 
 ```text
 tracked row changes
+→ feature mapper restores strict API field types
 → PATCH /api/transactions/{id}/
 → backend validates explicit patch + row policy
 → authoritative updated row returned
 → exact submitted tracked values acknowledged
 → row-model-specific authoritative refresh/cache update
 ```
+
+`transactionDate` is persisted through the same explicit update endpoint as the other editable fields. DRF `DateField` remains authoritative for persisted date syntax.
 
 A rejected 400 field validation response does not acknowledge the draft. The LOCAL value therefore stays visible and dirty while backend messages are mapped into the same stable validation state.
 
@@ -401,10 +487,19 @@ frontend/src/shared/grid/editing/useCurrentPageEditActions.ts
 → exact current-page targeting and programmatic application
 
 frontend/src/features/transactions/grid/transactionEditing.ts
-→ Transaction editable fields + row editability + validation callback configuration
+→ Transaction editable fields + draft types + row editability + validation callback
+
+frontend/src/features/transactions/grid/TransactionAccountEditor.tsx
+→ MUI Account text cell editor with field-specific helper text
+
+frontend/src/features/transactions/grid/TransactionDateEditor.tsx
+→ MUI/native-date-picker cell editor with field-specific helper text
 
 frontend/src/features/transactions/grid/transactionValidation.ts
 → Transaction validation rules/messages + backend field-error mapping
+
+frontend/src/features/transactions/grid/transactionUpdate.mapper.ts
+→ strict persisted patch mapping, including ISO transactionDate
 
 frontend/src/features/transactions/grid/useTransactionEditPersistence.ts
 → Transaction Save lifecycle + server validation error routing
@@ -412,6 +507,8 @@ frontend/src/features/transactions/grid/useTransactionEditPersistence.ts
 
 ## Verification expectations
 
-Automated tests cover pure tracked state, direct/programmatic validation, correction, Discard, conflict resolution, backend field-error mapping, programmatic-write guarding, persistence acknowledgement and concrete-grid integration.
+Focused automated tests cover pure tracked state, direct/programmatic validation, correction, Discard, conflict resolution, backend field-error mapping, programmatic-write guarding, persistence acknowledgement and concrete-grid integration.
 
-Manual/browser verification must be recorded separately and is not implied by automated coverage.
+TypeScript Playwright under `tests/browser/` exercises the real Django + Vite + Chromium + AG Grid integration for critical paths. Current browser coverage includes Account MUI editing, Date-picker validation, Flow 2 blank Amount/Currency regressions, Row Save/Discard, explicit selected actions and export across Client, Infinite and SSRM.
+
+The broader human-readable regression steps remain under `docs/implementation/testing/`. A Playwright pass proves only the scenarios automated there; it does not imply every manual checklist item was executed.
