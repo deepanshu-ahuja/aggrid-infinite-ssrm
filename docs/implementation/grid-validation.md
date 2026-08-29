@@ -18,17 +18,41 @@ Backend validation remains authoritative for persisted writes. Frontend validati
 
 The three production frontend files introduced for the validation foundation have deliberately different responsibilities:
 
-```mermaid
-flowchart TD
-    A[transactionValidation.ts<br/>Transaction-owned rules + messages]
-    B[gridValidation.ts<br/>shared rule execution + validation state helpers]
-    C[defaultGridValidationRules.ts<br/>registered executable validators]
-    D[GridValidationError[]<br/>client validation result]
-
-    A -->|validateTransactionField field value| B
-    B -->|lookup rule.key| C
-    C -->|valid / invalid result| B
-    B --> D
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ transactionValidation.ts                                    │
+│ Transaction-owned rule selection + user-facing messages     │
+│                                                             │
+│ validateTransactionField(field, value)                      │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               │ passes resolved rules + value
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ gridValidation.ts                                           │
+│ Shared rule execution + validation state helpers            │
+│                                                             │
+│ validateGridValue(value, rules, registry)                   │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               │ looks up each rule.key
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ defaultGridValidationRules.ts                               │
+│ Registered executable validators                            │
+│                                                             │
+│ required | maxLength | numberRange                          │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               │ returns valid / invalid
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ gridValidation.ts                                           │
+│ Normalizes failures into GridValidationError[]              │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               ▼
+                    client validation result
 ```
 
 The important dependency direction is:
@@ -194,14 +218,18 @@ ruleKey?   // present for registered client rules when applicable
 
 The state-helper flow in `gridValidation.ts` is:
 
-```mermaid
-flowchart LR
-    A[row id + field + errors]
-    B[setGridFieldValidationErrors]
-    C[GridValidationState]
-    D[field / row / update queries]
-
-    A --> B --> C --> D
+```text
+rowId + field + errors
+        │
+        ▼
+setGridFieldValidationErrors(...)
+        │
+        ▼
+GridValidationState
+        │
+        ├── field query
+        ├── row query
+        └── update-payload query
 ```
 
 `gridValidation.ts` currently provides helpers to:
@@ -265,14 +293,19 @@ Client rules produce errors through `validateGridValue(...)`.
 
 Backend field messages can be converted through `createServerGridValidationErrors(...)` so presentation and save-state logic can consume one field-error model without pretending a server error came from a frontend rule.
 
-```mermaid
-flowchart TD
-    A[client rule failure]
-    B[backend serializer field error]
-    C[GridValidationError shape]
-
-    A -->|validateGridValue| C
-    B -->|createServerGridValidationErrors| C
+```text
+┌──────────────────────────┐          ┌────────────────────────────┐
+│ Client rule failure      │          │ Backend serializer error   │
+└────────────┬─────────────┘          └──────────────┬─────────────┘
+             │                                       │
+             │ validateGridValue(...)                │ createServerGridValidationErrors(...)
+             │                                       │
+             └──────────────────┬────────────────────┘
+                                ▼
+                 ┌──────────────────────────────┐
+                 │ GridValidationError[]        │
+                 │ one common field-error shape│
+                 └──────────────────────────────┘
 ```
 
 The source remains explicit:
