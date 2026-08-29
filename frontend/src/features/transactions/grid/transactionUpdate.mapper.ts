@@ -6,27 +6,20 @@ import type {
 import type { TransactionUpdatePayload } from './transactionEditing';
 
 const TRANSACTION_STATUSES: readonly TransactionStatus[] = ['Completed', 'Pending', 'Failed'];
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function hasOwn<T extends object>(value: T, key: PropertyKey) {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
-/**
- * Convert generic tracked-grid changes into the strict Transactions API patch shape.
- *
- * The shared edit engine intentionally models values generically and therefore cannot express that
- * `amount` is always numeric while account/currency/status are strings. This feature boundary restores
- * those domain guarantees before any request leaves the browser instead of weakening the API contract.
- */
+/** Convert tracked draft changes back into the strict Transactions API patch shape before transport. */
 export function mapTransactionUpdateChanges(
   changes: TransactionUpdatePayload['updates'][number]['changes'],
 ): TransactionUpdateChanges {
   const mapped: TransactionUpdateChanges = {};
 
   if (hasOwn(changes, 'account')) {
-    if (typeof changes.account !== 'string') {
-      throw new Error('Transaction account must be a string.');
-    }
+    if (typeof changes.account !== 'string') throw new Error('Transaction account must be a string.');
     mapped.account = changes.account;
   }
 
@@ -38,9 +31,7 @@ export function mapTransactionUpdateChanges(
   }
 
   if (hasOwn(changes, 'currency')) {
-    if (typeof changes.currency !== 'string') {
-      throw new Error('Transaction currency must be a string.');
-    }
+    if (typeof changes.currency !== 'string') throw new Error('Transaction currency must be a string.');
     mapped.currency = changes.currency;
   }
 
@@ -52,6 +43,16 @@ export function mapTransactionUpdateChanges(
       throw new Error('Transaction status is invalid.');
     }
     mapped.status = changes.status as TransactionStatus;
+  }
+
+  if (hasOwn(changes, 'transactionDate')) {
+    if (
+      typeof changes.transactionDate !== 'string' ||
+      !ISO_DATE_PATTERN.test(changes.transactionDate)
+    ) {
+      throw new Error('Transaction date must be an ISO date (YYYY-MM-DD).');
+    }
+    mapped.transactionDate = changes.transactionDate;
   }
 
   if (Object.keys(mapped).length === 0) {
