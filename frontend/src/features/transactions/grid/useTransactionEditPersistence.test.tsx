@@ -33,6 +33,7 @@ describe('useTransactionEditPersistence', () => {
   it('uses the single-row endpoint for Save Row and acknowledges that snapshot', async () => {
     const acknowledgeChanges = vi.fn();
     const onPersistedRows = vi.fn();
+    const onServerValidationErrors = vi.fn();
     transactionApi.updateTransaction.mockResolvedValue({ row: row('txn-a') });
 
     const updates = [{ id: 'txn-a', changes: { status: 'Completed' as const } }];
@@ -41,6 +42,7 @@ describe('useTransactionEditPersistence', () => {
         updates,
         acknowledgeChanges,
         onPersistedRows,
+        onServerValidationErrors,
       }),
     );
 
@@ -52,12 +54,14 @@ describe('useTransactionEditPersistence', () => {
       });
       expect(acknowledgeChanges).toHaveBeenCalledWith(updates);
       expect(onPersistedRows).toHaveBeenCalledWith([row('txn-a')]);
+      expect(onServerValidationErrors).not.toHaveBeenCalled();
     });
   });
 
   it('bulk-saves only the explicit dirty updates supplied by the grid selection boundary', async () => {
     const acknowledgeChanges = vi.fn();
     const onPersistedRows = vi.fn();
+    const onServerValidationErrors = vi.fn();
     const allDrafts = [
       { id: 'txn-a', changes: { status: 'Failed' as const } },
       { id: 'txn-b', changes: { amount: 250 } },
@@ -74,6 +78,7 @@ describe('useTransactionEditPersistence', () => {
         updates: allDrafts,
         acknowledgeChanges,
         onPersistedRows,
+        onServerValidationErrors,
       }),
     );
 
@@ -85,6 +90,7 @@ describe('useTransactionEditPersistence', () => {
       });
       expect(acknowledgeChanges).toHaveBeenCalledWith(selectedDrafts);
       expect(onPersistedRows).toHaveBeenCalledWith([row('txn-b')]);
+      expect(onServerValidationErrors).not.toHaveBeenCalled();
     });
   });
 });
