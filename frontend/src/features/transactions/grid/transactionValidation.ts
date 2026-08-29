@@ -7,7 +7,11 @@ import {
   validateGridValue,
   type GridValidationRule,
 } from '@/shared/grid/validation/gridValidation';
-import type { TransactionEditableField, TransactionEditableValue } from './transactionEditing';
+import type {
+  TransactionEditableField,
+  TransactionEditableValue,
+  TransactionUpdatePayload,
+} from './transactionEditing';
 
 export const TRANSACTION_VALIDATION_RULES: Readonly<
   Record<TransactionEditableField, readonly GridValidationRule<DefaultGridValidationRuleKey>[]>
@@ -36,4 +40,57 @@ export function validateTransactionField(
   value: TransactionEditableValue,
 ) {
   return validateGridValue(value, TRANSACTION_VALIDATION_RULES[field], defaultGridValidatorRegistry);
+}
+
+export interface TransactionServerValidationRowErrors {
+  rowId: string;
+  fields: Partial<Record<TransactionEditableField, readonly string[]>>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function asMessages(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
+}
+
+function readFieldErrors(value: unknown) {
+  if (!isRecord(value)) return {};
+  const fields: Partial<Record<TransactionEditableField, readonly string[]>> = {};
+  for (const field of Object.keys(TRANSACTION_VALIDATION_RULES) as TransactionEditableField[]) {
+    const messages = asMessages(value[field]);
+    if (messages.length > 0) fields[field] = messages;
+  }
+  return fields;
+}
+
+/**
+ * Translate DRF's single-row and indexed bulk serializer error shapes back to stable Transaction IDs.
+ * Transport parsing stays feature-owned because only Transactions knows how command rows correspond to
+ * serializer positions. Shared validation receives only normalized row-id/field message collections.
+ */
+export function mapTransactionServerValidationErrors(
+  details: unknown,
+  updates: TransactionUpdatePayload['updates'],
+): TransactionServerValidationRowErrors[] {
+  if (!isRecord(details) || updates.length === 0) return [];
+
+  if (updates.length === 1 && !Array.isArray(details.updates)) {
+    const fields = readFieldErrors(details);
+    return Object.keys(fields).length > 0 ? [{ rowId: updates[0].id, fields }] : [];
+  }
+
+  const updateErrors = details.updates;
+  if (!Array.isArray(updateErrors)) return [];
+
+  const result: TransactionServerValidationRowErrors[] = [];
+  updateErrors.forEach((item, index) => {
+    const update = updates[index];
+    if (!update || !isRecord(item)) return;
+    const fields = readFieldErrors(item.changes);
+    if (Object.keys(fields).length > 0) result.push({ rowId: update.id, fields });
+  });
+  return result;
 }
