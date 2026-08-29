@@ -7,7 +7,11 @@ import {
   routes,
 } from './gridTestSupport';
 
-const FIRST_PAGE_ELIGIBLE_COUNT = 16;
+// All three concrete routes currently show 25 rows per page. In the deterministic first 25 rows,
+// txn-00002/txn-00014 are selectionDisabled and txn-00004/txn-00016 are readOnly, leaving 21 rows in
+// the selectable current-page universe. Keep this explicit so a future page-size/demo-policy change
+// fails loudly instead of silently weakening the selection assertion.
+const FIRST_PAGE_ELIGIBLE_COUNT = 21;
 const ALL_CLIENT_ELIGIBLE_COUNT = 624;
 
 for (const route of routes) {
