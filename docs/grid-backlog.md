@@ -13,24 +13,21 @@ Useful current references:
 - `docs/implementation/row-models/infinite.md` — Infinite implementation guide;
 - `docs/implementation/row-models/ssrm.md` — SSRM implementation guide;
 - `docs/implementation/testing/browser-regression.md` — Playwright architecture, E2E reset, CI/local execution and next-capability handoff;
-- `docs/implementation/testing/coverage-matrix.md` — compact cross-layer automated coverage inventory;
+- `docs/implementation/testing/coverage-matrix.html` — readable cross-layer automated coverage inventory;
 - `docs/implementation/testing/` — manual verification guides.
 
 Statuses used here: **VERIFY**, **DESIGN**, **TODO**, **PLANNED**, **DEFERRED**.
 
 ## Current agreed sequence
 
-The existing-capability regression-hardening implementation is complete. The implementation browser run passed 80/80 TypeScript Playwright scenarios across Client, Infinite and SSRM, alongside passing frontend and backend checks.
+The existing-capability regression-hardening implementation is complete. The implementation browser run passed 80/80 TypeScript Playwright scenarios across Client, Infinite and SSRM, alongside passing frontend and backend checks. The later Playwright local-workflow/coverage-view cleanup was merged through PR #35 and its exact head passed Frontend, Backend and Browser regression CI.
 
 Current handoff sequence:
 
 ```text
-1. Keep PR #33 documentation/status accurate and confirm the exact latest head is green
-2. User merges PR #33
-3. Sync grid-foundation with main
-4. Design and implement Import as the next product capability
-5. Build an isolated fourth configurable SSRM-based grid experiment
-6. Evaluate reuse/migration only after that experiment proves its boundary
+1. Design and implement Import as the next product capability
+2. Build an isolated fourth configurable SSRM-based grid experiment
+3. Evaluate reuse/migration only after that experiment proves its boundary
 ```
 
 Do not keep expanding Playwright merely to increase test count. Add browser coverage when a new capability or a concrete regression introduces a material real-browser/AG Grid/backend risk.
@@ -175,7 +172,7 @@ Current SSRM implementation is flat. Do not introduce advanced semantics without
 ## D. Import
 
 ### D1. Import workflow
-**Status:** TODO / NEXT AFTER PR #33 MERGE
+**Status:** TODO / NEXT
 
 Import is separate from ordinary tracked editing.
 
