@@ -21,11 +21,12 @@ Statuses used here: **VERIFY**, **DESIGN**, **TODO**, **PLANNED**, **DEFERRED**.
 
 ```text
 1. Keep Client-Side, Infinite and SSRM baseline verification available
-2. Implement field/input validation
-3. Design and implement Import as a separate workflow
-4. Build an isolated fourth configurable SSRM-based grid experiment
-5. Evaluate reuse/migration only after that experiment proves its boundary
+2. Design and implement Import as a separate workflow
+3. Build an isolated fourth configurable SSRM-based grid experiment
+4. Evaluate reuse/migration only after that experiment proves its boundary
 ```
+
+Field/input validation is now implemented and moves to verification/history rather than remaining the next implementation item.
 
 Manual browser verification remains required but may be consolidated later unless a real correctness defect requires immediate interruption.
 
@@ -123,6 +124,33 @@ Already protected by focused code/tests:
 
 Do not suppress AG Grid lifecycle warnings; fix concrete ownership/timing defects.
 
+### A6. Validation + editing integration
+**Status:** VERIFY
+
+Implemented behavior includes:
+
+- resolved registered frontend rules (`required`, `maxLength`, `numberRange`);
+- invalid LOCAL values remain visible and dirty;
+- stable row-ID + field validation state outside transient RowNodes;
+- the same validation semantics for direct and current-page/programmatic edits;
+- Row Save blocked by relevant validation errors or unresolved conflicts;
+- Save Selected blocked only when its exact dirty target contains validation errors/conflicts;
+- backend DRF field errors mapped into the same validation state without acknowledging rejected LOCAL work;
+- correction/revert/authoritative convergence clearing stale validation state;
+- Discard clearing validation for discarded work;
+- `Use server` clearing discarded LOCAL validation;
+- `Keep my edit` revalidating retained LOCAL;
+- validation and conflict remaining separate and visually able to coexist;
+- unknown rule keys failing predictably;
+- no arbitrary executable JavaScript/expression from backend/configuration.
+
+Current implementation references:
+
+- `docs/implementation/grid-validation.md`
+- `docs/implementation/transaction-editing.md`
+
+Automated coverage exists. Manual/browser verification has not been claimed.
+
 ## B. Capability discoverability
 
 ### B1. `GRIDCAP-*` registry and source markers
@@ -139,87 +167,43 @@ When a frontend capability footprint changes:
 3. update meaningful markers;
 4. update focused tests and implementation docs.
 
-## C. Field/input validation
+## C. Deferred core/product decisions
 
-### C1. Validation engine + editing integration
-**Status:** DESIGN / IMPLEMENT NEXT
-
-Validation is a first-class capability independent of configurable-table metadata.
-
-Static Transaction configuration must be able to use validation directly. A configurable-table compiler may later produce the same resolved validation inputs, but validation must not depend on that architecture.
-
-Required domain-neutral behavior:
-
-- invalid LOCAL values remain visible;
-- invalid LOCAL work remains dirty;
-- validation state lives outside transient RowNodes and is keyed by stable row ID + field;
-- row Save is blocked when relevant dirty fields are invalid;
-- Save Selected Dirty is blocked when its exact dirty target contains invalid fields;
-- direct cell edits and current-page/programmatic edits run the same validation semantics;
-- backend structured field errors map into the same validation state;
-- rejected LOCAL input remains visible/dirty after backend validation failure;
-- correction/revert revalidates and clears stale errors;
-- Discard clears validation belonging to discarded LOCAL work;
-- validation and BASE/LOCAL/REMOTE conflict state remain separate and can coexist;
-- conflict resolution revalidates the resulting effective value;
-- invalid/conflict presentation can coexist predictably;
-- unknown required rule keys fail predictably;
-- no arbitrary executable JavaScript/expression is accepted from backend/configuration;
-- focused Client/Infinite/SSRM integration tests cover lifecycle differences.
-
-Primary engine input:
-
-```text
-rules: [
-  { key: required },
-  { key: maxLength, params: { max: 100 } },
-  { key: numberRange, params: { min: 0, max: 1000000 } }
-]
-```
-
-A reusable higher-level rule-profile key should be considered only if repeated real rule combinations justify it. The validation engine itself should consume resolved rules.
-
-Before adding a validation capability marker, review:
-
-- `docs/implementation/grid-capability-tags.md`
-
-## D. Deferred core/product decisions
-
-### D1. Application/session unsaved-draft lifetime
+### C1. Application/session unsaved-draft lifetime
 **Status:** DEFERRED
 
 Current stable-ID tracked edits survive row-object/RowNode recreation while the grid feature is alive.
 
 Do not add route/session/browser-refresh draft persistence until the product requires a longer draft lifetime.
 
-### D2. Backend optimistic concurrency / stale-write protection
+### C2. Backend optimistic concurrency / stale-write protection
 **Status:** DEFERRED
 
 Current BASE/LOCAL/REMOTE reconciliation detects divergence only after fresh authoritative data reaches the browser.
 
 Backend version/ETag/revision protection requires a separate product/API contract if stale writes must be rejected even without an intervening refresh.
 
-### D3. Undo/redo
+### C3. Undo/redo
 **Status:** DEFERRED
 
 Do not enable spreadsheet-style undo/redo until its interaction with tracked drafts, programmatic edits, conflicts, validation and Save/Discard is defined.
 
-### D4. User/profile Grid State persistence
+### C4. User/profile Grid State persistence
 **Status:** DEFERRED
 
 Current native Grid State persists supported preferences through the replaceable browser-storage boundary.
 
 Backend/user-profile persistence is not part of the current implementation.
 
-### D5. Grouping/tree/aggregation/pivot and other advanced AG Grid features
+### C5. Grouping/tree/aggregation/pivot and other advanced AG Grid features
 **Status:** DEFERRED
 
 Current SSRM implementation is flat. Do not introduce advanced semantics without an explicit product contract.
 
-## E. Import
+## D. Import
 
-### E1. Import workflow
-**Status:** TODO / AFTER VALIDATION
+### D1. Import workflow
+**Status:** TODO / IMPLEMENT NEXT
 
 Import is separate from ordinary tracked editing.
 
@@ -240,9 +224,9 @@ Design/implementation should cover as required:
 
 Do not hide Import inside ordinary cell-edit persistence.
 
-## F. Isolated configurable SSRM experiment
+## E. Isolated configurable SSRM experiment
 
-### F1. Fourth configurable grid path
+### E1. Fourth configurable grid path
 **Status:** PLANNED / AFTER IMPORT
 
 Build a separate SSRM-based grid composition path to prove the metadata compiler/resolver/registry boundary.
@@ -250,7 +234,7 @@ Build a separate SSRM-based grid composition path to prove the metadata compiler
 Rules:
 
 - do not refactor `/client`, `/infinite` or `/ssrm` merely to make the experiment work;
-- do not rewrite proven shared loading, selection, tracked editing, conflict, freshness, lifecycle or Grid State mechanics while the composition boundary is still being proven;
+- do not rewrite proven shared loading, selection, tracked editing, conflict, validation, freshness, lifecycle or Grid State mechanics while the composition boundary is still being proven;
 - temporary feature-level duplication is acceptable when it protects proven behavior and makes comparison explicit;
 - backend metadata may describe supported JSON-safe table/business composition;
 - backend metadata does not dynamically select Client/Infinite/SSRM;
@@ -261,9 +245,9 @@ Rules:
 
 Architecture proposal material remains separate from current implementation docs.
 
-## G. Reuse proof
+## F. Reuse proof
 
-### G1. Second real business entity
+### F1. Second real business entity
 **Status:** TODO when available
 
 A real second table should prove domain neutrality of the shared mechanics.
@@ -299,6 +283,15 @@ Implemented unchanged/converged/divergent reconciliation, `Use server`, `Keep my
 Current reference:
 
 - `docs/implementation/edit-conflict-reconciliation.md`
+
+## 2026-08 — Field/input validation
+
+Implemented registered JSON-safe validation rules, stable row/field validation state, direct/programmatic edit integration, Row Save and exact Save Selected guards, backend DRF field-error mapping, correction/Discard/conflict-resolution lifecycle, and coexistence with BASE/LOCAL/REMOTE conflict state.
+
+Current references:
+
+- `docs/implementation/grid-validation.md`
+- `docs/implementation/transaction-editing.md`
 
 ## 2026-08 — Selected Change Status lifecycle
 
