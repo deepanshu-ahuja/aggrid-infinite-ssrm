@@ -47,7 +47,7 @@ Use these when you are interested in one capability across the supported row mod
 Browser/manual verification material lives under `docs/implementation/testing/`:
 
 - [Browser regression architecture](testing/browser-regression.md) — TypeScript Playwright flow, per-test data reset/isolation, selector/readiness rules, CI diagnostics, future E2E database/auth boundary, and local execution.
-- [Regression coverage matrix](testing/coverage-matrix.md) — current cross-layer inventory of focused frontend/backend tests and Client/Infinite/SSRM Playwright coverage/gaps.
+- [Regression coverage matrix](testing/coverage-matrix.html) — readable HTML inventory of focused frontend/backend tests and Client/Infinite/SSRM Playwright coverage. Open the file locally in a browser for the intended styled table view.
 - [Grid validation manual regression](testing/validation-manual-testing.md)
 - [Server-backed Infinite + SSRM manual regression](testing/server-backed-manual-testing.md)
 - [Row interaction manual verification](testing/row-interaction-manual-testing.md)
