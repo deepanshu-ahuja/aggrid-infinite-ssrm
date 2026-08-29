@@ -311,3 +311,13 @@ It does not mean the marked implementation can be copied unchanged into another 
 **Meaning:** application design-token integration with the AG Grid theme and shared visual defaults.
 
 **Ownership:** theme/application setup, not feature business logic.
+
+## Configurable table composition
+
+### `GRIDCAP-CONFIGURABLE-TABLE`
+
+**Meaning:** JSON-safe configurable-table provider, runtime validation, compiler and allowlisted registry boundary that turns supported application metadata into normal frontend-owned AG Grid inputs.
+
+**Ownership:** shared frontend configuration contracts/validation/compiler plus feature-local definitions, registries/providers and isolated composition roots.
+
+**Invariant:** metadata never carries executable code and does not dynamically choose Client, Infinite or SSRM. The concrete frontend composition owns the row model and its native lifecycle.
