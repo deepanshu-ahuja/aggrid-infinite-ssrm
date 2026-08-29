@@ -1,4 +1,3 @@
-import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { SEEDED_ROWS, expectNoPageErrors, rowById } from './gridTestSupport';
 
