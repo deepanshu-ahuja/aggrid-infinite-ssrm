@@ -47,53 +47,30 @@ body {
 
 /**
  * Validation errors leave LOCAL values editable and visible so the user can correct them in place.
- * Conflict styling may coexist on the same cell; neither condition is encoded through the other.
+ * Do not change AG Grid cell padding/positioning here: column geometry belongs to AG Grid, and validation
+ * decoration must never bleed into a neighbouring cell. Messages are supplied through the cell tooltip
+ * and the Flow 2 MUI inputs show their own helper text.
  */
 .grid-cell--validation-error {
-  position: relative;
-  box-shadow: inset 0 0 0 2px #d92d20;
+  outline: 2px solid #d92d20;
+  outline-offset: -2px;
   background-color: #fef3f2 !important;
-  padding-right: 30px !important;
-}
-
-.grid-cell--validation-error::after {
-  content: '!';
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-weight: 700;
-  line-height: 1;
 }
 
 /**
  * Field-level edit conflict treatment. LOCAL remains visible while the user explicitly resolves REMOTE.
+ * Like validation, the decoration is geometry-neutral so AG Grid remains the sole owner of cell sizing.
  */
 .grid-cell--edit-conflict {
-  position: relative;
-  box-shadow: inset 0 0 0 2px #f79009;
+  outline: 2px solid #f79009;
+  outline-offset: -2px;
   background-color: #fffaeb !important;
-  padding-right: 30px !important;
   cursor: pointer;
 }
 
-.grid-cell--edit-conflict::after {
-  content: '⚠';
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 14px;
-  line-height: 1;
-}
-
-/** Both states are meaningful: retain conflict affordance while also showing invalid LOCAL input. */
+/** Both states are meaningful and visible without layering pseudo-elements over adjacent cell content. */
 .grid-cell--edit-conflict.grid-cell--validation-error {
-  box-shadow: inset 0 0 0 2px #d92d20, inset 0 -3px 0 #f79009;
+  outline: 2px solid #d92d20;
+  box-shadow: inset 0 -3px 0 #f79009;
   background-color: #fff6ed !important;
-}
-
-.grid-cell--edit-conflict.grid-cell--validation-error::after {
-  content: '⚠!';
-  font-size: 12px;
 }
