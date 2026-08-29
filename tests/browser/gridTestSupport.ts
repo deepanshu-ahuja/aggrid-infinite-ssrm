@@ -7,6 +7,7 @@ export type Route = (typeof routes)[number];
 export const SEEDED_ROWS = {
   enabled: 'txn-00001',
   selectionDisabled: 'txn-00002',
+  secondEnabled: 'txn-00003',
   readOnly: 'txn-00004',
 } as const;
 
@@ -48,6 +49,7 @@ export async function openGrid(page: Page, route: Route) {
   await expect(page.locator('.ag-root')).toBeVisible();
   await expect(rowById(page, SEEDED_ROWS.enabled)).toBeVisible();
   await expect(rowById(page, SEEDED_ROWS.selectionDisabled)).toBeVisible();
+  await expect(rowById(page, SEEDED_ROWS.secondEnabled)).toBeVisible();
   await expect(rowById(page, SEEDED_ROWS.readOnly)).toBeVisible();
 
   return pageErrors;
