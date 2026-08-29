@@ -100,7 +100,9 @@ jobs:
 
       - name: Start Django and Vite
         run: |
-          python backend/manage.py runserver 127.0.0.1:8000 > /tmp/grid-backend.log 2>&1 &
+          # One no-reload Django process owns the in-memory Transaction source for the browser suite.
+          # E2E_TESTING exposes only the gated reset helper used by the automatic Playwright fixture.
+          E2E_TESTING=true python backend/manage.py runserver 127.0.0.1:8000 --noreload > /tmp/grid-backend.log 2>&1 &
           npm run dev -- --host 127.0.0.1 > /tmp/grid-vite.log 2>&1 &
 
       - name: Real-grid browser regression
