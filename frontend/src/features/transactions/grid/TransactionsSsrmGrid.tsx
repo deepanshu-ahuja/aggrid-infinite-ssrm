@@ -1,4 +1,4 @@
-// GRIDCAP-ROWMODEL-SSRM | GRIDCAP-DATA-LOAD | GRIDCAP-ROW-ID | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-COUNT-SELECTED | GRIDCAP-SEL-TARGET | GRIDCAP-ACTION-SELECTED | GRIDCAP-EDIT-TRACKED | GRIDCAP-EDIT-SAVE-ROW | GRIDCAP-EDIT-SAVE-SELECTED | GRIDCAP-EDIT-DISCARD | GRIDCAP-EDIT-CONFLICT | GRIDCAP-COUNT-EDITED | GRIDCAP-EXPORT-PAGE | GRIDCAP-EXPORT-SELECTED | GRIDCAP-STATE-PERSISTENCE | GRIDCAP-ERROR-RETRY | GRIDCAP-LIFECYCLE-REFRESH | GRIDCAP-LIFECYCLE-DESTROY | GRIDCAP-ROW-ELIGIBILITY | GRIDCAP-COLUMNS
+// GRIDCAP-ROWMODEL-SSRM | GRIDCAP-DATA-LOAD | GRIDCAP-ROW-ID | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-COUNT-SELECTED | GRIDCAP-SEL-TARGET | GRIDCAP-ACTION-SELECTED | GRIDCAP-EDIT-TRACKED | GRIDCAP-EDIT-SAVE-ROW | GRIDCAP-EDIT-SAVE-SELECTED | GRIDCAP-EDIT-DISCARD | GRIDCAP-EDIT-CONFLICT | GRIDCAP-EDIT-VALIDATION | GRIDCAP-COUNT-EDITED | GRIDCAP-EXPORT-PAGE | GRIDCAP-EXPORT-SELECTED | GRIDCAP-STATE-PERSISTENCE | GRIDCAP-ERROR-RETRY | GRIDCAP-LIFECYCLE-REFRESH | GRIDCAP-LIFECYCLE-DESTROY | GRIDCAP-ROW-ELIGIBILITY | GRIDCAP-COLUMNS
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import type {
@@ -25,6 +25,11 @@ import { getLogicalSelectedRowCount } from '@/shared/grid/selection/selectionCou
 import { useSsrmSelectionController } from '@/shared/grid/selection/server-side/useSsrmSelectionController';
 import type { ServerSelectionIntent } from '@/shared/grid/selection/serverSelection';
 import { useGridStatePersistence } from '@/shared/grid/state/useGridStatePersistence';
+import {
+  hasGridFieldValidationError,
+  hasGridRowValidationError,
+  hasGridUpdateValidationError,
+} from '@/shared/grid/validation/gridValidation';
 import { listTransactions } from '../api/transactions.api';
 import type { Transaction, TransactionStatus } from '../api/transactions.contracts';
 import {
@@ -75,12 +80,7 @@ export interface TransactionsSsrmGridProps {
   gridOptions?: TransactionsSsrmGridOptions;
 }
 
-/**
- * Concrete Transactions SSRM root with native SSRM lifecycle kept visible.
- *
- * This is intentionally a multi-capability integration boundary. The GRIDCAP markers at the top make
- * the complete SSRM feature footprint discoverable without hiding native SSRM APIs behind a wrapper.
- */
+/** Concrete Transactions SSRM root with native SSRM lifecycle kept visible. */
 export function TransactionsSsrmGrid({
   gridOptions: gridOptionsOverride,
 }: TransactionsSsrmGridProps) {
@@ -118,9 +118,11 @@ export function TransactionsSsrmGrid({
 
   const {
     state,
+    validationState,
     payload,
     editedRowCount,
     conflictCount,
+    validationErrorCount,
     lastEdit,
     applyChangesToNodes,
     restoreTrackedEdits,
@@ -130,6 +132,7 @@ export function TransactionsSsrmGrid({
     discardRows,
     resolveConflictWithRemote,
     resolveConflictWithLocal,
+    setServerValidationErrors,
   } = useTrackedGridEditing(transactionEditingConfig);
 
   const {
@@ -139,14 +142,10 @@ export function TransactionsSsrmGrid({
   } = useCurrentPageEditActions({ lastEdit, applyChangesToNodes }, gridApi);
 
   const handlePersistedRows = useCallback(() => {
-    // GRIDCAP-LIFECYCLE-REFRESH
     gridApi.current?.refreshServerSide();
   }, []);
 
   const handleSelectedTransactionUpdateApplied = useCallback(() => {
-    // GRIDCAP-ACTION-SELECTED | GRIDCAP-LIFECYCLE-REFRESH
-    // Change Status always clears its successful target. SSRM selection can be native or custom
-    // filtered-wide state, so delegate the concrete clear operation to the SSRM selection controller.
     clearSelection();
     handlePersistedRows();
   }, [clearSelection, handlePersistedRows]);
@@ -155,6 +154,9 @@ export function TransactionsSsrmGrid({
     updates: payload.updates,
     acknowledgeChanges,
     onPersistedRows: handlePersistedRows,
+    onServerValidationErrors: (rowErrors) => {
+      for (const error of rowErrors) setServerValidationErrors(error.rowId, error.fields);
+    },
   });
 
   const {
@@ -182,10 +184,6 @@ export function TransactionsSsrmGrid({
 
   const selectionIntent = isGridReady ? readSelectionIntent() : EMPTY_SELECTION;
   const hasSelection = hasTransactionSelection(selectionIntent);
-
-  // Dataset-wide selected totals come from the same normal API response that loads the grid. Native
-  // SSRM owns the All Records selection rule, while our custom All Filtered mode owns its filter scope;
-  // neither requires enumerating unloaded RowNodes just to display a number.
   const selectionScopeTotal = isFilteredSelectAllActive ? filteredCount : totalCount;
   const selectedRowCount = getLogicalSelectedRowCount(selectionIntent, selectionScopeTotal);
 
@@ -193,6 +191,10 @@ export function TransactionsSsrmGrid({
     ? buildSelectedTrackedGridUpdatePayload(state, selectionIntent).updates
     : [];
   const selectedEditsHaveConflict = hasTrackedGridUpdateConflict(state, selectedDirtyUpdates);
+  const selectedEditsHaveValidationError = hasGridUpdateValidationError(
+    validationState,
+    selectedDirtyUpdates,
+  );
   const statusActionBlockedByConflict = hasSelectedTrackedGridFieldConflict(
     state,
     selectionIntent,
@@ -202,9 +204,14 @@ export function TransactionsSsrmGrid({
   const handleSaveSelected = useCallback(() => {
     if (!gridApi.current) return;
     const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
-    if (hasTrackedGridUpdateConflict(state, updates)) return;
+    if (
+      hasTrackedGridUpdateConflict(state, updates) ||
+      hasGridUpdateValidationError(validationState, updates)
+    ) {
+      return;
+    }
     saveBulk(updates);
-  }, [readSelectionIntent, saveBulk, state]);
+  }, [readSelectionIntent, saveBulk, state, validationState]);
 
   const handleDiscardSelected = useCallback(() => {
     const api = gridApi.current;
@@ -267,7 +274,11 @@ export function TransactionsSsrmGrid({
     () => ({
       isRowDirty: (rowId) => Boolean(state.changesById[rowId]),
       isRowConflicted: (rowId) => hasTrackedGridRowConflict(state, rowId),
+      isRowInvalid: (rowId) => hasGridRowValidationError(validationState, rowId),
       isCellConflicted: (rowId, field) => hasTrackedGridFieldConflict(state, rowId, field),
+      isCellInvalid: (rowId, field) => hasGridFieldValidationError(validationState, rowId, field),
+      getCellValidationMessages: (rowId, field) =>
+        validationState[rowId]?.[field]?.map((error) => error.message) ?? [],
       getCellConflict: (rowId, field) => {
         const conflict = state.conflictsById[rowId]?.[field];
         const localValue = state.changesById[rowId]?.[field];
@@ -277,11 +288,16 @@ export function TransactionsSsrmGrid({
       },
       isSaving,
       onSaveRow: (rowId) => {
-        if (!hasTrackedGridRowConflict(state, rowId)) saveRow(rowId);
+        if (
+          !hasTrackedGridRowConflict(state, rowId) &&
+          !hasGridRowValidationError(validationState, rowId)
+        ) {
+          saveRow(rowId);
+        }
       },
       onDiscardRow: handleDiscardRow,
     }),
-    [handleDiscardRow, isSaving, saveRow, state],
+    [handleDiscardRow, isSaving, saveRow, state, validationState],
   );
 
   useEffect(() => {
@@ -362,8 +378,10 @@ export function TransactionsSsrmGrid({
       <TransactionEditingControls
         editedRowCount={editedRowCount}
         conflictCount={conflictCount}
+        validationErrorCount={validationErrorCount}
         selectedEditedRowCount={selectedDirtyUpdates.length}
         selectedEditsHaveConflict={selectedEditsHaveConflict}
+        selectedEditsHaveValidationError={selectedEditsHaveValidationError}
         lastEdit={lastEdit}
         isSaving={isSaving}
         saveError={saveError}
@@ -422,9 +440,6 @@ export function TransactionsSsrmGrid({
           activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={loadError ? { message: loadError, onRetry: retryLoad } : undefined}
           onGridReady={handleGridReady}
-          // GRIDCAP-LIFECYCLE-DESTROY
-          // The concrete root owns the GridApi ref. Clearing it before AG Grid destroys the instance
-          // prevents later React callbacks from accidentally reaching a destroyed Enterprise API.
           onGridPreDestroyed={() => {
             gridApi.current = null;
           }}
