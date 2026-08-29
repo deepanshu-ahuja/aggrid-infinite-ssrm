@@ -2,11 +2,13 @@
 
 This directory documents **behavior implemented by the repository now**.
 
-The contract for this directory is strict:
+The contract is strict:
 
 > If a document says a runtime capability, option, configuration, API, state transition, or row-model behavior exists, the current code must support it.
 
-Do not use these documents as a conversation log, rejected-design history, or roadmap. Planned work belongs in `docs/grid-backlog.md`. Target/exploratory configurable-table design belongs in the clearly marked architecture proposal documents outside this directory.
+These documents are written as standalone implementation references. They should explain the capability itself: behavior, ownership, row-model differences, current limits, implementation entry points, and verification. They should not depend on project backlog, proposal documents, chat history, PR history, or other planning artifacts in order to make sense.
+
+Current limitations are appropriate when they state what the implementation does or does not support today. Do not add speculative solutions for unimplemented requirements to this directory.
 
 ## Read by row model
 
@@ -50,11 +52,13 @@ Manual verification documents describe scenarios to run; they must never claim a
 
 When implementation changes:
 
-1. update code and tests first-class with the capability;
+1. update code and focused tests with the capability;
 2. update the relevant implementation document(s) in this directory;
 3. update the relevant row-model guide when ownership/behavior differs by Client, Infinite, or SSRM;
 4. update `grid-capability-tags.md` when the frontend capability footprint changes;
-5. update `README.md` / `AGENTS.md` when entry points or durable rules change;
-6. keep future-only design in backlog/proposal documents rather than mixing it into current implementation documentation.
+5. update repository entry points such as `README.md` / `AGENTS.md` when navigation or durable rules change;
+6. keep unimplemented design out of current implementation documents.
 
 Cross-row-model capability docs may describe all three implementations in one document when the user-facing capability is shared, but they must explicitly call out meaningful Client/Infinite/SSRM differences. Do not create three duplicate copies of a shared capability merely for folder symmetry.
+
+When documentation is moved, update live references to the canonical location and remove the obsolete file. Do not keep placeholder "Moved" documents by default; retain an old path only when there is an explicit external compatibility requirement.
