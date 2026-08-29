@@ -13,6 +13,8 @@ Useful current references:
 - `docs/implementation/row-models/infinite.md` — Infinite implementation guide;
 - `docs/implementation/row-models/ssrm.md` — SSRM implementation guide;
 - `docs/implementation/ag-grid-native-usage.md` — native AG Grid surface used by current code;
+- `docs/implementation/testing/browser-regression.md` — TypeScript Playwright architecture, deterministic E2E data reset, selectors/readiness, CI and future auth/DB flow;
+- `docs/implementation/testing/coverage-matrix.md` — current cross-layer automated coverage inventory and remaining gaps;
 - `docs/implementation/testing/` — manual verification guides.
 
 Statuses used here: **VERIFY**, **DESIGN**, **TODO**, **PLANNED**, **DEFERRED**.
@@ -20,25 +22,76 @@ Statuses used here: **VERIFY**, **DESIGN**, **TODO**, **PLANNED**, **DEFERRED**.
 ## Current agreed sequence
 
 ```text
-1. Keep Client-Side, Infinite and SSRM baseline verification available
-2. Design and implement Import as a separate workflow
-3. Build an isolated fourth configurable SSRM-based grid experiment
-4. Evaluate reuse/migration only after that experiment proves its boundary
+1. Complete regression hardening for capabilities already implemented
+   → deterministic per-test Playwright data isolation
+   → coverage matrix
+   → high-value missing Client / Infinite / SSRM browser scenarios
+   → keep focused unit/component/backend coverage at the correct deterministic boundary
+2. Keep the manual browser verification guides current and available
+3. Design and implement Import as a separate workflow
+4. Build an isolated fourth configurable SSRM-based grid experiment
+5. Evaluate reuse/migration only after that experiment proves its boundary
 ```
 
-Field/input validation is now implemented and moves to verification/history rather than remaining the next implementation item.
-
-Manual browser verification remains required but may be consolidated later unless a real correctness defect requires immediate interruption.
+Field/input validation is implemented. The active work before adding another product capability is to make the existing foundation harder to regress.
 
 # Active backlog
 
-## A. Baseline verification
+## A. Existing-capability regression hardening
+
+### A0. Automated regression coverage audit + browser hardening
+**Status:** TODO / IN PROGRESS  
+**Priority:** Complete before Import
+
+Current direction:
+
+```text
+implemented docs + actual code + existing tests
+        ↓
+coverage matrix
+        ↓
+identify the strongest test layer for each contract
+        ↓
+fill material gaps
+        ↓
+run the complete regression suite on the exact PR head
+```
+
+Required rules:
+
+- do not duplicate every pure/state permutation in Playwright;
+- use focused tests for algorithms, request mapping, selection math, validation state, reconciliation and deterministic races;
+- use backend tests for serializers, authoritative row policy, selected-target resolution and API failures;
+- use TypeScript Playwright for material real React + AG Grid + backend integration risks;
+- every Playwright test/retry must start from deterministic isolated authoritative data;
+- no browser test may depend on a mutation performed by a previous test;
+- use stable seeded row IDs and unique semantic/test selectors instead of positional "first row/last matching input" assumptions;
+- verify applicable Client, Infinite and SSRM mechanics independently;
+- keep browser traces/screenshots/video and application logs available on CI failure;
+- update `docs/implementation/testing/coverage-matrix.md` as coverage changes.
+
+High-value browser gaps are tracked in the coverage matrix. Current priority groups include:
+
+1. selected dirty Save/Discard exact targeting;
+2. configured selection scopes, counts and failure lifecycle;
+3. BASE/LOCAL/REMOTE conflict creation and both resolution choices;
+4. validation correction/revert and backend rejection mapping;
+5. programmatic Flow 1 / Flow 2 current-page editing;
+6. Infinite cache recreation and SSRM store recreation with LOCAL work;
+7. server-backed error/retry;
+8. Grid State persistence;
+9. real sort/filter/page network smoke coverage where browser execution adds evidence.
+
+Current references:
+
+- `docs/implementation/testing/browser-regression.md`
+- `docs/implementation/testing/coverage-matrix.md`
 
 ### A1. Client / Infinite / SSRM manual regression
 **Status:** VERIFY  
-**Priority:** Pending manual pass; non-blocking
+**Priority:** Maintain alongside automated hardening
 
-Automated coverage exists. When the browser pass is scheduled, verify row models independently.
+Automated coverage does not replace the broader human-readable browser checklists. When a manual browser pass is scheduled, verify row models independently.
 
 Server-backed guide:
 
@@ -47,6 +100,10 @@ Server-backed guide:
 Row-interaction guide:
 
 - `docs/implementation/testing/row-interaction-manual-testing.md`
+
+Validation guide:
+
+- `docs/implementation/testing/validation-manual-testing.md`
 
 Client-specific scenarios are documented in:
 
@@ -149,7 +206,7 @@ Current implementation references:
 - `docs/implementation/grid-validation.md`
 - `docs/implementation/transaction-editing.md`
 
-Automated coverage exists. Manual/browser verification has not been claimed.
+Automated browser coverage is being expanded under A0. Manual checklist execution is still reported separately from automated CI.
 
 ## B. Capability discoverability
 
@@ -203,7 +260,7 @@ Current SSRM implementation is flat. Do not introduce advanced semantics without
 ## D. Import
 
 ### D1. Import workflow
-**Status:** TODO / IMPLEMENT NEXT
+**Status:** TODO / AFTER REGRESSION HARDENING
 
 Import is separate from ordinary tracked editing.
 
