@@ -86,8 +86,9 @@ No arbitrary executable JavaScript or expression is accepted from backend/config
 | `amount` | numeric range 0 through 1,000,000 |
 | `currency` | required; maximum 3 characters |
 | `status` | required |
+| `transactionDate` | required |
 
-The backend additionally enforces the allowed `status` choices.
+The backend additionally enforces allowed `status` choices and authoritative date syntax through DRF `DateField`.
 
 ## Stable validation state
 
@@ -165,6 +166,8 @@ applyChangesToNodes(...)
 
 Programmatic edit flows therefore cannot bypass validation semantics.
 
+A checked-but-blank numeric Flow 2 input is not ignored. The Transaction draft layer can represent a cleared value as `null`, which then runs through the same validation state and Save guard as a direct invalid edit.
+
 ## Invalid LOCAL behavior
 
 ```text
@@ -172,11 +175,49 @@ invalid LOCAL value
 → stays visible
 → stays dirty
 → field gets validation error state
+→ exact field message is available from that field's presentation
 → user can continue editing the field
 → relevant Save is blocked
 ```
 
 Validation does not disable the editor because correction must remain possible in place.
+
+## Field-specific error presentation
+
+A red cell is an affordance, not the complete error explanation.
+
+Current Transaction presentation deliberately exposes the exact reason at the relevant input/cell boundary:
+
+```text
+Account custom MUI editor
+→ helper text: exact Account validation message
+
+Transaction date MUI date editor
+→ helper text: exact Date validation message
+
+Flow 2 checked MUI input
+→ helper text: validation message for that input value
+
+committed invalid grid cell
+→ field-local invalid styling
+→ tooltip contains that field's validation message
+```
+
+The visual state is derived from the same stable `validationState` used by Save guards. Editor helper text may run the same feature validator against the in-progress input for immediate presentation, but it does not replace committed validation state.
+
+Validation styling is geometry-neutral. It must not change AG Grid cell width/padding in a way that overlaps neighboring columns.
+
+Presentation code must also tolerate invalid LOCAL values because invalid drafts intentionally remain renderable:
+
+```text
+blank/invalid Currency LOCAL draft
+→ Currency invalid
+→ Amount formatter must not throw Invalid currency code
+
+blank/invalid Date LOCAL draft
+→ Date invalid
+→ date formatter/editor must remain renderable
+```
 
 ## Save guards
 
@@ -291,7 +332,7 @@ Single-row DRF field errors:
 
 ```text
 PATCH /api/transactions/{id}/
-→ { account: ["..."], amount: ["..."] }
+→ { account: ["..."], amount: ["..."], transactionDate: ["..."] }
 ```
 
 Bulk DRF field errors preserve update-array positions:
@@ -321,25 +362,6 @@ source = "server"
 ```
 
 A rejected backend write does not acknowledge tracked changes, so the rejected LOCAL value remains visible and dirty.
-
-## Cell presentation
-
-Editable Transaction cells query the same root-provided validation state used by Save guards.
-
-```text
-invalid field
-→ validation-error cell class
-→ error tooltip/message
-
-conflicted field
-→ conflict class + conflict resolver
-
-invalid + conflicted
-→ both classes remain active
-→ combined presentation preserves both meanings
-```
-
-Validation styling never becomes a second source of truth; it is presentation derived from React-owned stable validation state.
 
 ## Row-model behavior
 
@@ -395,17 +417,23 @@ frontend/src/shared/grid/editing/useTrackedGridEditing.ts
 frontend/src/features/transactions/grid/transactionValidation.ts
 → Transaction rules/messages + DRF field-error mapping
 
+frontend/src/features/transactions/grid/TransactionAccountEditor.tsx
+→ MUI text editor with field-specific Account helper text
+
+frontend/src/features/transactions/grid/TransactionDateEditor.tsx
+→ MUI date editor with browser picker + field-specific helper text
+
+frontend/src/features/transactions/grid/TransactionEditingControls.tsx
+→ Flow 2 per-input validation messages + selected-save presentation
+
 frontend/src/features/transactions/grid/useTransactionEditPersistence.ts
 → maps backend 400 field errors into validation state
 
 frontend/src/features/transactions/grid/transactionColumns.tsx
-→ validation/conflict cell presentation
+→ validation/conflict cell presentation + safe formatter boundaries
 
 frontend/src/features/transactions/grid/TransactionRowEditActions.tsx
 → Row Save validation/conflict guard
-
-frontend/src/features/transactions/grid/TransactionEditingControls.tsx
-→ selected-save validation/conflict presentation
 
 frontend/src/features/transactions/grid/TransactionsClientGrid.tsx
 frontend/src/features/transactions/grid/TransactionsInfiniteGrid.tsx
@@ -413,26 +441,29 @@ frontend/src/features/transactions/grid/TransactionsSsrmGrid.tsx
 → concrete row-model integration and exact Save Selected guards
 
 backend/apps/transactions/api/serializers.py
-→ authoritative persisted-write validation
+→ authoritative persisted-write validation, including DateField
 ```
 
 ## Verification coverage
 
-Focused automated coverage verifies:
+Focused unit/integration coverage verifies:
 
 1. registered rule execution and unknown-key failure;
 2. malformed rule parameter failure;
-3. Transaction required/length/range rules;
+3. Transaction required/length/range/date-required rules;
 4. stable row-ID/field validation state queries;
 5. direct invalid LOCAL edit remains dirty and invalid;
 6. valid correction clears stale errors;
 7. programmatic current-page edits use the same validation rules;
-8. Discard removes validation state;
-9. server error messages use the same field-state model;
-10. single and bulk DRF error shapes map back to submitted row IDs;
-11. `Use server` clears validation for the discarded LOCAL field;
-12. fresh REMOTE convergence clears validation when LOCAL auto-cleans;
-13. backend serializers enforce authoritative Transaction constraints;
-14. Row Save and exact Save Selected targets are guarded by validation state in Client, Infinite and SSRM roots.
+8. checked blank Amount becomes an invalid LOCAL draft rather than being ignored;
+9. Discard removes validation state;
+10. server error messages use the same field-state model;
+11. single and bulk DRF error shapes map back to submitted row IDs;
+12. `Use server` clears validation for the discarded LOCAL field;
+13. fresh REMOTE convergence clears validation when LOCAL auto-cleans;
+14. backend serializers enforce authoritative Transaction constraints including transactionDate;
+15. Row Save and exact Save Selected targets are guarded by validation state in Client, Infinite and SSRM roots.
 
-Manual/browser verification has not been claimed unless separately recorded in the testing documentation.
+TypeScript Playwright under `tests/browser/` runs against the real Django + Vite + Chromium application. Browser coverage includes Flow 2 blank Currency/Amount rendering regressions, Account MUI inline validation, Date-picker inline validation and critical editing/action/export paths across Client, Infinite and SSRM.
+
+Human-readable manual verification remains documented under `docs/implementation/testing/`. Only scenarios actually executed by Playwright or a recorded manual run may be claimed as browser-passed.
