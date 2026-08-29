@@ -1,12 +1,8 @@
 # Selected Business Action — Selection Lifecycle
 
-This document describes the **current implemented** selection lifecycle for the Transactions selected-row business action.
-
-It is an implementation reference, not a roadmap or a record of discarded designs.
-
 ## Current action
 
-The current selected-row business action is one **Change Status** mutation family:
+The selected-row business action is one **Change Status** mutation family:
 
 ```text
 Mark Completed
@@ -16,7 +12,7 @@ Mark Failed
 
 Those controls differ only by the status value they send. They use the same backend mutation path.
 
-Current flow:
+Flow:
 
 ```text
 current logical selection
@@ -36,9 +32,9 @@ The backend request contains only the business target and requested status chang
 
 ## Mutation ownership
 
-`useTransactionSelectionAction(...)` owns the request/pending/error lifecycle for the current Transaction Change Status mutation.
+`useTransactionSelectionAction(...)` owns the request/pending/error lifecycle for the Transaction Change Status mutation.
 
-It does not choose between unrelated business endpoints. A different business operation would own its own feature mutation/API contract.
+It does not choose between unrelated business endpoints. A different business operation owns its own feature mutation/API contract.
 
 The success callback is invoked only after the backend update succeeds.
 
@@ -87,9 +83,9 @@ Selected export does not change Transaction data, so it does not clear selection
 
 Client Selected export is local/native. Infinite and SSRM Selected export use the backend selection resolver because their selected universe may include unloaded rows.
 
-## Focused automated coverage
+## Verification expectations
 
-Current tests verify that:
+Tests should verify that:
 
 - status controls emit only the chosen status value;
 - the mutation hook sends the actual backend request without a selection-lifecycle value;
@@ -100,5 +96,3 @@ Current tests verify that:
 - failed status updates do not clear selection;
 - Client Selected export leaves selection unchanged;
 - row-model-specific controller tests cover their own clear mechanics.
-
-Manual browser verification remains tracked separately and is not claimed complete by this document.
