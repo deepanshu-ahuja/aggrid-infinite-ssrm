@@ -9,7 +9,10 @@ import {
   routes,
 } from './gridTestSupport';
 
-const FIRST_PAGE_EDITABLE_COUNT = 18;
+// All three routes currently show 25 rows per page. In the deterministic first page, txn-00004 and
+// txn-00016 are readOnly. selectionDisabled rows are still individually/programmatically editable,
+// so the current-page editing universe contains 23 rows.
+const FIRST_PAGE_EDITABLE_COUNT = 23;
 
 async function editFirstAccount(page: Page, value: string) {
   const cell = rowById(page, SEEDED_ROWS.enabled).locator('.ag-cell[col-id="account"]');
