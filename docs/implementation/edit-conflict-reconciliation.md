@@ -1,9 +1,5 @@
 # Unsaved Edit Conflict Reconciliation
 
-This document describes the **current implemented** BASE/LOCAL/REMOTE conflict behavior shared by Client-Side, Infinite and SSRM Transaction grids.
-
-It is an implementation reference, not a roadmap.
-
 ## Why reconciliation exists
 
 A row can have a LOCAL unsaved edit while fresh authoritative data later arrives with a different value for the same field.
@@ -119,7 +115,7 @@ server-side store loads/refreshes/recreates rows
 
 A real conflict keeps LOCAL visible in the cell.
 
-Transactions currently provides:
+Transactions provides:
 
 - conflict cell styling;
 - tooltip with LOCAL/REMOTE context;
@@ -195,7 +191,7 @@ If that exact selected-dirty update set contains any unresolved conflict, the en
 
 ### Selected Change Status
 
-The current selected business action writes only `status`.
+The selected business action writes only `status`.
 
 Therefore the frontend guard is field-aware:
 
@@ -221,7 +217,7 @@ Conflict state does not override backend authority.
 
 This client-side reconciliation detects divergence only after fresh authoritative data reaches the browser.
 
-It does not provide backend stale-write/version protection for a client that never refreshed before writing. That is outside the currently implemented conflict mechanism.
+It does not provide backend stale-write/version protection for a client that never refreshed before writing.
 
 ## Implementation boundaries
 
@@ -243,7 +239,7 @@ frontend/src/features/transactions/grid/TransactionsSsrmGrid.tsx
 
 ## Verification scenarios
 
-Current manual/automated verification should cover these behaviors independently across relevant row models:
+Verification should cover these behaviors independently across relevant row models:
 
 1. REMOTE still equals BASE → LOCAL remains ordinary dirty.
 2. REMOTE converges to LOCAL → field auto-cleans.
@@ -257,5 +253,3 @@ Current manual/automated verification should cover these behaviors independently
 10. Discard restores latest REMOTE for conflicted fields.
 11. revisiting the same locally-overlaid RowNode/data object does not fake server convergence.
 12. genuinely fresh Client rowData, Infinite cache rows and SSRM store rows do run reconciliation.
-
-Manual browser verification remains separately tracked and is not claimed complete here.
