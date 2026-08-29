@@ -32,6 +32,7 @@ Use these when you are interested in one capability across the supported row mod
 - [Selected-row totals](selection-counts.md)
 - [Selected business-action lifecycle](selected-action-selection-lifecycle.md)
 - [Transaction editing](transaction-editing.md)
+- [Grid validation](grid-validation.md)
 - [Edit conflict reconciliation](edit-conflict-reconciliation.md)
 - [Edited-row total](edited-row-count.md)
 - [Grid export](grid-export.md)
