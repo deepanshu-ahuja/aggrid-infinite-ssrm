@@ -129,7 +129,7 @@ enabled → readOnly
 → editing is blocked
 ```
 
-This transition contract is exercised in the real-grid Playwright suite for Client, Infinite and SSRM through the Import authoritative-refresh path.
+The real-grid Playwright suite exercises this transition contract on Client, Infinite and SSRM through Import, single-row Save, Save Selected/bulk persistence, and selected Change Status authoritative-refresh paths. Save Selected also verifies that rows already selected while enabled cannot remain selected after the authoritative response moves them into a non-selectable mode.
 
 ## Restricted rows are not user deselection exceptions
 
@@ -275,6 +275,8 @@ Verification should cover:
 - mode predicate/class-rule mapping;
 - native checkbox selectability for all three modes;
 - `selectionDisabled → enabled`, `enabled → selectionDisabled` and `enabled → readOnly` authoritative transitions;
+- transition refresh through Import, row Save, Save Selected/bulk persistence and selected Change Status;
+- selected rows being deselected if an authoritative Save Selected result makes them non-selectable;
 - stale restricted row classes are removed when the latest mode becomes enabled;
 - a newly enabled checkbox can be checked and produces normal selected/header state;
 - Client native Page/Filtered/All selection excluding restricted rows;
