@@ -74,9 +74,6 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
   const localOverlayByNode = useRef(new WeakMap<IRowNode<TData>, LocalOverlayMarker<TData, TField>>());
 
   const markLocalOverlay = useCallback((node: IRowNode<TData> | undefined, field: TField) => {
-    // AG Grid supplies `event.node` in production. Some focused hook tests intentionally construct the
-    // smallest possible CellValueChangedEvent; missing node bookkeeping is safe because reconciliation
-    // still works when a later real RowNode materialises.
     if (!node?.data) return;
     const current = localOverlayByNode.current.get(node);
     if (current?.data === node.data) {
@@ -110,8 +107,6 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
       const newValue = event.newValue as TValue;
       const rowId = getRowId(event.data);
 
-      // A direct user edit mutates this same row-data object, so later model/page events must not mistake
-      // that LOCAL value for newly fetched REMOTE data.
       markLocalOverlay(event.node, field);
       setState((current) => recordTrackedGridCellChange(current, rowId, field, oldValue, newValue));
       validateLocalField(rowId, field, newValue);
@@ -141,9 +136,6 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
         return next;
       });
 
-      // Programmatic current-page edits are real LOCAL edits and therefore use the exact same validation
-      // rules as direct cell editing. Invalid values remain visible and dirty; validation never rejects
-      // the local write itself.
       if (validateField) {
         setValidationState((current) => {
           let next = current;
@@ -207,13 +199,16 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
 
         const before = reconciledState;
         reconciledState = reconcileTrackedGridRemoteValues(reconciledState, rowId, remoteValues);
+        const beforeChanges = before.changesById[rowId];
+        const afterChanges = reconciledState.changesById[rowId];
 
-        // REMOTE == LOCAL auto-cleans the draft. Since the authoritative row now contains that value,
-        // stale client/server validation errors for the no-longer-local field must disappear as well.
+        // REMOTE == LOCAL can remove the field or the entire row draft. In both cases validation for the
+        // no-longer-local field must disappear without assuming the row map still exists.
         for (const field of editableFields) {
           if (
-            hasTrackedGridField(before.changesById[rowId], field) &&
-            !hasTrackedGridField(reconciledState.changesById[rowId], field)
+            beforeChanges &&
+            hasTrackedGridField(beforeChanges, field) &&
+            (!afterChanges || !hasTrackedGridField(afterChanges, field))
           ) {
             validationFieldsToClear.push({ rowId, field });
           }
@@ -256,8 +251,6 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
 
   const acknowledgeChanges = useCallback(
     (updates: TrackedGridUpdatePayload<TField, TValue>['updates']) => {
-      // Saves are blocked while submitted fields are invalid. Any newer in-flight edit revalidates when it
-      // is created, so acknowledgement only owns dirty-state cleanup and must not erase newer validation.
       setState((current) => acknowledgeTrackedGridChanges(current, updates));
     },
     [],
@@ -341,7 +334,6 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
       }
 
       setState((current) => resolveTrackedGridConflictWithRemote(current, rowId, field));
-      // `Use server` removes LOCAL for the field, so no LOCAL/server-rejection error remains relevant.
       setValidationState((current) => setGridFieldValidationErrors(current, rowId, field, []));
     },
     [getFieldValue, getRowId, state.conflictsById],
@@ -352,8 +344,6 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     (rowId: string, field: TField) => {
       const localValue = state.changesById[rowId]?.[field];
       setState((current) => resolveTrackedGridConflictWithLocal(current, rowId, field));
-      // `Keep my edit` rebases BASE to REMOTE but keeps LOCAL. Re-run the feature rule set so any stale
-      // server error is replaced by validation of the value the user explicitly chose to keep.
       if (localValue !== undefined) validateLocalField(rowId, field, localValue as TValue);
     },
     [state.changesById, validateLocalField],
@@ -399,7 +389,6 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
     state,
     validationState,
     payload,
-    // GRIDCAP-COUNT-EDITED: one update per dirty row, regardless of how many fields are dirty.
     editedRowCount: payload.updates.length,
     conflictCount,
     validationErrorCount,
