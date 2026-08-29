@@ -13,6 +13,7 @@ import {
 import {
   createEmptyServerSideSelectionState,
   readFlatServerSideSelectionState,
+  removeIdsFromExplicitServerSideSelectionState,
   serverSideSelectionToIntent,
 } from '../serverSideSelection';
 
@@ -109,9 +110,13 @@ export function useSsrmSelectionController<TData>({
         }
 
         if (!node.selectable) {
-          // `node.selectable` is AG Grid's evaluated `rowSelection.isRowSelectable` result from the
-          // concrete grid root. Reusing it keeps this shared controller completely domain-neutral.
-          // Restricted rows are NOT added to our exclude set; they are outside selection entirely.
+          // A row can become restricted after an authoritative refresh while its SSRM RowNode/native
+          // selected bit survives. In custom filtered mode the native state is only our loaded-row
+          // projection, so remove that stale visual/native selection without adding a logical user
+          // exception to `filteredSelection`.
+          if (node.isSelected() === true) {
+            node.setSelected(false, false, 'api');
+          }
           return;
         }
 
@@ -128,14 +133,57 @@ export function useSsrmSelectionController<TData>({
   );
 
   /**
+   * Native flat SSRM explicit selection stores selected IDs in `toggledNodes`.
+   *
+   * AG Grid correctly re-evaluates `isRowSelectable` when refreshed data arrives, but a previously
+   * selected SSRM ID can remain in native selection rules after that row becomes non-selectable. That
+   * produces an impossible UI state: disabled checkbox still checked and selected count still nonzero.
+   * Remove only those loaded ineligible IDs from EXPLICIT native selection. Native All Records is not
+   * rewritten here because its `toggledNodes` mean user deselection exceptions, not selected IDs.
+   */
+  const pruneLoadedIneligibleNativeExplicitSelection = useCallback(
+    (api = gridApi.current) => {
+      if (!api) return;
+
+      const nativeState = readFlatServerSideSelectionState(api.getServerSideSelectionState());
+      if (nativeState.selectAll || nativeState.toggledNodes.length === 0) return;
+
+      const loadedIneligibleIds: string[] = [];
+      api.forEachNode((node) => {
+        if (node.data && !node.selectable) {
+          loadedIneligibleIds.push(getRowId(node.data));
+        }
+      });
+
+      const nextState = removeIdsFromExplicitServerSideSelectionState(
+        nativeState,
+        loadedIneligibleIds,
+      );
+
+      if (nextState !== nativeState) {
+        api.setServerSideSelectionState(nextState);
+      }
+    },
+    [getRowId, gridApi],
+  );
+
+  /**
    * SSRM calls the grid's model-updated handler when server rows are loaded/replaced/refreshed.
-   * Newly materialised eligible rows must inherit the active logical filtered-selection checkbox state.
+   * Newly materialised eligible rows must inherit custom filtered selection, while native explicit
+   * selection must drop loaded IDs whose latest authoritative policy made them non-selectable.
    */
   const onModelUpdated = useCallback(() => {
     if (filteredSelection) {
       syncLoadedFilteredSelection(filteredSelection);
+      return;
     }
-  }, [filteredSelection, syncLoadedFilteredSelection]);
+
+    pruneLoadedIneligibleNativeExplicitSelection();
+  }, [
+    filteredSelection,
+    pruneLoadedIneligibleNativeExplicitSelection,
+    syncLoadedFilteredSelection,
+  ]);
 
   const onRowSelected = useCallback(
     (event: RowSelectedEvent<TData>) => {
