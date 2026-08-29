@@ -1,9 +1,5 @@
 # Architecture
 
-This document describes the repository's **current implemented** application boundaries.
-
-Planning, backlog items and configurable-table proposals live in their dedicated documents; this file does not describe unimplemented grid capabilities.
-
 ```text
 .
 ├── frontend/

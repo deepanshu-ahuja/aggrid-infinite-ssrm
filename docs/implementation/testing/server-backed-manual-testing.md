@@ -1,8 +1,6 @@
-# Pre-Client manual testing
+# Server-backed manual regression
 
-This is the manual verification checklist for the current Infinite + SSRM baseline before Client-Side Row Model work starts.
-
-The automated suite remains mandatory, but these scenarios exercise browser behavior, grid lifecycle and downloadable files that unit tests do not fully prove.
+This checklist verifies the Infinite and SSRM browser behavior that automated tests do not fully prove, including grid lifecycle and downloadable files.
 
 ## Run the application
 
@@ -19,16 +17,16 @@ Start Vite in another terminal:
 npm run dev
 ```
 
-Use the two dedicated routes:
+Use the dedicated routes:
 
 ```text
 /infinite
 /ssrm
 ```
 
-The application intentionally renders each row model on its own route so one implementation can be tested independently from the other.
+Test each row model independently.
 
-## Automated verification before/after manual testing
+## Automated verification
 
 ```bash
 npm run lint
@@ -63,7 +61,7 @@ Infinite has three configured selection scopes. Change `transactionsGridConfig.i
 5. Deselect two eligible rows.
 6. Confirm displayed count becomes `filteredCount - 2`.
 7. Change the filter.
-8. Confirm the old filtered-wide selection is cleared/reset according to the current contract.
+8. Confirm the old filtered-wide selection clears.
 
 ### `all`
 
@@ -93,7 +91,7 @@ Open `/ssrm`.
 3. Confirm displayed selected count equals API `filteredCount`.
 4. Deselect two eligible rows.
 5. Confirm count becomes `filteredCount - 2`.
-6. Change the filter and confirm the old filtered-wide selection is cleared/reset.
+6. Change the filter and confirm the old filtered-wide selection clears.
 
 ### All Records
 
@@ -104,8 +102,6 @@ Open `/ssrm`.
 5. Apply/change filters and confirm native All Records continues to mean the full dataset.
 
 ## 3. Count response-order sanity
-
-This behavior has automated regression coverage, but it is useful to understand what should happen under slow network conditions.
 
 Use browser network throttling if desired.
 
@@ -129,18 +125,18 @@ page 2 is the latest request
 
 If page 3 responds later, it must not replace the latest count metadata.
 
-The rule is **latest started request wins**, not “highest page number wins.” Verify the same behavior for both `/infinite` and `/ssrm` if manually exercising throttled requests.
+The rule is **latest started request wins**, not “highest page number wins.” Verify the same behavior for both `/infinite` and `/ssrm` when manually exercising throttled requests.
 
 ## 4. `selectionDisabled` / `readOnly`
 
 1. Find rows rendered with `selectionDisabled` or `readOnly` interaction policy.
 2. Confirm they cannot be selected through ordinary checkbox selection.
-3. Confirm dataset-wide displayed counts may still include those rows under the current documented limitation.
+3. Confirm dataset-wide displayed counts may still include those rows because the current server counts describe query membership rather than exact selection eligibility.
 4. Run a selected backend business action or selected export.
 5. Confirm backend-ineligible rows are not acted on/exported.
-6. Export a current page containing a restricted row and confirm that row **is** present in the page CSV, because Current Page is a page snapshot rather than a selection-based operation.
+6. Export a current page containing a restricted row and confirm that row **is** present because Current Page is a page snapshot rather than a selection-based operation.
 
-Do not expect the current UI dataset-wide count to subtract only disabled rows loaded in the browser. Do not expect Current Page export to apply selected-row eligibility. See [Selected-row totals](selection-counts.md) and [Grid export](grid-export.md).
+Do not expect the server-wide UI count to subtract only disabled rows currently loaded in the browser.
 
 ## 5. Edited-row total
 
@@ -158,8 +154,6 @@ Run independently in both `/infinite` and `/ssrm`.
 10. Revert a field back to its authoritative value; once the row has no dirty fields it must leave the edited total.
 11. Create a BASE/LOCAL/REMOTE conflict; the conflicted row still counts as edited until its dirty state is resolved/removed.
 
-See [Transaction editing](transaction-editing.md) and [Unsaved edit conflict reconciliation](edit-conflict-reconciliation.md) for the full edit/conflict contract.
-
 ## 6. Export Current Page
 
 Run independently in `/infinite` and `/ssrm`.
@@ -168,7 +162,7 @@ Run independently in `/infinite` and `/ssrm`.
 2. Click `Export current page`.
 3. Open the downloaded CSV.
 4. Confirm it contains only the current fully loaded page, not other cached/loaded rows.
-5. If the page contains `selectionDisabled` or `readOnly` rows, confirm those rows are included. Current Page exports page membership, not selected-row eligibility.
+5. If the page contains `selectionDisabled` or `readOnly` rows, confirm those rows are included.
 6. Change page and export again; confirm the file follows the new page.
 7. Trigger export while the page is unresolved/loading if practical; confirm the application refuses a partial export and shows the loading message.
 
@@ -180,11 +174,11 @@ Run independently in `/infinite` and `/ssrm`.
 2. Click `Export selected`.
 3. Confirm one `POST /api/transactions/selection/export/` request is made.
 4. Open the CSV and confirm only those selected eligible rows are present.
-5. Confirm a `selectionDisabled` / `readOnly` row cannot become part of the normal explicit selection, and that backend eligibility remains authoritative for stale/crafted input.
+5. Confirm a `selectionDisabled` / `readOnly` row cannot become part of normal explicit selection and backend eligibility still protects stale/crafted input.
 
 ## 8. Export Selected — All Filtered
 
-Run independently in both row models using their own All Filtered selection flow.
+Run independently in both row models using their All Filtered flow.
 
 1. Apply a filter.
 2. Select All Filtered.
@@ -192,22 +186,22 @@ Run independently in both row models using their own All Filtered selection flow
 4. Click `Export selected`.
 5. Confirm the request sends exclude-mode selection plus the current defining filters.
 6. Confirm the CSV contains matching eligible filtered rows except the explicit deselection(s).
-7. Confirm `selectionDisabled` / `readOnly` rows are not exported even if the visible selected total currently counts them under the documented eligibility-count limitation.
+7. Confirm `selectionDisabled` / `readOnly` rows are not exported even if the visible selected total counts them through normal query counts.
 
 ## 9. Export Selected — All Records
 
-Run independently in both row models using their own All Records flow.
+Run independently in both row models using their All Records flow.
 
 1. Select All Records.
 2. Deselect at least one eligible row.
 3. Click `Export selected`.
-4. Confirm the request uses exclude mode without filtered scope.
+4. Confirm the request uses exclude mode without filtered context.
 5. Confirm the CSV contains eligible records except the explicit deselection(s).
-6. Confirm `selectionDisabled` / `readOnly` rows are not exported even though the current All Records displayed count may include them.
+6. Confirm `selectionDisabled` / `readOnly` rows are not exported even though the All Records displayed count can include them.
 
-## 10. Existing edit/conflict regression
+## 10. Edit/conflict regression
 
-Before starting Client-Side work, also re-run the existing manual conflict scenarios for both row models:
+Run these scenarios for both row models:
 
 - ordinary dirty edit survives navigation/reload;
 - REMOTE == BASE keeps LOCAL dirty;
@@ -217,10 +211,10 @@ Before starting Client-Side work, also re-run the existing manual conflict scena
 - Keep my edit rebases BASE and keeps LOCAL dirty;
 - row Save is blocked by unresolved conflicts;
 - selected Save is blocked when the selected dirty set contains a conflict;
-- field-aware selection business-action guard behaves correctly;
+- field-aware selected business-action guard behaves correctly;
 - Discard restores latest REMOTE;
-- teardown/remount does not produce AG Grid destroyed-API warning #26.
+- teardown/remount does not produce a destroyed-GridApi warning.
 
 ## Pass criteria
 
-The pre-Client baseline is manually verified only when **Infinite and SSRM both pass independently**. A successful Infinite run does not prove SSRM behavior and vice versa.
+The server-backed manual regression is complete only when **Infinite and SSRM both pass independently**. A successful run of one row model does not prove the other.

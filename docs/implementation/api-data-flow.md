@@ -1,9 +1,5 @@
 # API and Data Flow
 
-This document describes the **current implemented** frontend/backend data flow for Client-Side, Infinite and SSRM Transaction grids.
-
-It does not describe planned APIs or configurable-table metadata.
-
 ## Client-Side collection flow
 
 Client-Side loads the complete bounded Transaction working set through TanStack Query:

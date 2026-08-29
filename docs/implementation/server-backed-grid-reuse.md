@@ -1,153 +1,144 @@
 # Reusing the server-backed grid foundation
 
-This is the practical guide for adding another server-backed table such as Payables, Invoices or Orders.
+Use this guide when adding another server-backed table such as Payables, Invoices or Orders.
 
-The goal is simple:
+The goal is:
 
 - reuse grid behavior that is genuinely common;
 - keep business/domain behavior inside the feature;
 - keep native AG Grid concepts visible instead of hiding them behind a large wrapper.
 
-If you are adding a new table, start here before copying code from Transactions.
+## 1. Shared versus feature-owned code
 
-## 1. The boundary to remember
-
-Ask this question for every new piece of code:
+For every new piece of code ask:
 
 ```text
 Would another server-backed table need this for the same reason?
 ```
 
-If yes, it probably belongs under `frontend/src/shared/grid`.
+If yes, it may belong under `frontend/src/shared/grid`.
 
-If it depends on domain fields, business actions, endpoint shapes or business validation, it belongs in the feature.
+If it depends on domain fields, business actions, endpoint shapes or business validation, it belongs in the feature/backend.
 
 ### Shared grid responsibilities
 
-Examples of reusable concerns:
+Examples:
 
 - server-backed pagination/cache defaults;
 - Infinite and SSRM datasource adapters;
-- native GridApi lifecycle helpers;
+- GridApi lifecycle safety;
+- current-page resolution;
 - include/exclude selection semantics;
-- current-page / filtered / all selection behavior;
-- generic selection-action target construction;
-- domain-neutral row interaction modes such as enabled / selection-disabled / read-only;
+- generic selected-target construction;
+- generic `enabled | selectionDisabled | readOnly` interaction meanings;
 - Grid State persistence;
-- generic tracked-edit mechanics when the behavior is truly domain-neutral.
+- stable-ID tracked editing and conflict mechanics.
 
-### Feature responsibilities
+### Feature/backend responsibilities
 
-Examples that should remain feature-owned:
+Examples:
 
-- row type (`Transaction`, `Payable`, etc.);
+- feature row type;
 - columns and editable fields;
-- the business condition that decides a row interaction mode;
-- AG Grid field -> backend field translation;
+- business conditions that determine row interaction mode;
+- AG Grid field → backend field translation;
 - backend query endpoint;
-- domain action endpoint;
-- action payload such as `{ status: 'Failed' }` or `{ action: 'approve' }`;
-- business validation and backend update implementation, including authoritative row eligibility.
+- business-action endpoint and payload;
+- validation/business rules;
+- authoritative row eligibility and write policy.
 
-## 2. Do not create a generic `AgGridReact` wrapper
+## 2. Keep the concrete AG Grid root visible
 
-A feature grid should render `AgGridReact` directly and own one authoritative `GridApi` ref.
+A feature grid renders `AgGridReact` directly and owns one authoritative `GridApi` ref.
 
-That keeps native AG Grid behavior easy to understand and debug.
-
-Shared hooks may receive that root-owned API, but they do not replace it with another application API.
+Shared hooks may receive that root-owned API for operations they genuinely own, but they do not replace it with a second application-specific grid API.
 
 ## 3. Choose the row model explicitly
 
-Infinite Row Model and SSRM share some primitives but remain separate implementations.
-
-Use the row-model-specific loading hook:
+Infinite and SSRM remain separate integrations.
 
 ```text
-Infinite -> useInfiniteRowLoading(...)
-SSRM     -> useServerSideRowLoading(...)
+Infinite
+→ useInfiniteRowLoading(...)
+→ datasource
+
+SSRM
+→ useServerSideRowLoading(...)
+→ serverSideDatasource
 ```
 
-Keep the native datasource prop visible in the concrete root:
+Choose the row model from application requirements and use its native lifecycle. Do not introduce a generic row-model switch merely to make the files look symmetrical.
 
-```text
-Infinite -> datasource
-SSRM     -> serverSideDatasource
-```
-
-Do not force both row models through one giant hook/component just because they both call the same backend.
-
-## 4. Reuse the server-backed defaults
-
-Start from `serverBackedGridDefaults` and override only measured feature-specific differences.
+## 4. Start from server-backed defaults
 
 Current defaults are:
 
 ```text
-page size            25
-cache block size     50
-max cached blocks     5
-block debounce      120 ms
-max concurrent load   1
+page size             25
+cache block size      50
+max cached blocks      5
+block debounce       120 ms
+max concurrent load    1
 ```
 
-Important: page size and block size are different concepts.
+Page size and block size are different concepts.
 
 With page size 25 and block size 50:
 
 ```text
-Block 0 -> rows 0-49    -> pages 1 and 2
-Block 1 -> rows 50-99   -> pages 3 and 4
-Block 2 -> rows 100-149 -> pages 5 and 6
+Block 0 → rows 0-49    → pages 1 and 2
+Block 1 → rows 50-99   → pages 3 and 4
+Block 2 → rows 100-149 → pages 5 and 6
 ```
 
-## 5. Understand the Infinite cache before debugging network calls
+Override defaults only for a measured feature requirement.
 
-`maxBlocksInCache: 5` means AG Grid retains only a bounded set of recently needed blocks.
+## 5. Infinite cache ownership
 
-If a user visits blocks sequentially up to block 7, the cache will normally contain roughly:
+`maxBlocksInCache: 5` keeps only a bounded set of recently needed blocks.
+
+If an evicted block is visited again, AG Grid requests it again.
+
+After a successful Infinite write:
 
 ```text
-Block 3
-Block 4
-Block 5
-Block 6
-Block 7
+api.refreshInfiniteCache()
+→ refresh currently resident blocks
 ```
 
-Blocks 1 and 2 have been evicted.
-
-This is not a permanent "last five block numbers" rule; cache residency depends on what the user recently viewed and what AG Grid currently needs.
-
-If an evicted block is visited again, AG Grid fetches it from the backend again.
-
-### What happens after a successful Infinite mutation
-
-The current Infinite roots use `refreshInfiniteCache()` after backend-authoritative writes.
-
-That refreshes the blocks currently resident in AG Grid's Infinite cache. It does **not** fetch the entire backend dataset.
+It does not fetch every backend block affected by a dataset-wide business action.
 
 Example:
 
 ```text
-Only Block 0 has been loaded
-bulk action succeeds
--> Block 0 is queried again
+Only Block 0 is resident
+→ business action succeeds
+→ Block 0 refreshes
 
-Later user goes to a page that needs Block 1
--> Block 1 is fetched then
--> it already contains the backend mutation result
+Later user visits rows requiring Block 1
+→ Block 1 loads then
+→ backend already contains the authoritative result
 ```
 
-If five blocks are resident, a refresh can produce five row-query requests with different offsets. Those are cache refreshes, not five mutation requests.
+Cache residency is a presentation/performance concern, never the scope of a business action.
 
-This is intentional for correctness: the backend is authoritative, cached browser rows are refreshed, and unloaded/evicted blocks are fetched fresh only when needed.
+## 6. Stable row IDs
 
-Do not treat cache residency as the scope of a business action.
+Every server-backed feature provides stable backend identity through `getRowId`.
 
-## 6. Selection is generic; business actions are not
+Do not use displayed row position as durable identity.
 
-The reusable logical selection is:
+Stable IDs allow selection, tracked edits and authoritative reload/reconciliation to survive:
+
+- pagination;
+- sorting;
+- filtering;
+- cache/store recreation;
+- RowNode replacement.
+
+## 7. Selection contract
+
+The operation-neutral logical selection shape is:
 
 ```ts
 {
@@ -156,161 +147,96 @@ The reusable logical selection is:
 }
 ```
 
-Meaning inside the **eligible/selectable row universe**:
+### Explicit/manual/current-page selection
 
 ```text
 include + ids
--> exactly these eligible ids are selected
-
-exclude + ids
--> Select All is active and these ids are user exceptions
+→ exact requested eligible IDs
 ```
 
-Rows that the backend marks selection-disabled/read-only are outside that selectable universe. They are not implicit exclusions and their IDs must not be manufactured into `exclude` arrays.
+The filter/page history used to discover those IDs is not part of the backend target.
 
-For loaded rows, the feature maps its row policy to AG Grid's native `rowSelection.isRowSelectable`. Current-page/custom selection helpers also avoid passing disabled `RowNode`s into selection APIs.
-
-For unloaded rows, the backend independently applies the equivalent eligibility rule when resolving a selection action. The frontend never loads the full dataset just to discover disabled IDs.
-
-See `docs/row-interaction.md` for the full frontend/backend contract.
-
-### Manual/current-page/cross-page selection
-
-These all end as exact IDs:
+### Select All Filtered
 
 ```text
-include + ids
+exclude + user exception IDs
++ translated filters
 ```
 
-The history of which page or filter was visible when an ID was selected does not matter.
+Backend meaning:
+
+```text
+all eligible rows matching the filters
+minus explicit user exceptions
+```
+
+### Select All Records
+
+```text
+exclude + user exception IDs
+without filters
+```
+
+Backend meaning:
+
+```text
+all eligible rows
+minus explicit user exceptions
+```
+
+### Row eligibility
+
+Rows outside the selectable universe are not user exceptions.
+
+```text
+enabled
+→ selectable + editable
+
+selectionDisabled
+→ not selectable + individually editable
+
+readOnly
+→ not selectable + not editable
+```
+
+Loaded-row behavior uses native `isRowSelectable` / `editable` callbacks. Backend services independently enforce the equivalent authoritative policy for unloaded/stale requests.
+
+Do not enumerate backend-restricted rows into logical `exclude` IDs.
+
+## 8. Reuse one filter translation path
+
+A feature owns one translation boundary from AG Grid filter models to its backend filter contract.
 
 Example:
 
 ```text
-Filter A -> select A and B
-Filter B -> select C and D
-
-final logical selection:
-include [A, B, C, D]
+AG Grid FilterModel
+→ mapPayableFilterModel(...)
+→ PayableFilter[]
 ```
 
-A backend action should target those exact eligible IDs and must not constrain them by the currently visible filter. If a stale/crafted include request contains a row that is no longer eligible, backend eligibility still wins.
-
-### Select All Filtered
-
-The selection is represented as:
+Use the same translation for:
 
 ```text
-exclude + exception ids
-```
-
-and the feature also supplies its translated backend filters when building an action request.
-
-Disabled rows are still not added to the exception list. The backend applies filters, row eligibility and then the user's explicit exceptions.
-
-### Select All Records
-
-The selection is also:
-
-```text
-exclude + exception ids
-```
-
-but there is no backend filter context.
-
-Again, disabled rows remain outside the selectable universe rather than becoming exception IDs.
-
-### Backend wire contract: no serialized `scope`
-
-Do not send an extra `scope: explicit | filtered | all` field to the backend. The request already carries enough information:
-
-```text
-include + ids
--> eligible rows among those exact ids
-
-exclude + filters
--> eligible rows matching those filters, minus the exception ids
-
-exclude without filters
--> all eligible records, minus the exception ids
-```
-
-Examples:
-
-```json
-{
-  "selection": {
-    "mode": "include",
-    "ids": ["row-1", "row-2"]
-  }
-}
-```
-
-```json
-{
-  "selection": {
-    "mode": "exclude",
-    "ids": ["row-10"]
-  },
-  "filters": [
-    { "field": "status", "operator": "equals", "value": "Pending" }
-  ]
-}
-```
-
-```json
-{
-  "selection": {
-    "mode": "exclude",
-    "ids": ["row-10"]
-  }
-}
-```
-
-The frontend still needs internal row-model/action context to know whether an `exclude` selection currently means filtered rows or all records. `buildGridSelectionActionTarget(...)` receives that internal context and converts it into the simpler wire shape above.
-
-If Select All Filtered is used while there are no active filters, its dataset is the same as all records, so an empty filter list and no filter list have the same backend meaning.
-
-## 7. Reuse one filter translation path
-
-A feature should have one translation boundary from AG Grid filter models to its backend filter contract.
-
-Transactions uses:
-
-```text
-mapTransactionFilterModel(...)
-```
-
-The same translator is used for:
-
-```text
-normal row loading
+normal server row loading
 and
-Select All Filtered actions
+Select All Filtered selected operations
 ```
 
-Do not write a second action-only filter translator. Otherwise the rows shown by the table and the rows targeted by the action can silently disagree.
+Do not create an action-only filter interpreter that can diverge from the rows shown by the grid.
 
-A Payables feature should have its own field mapping, for example:
+## 9. Keep selection separate from business action
+
+Selection answers:
 
 ```text
-mapPayableFilterModel(...)
+Which rows?
 ```
 
-because field names and domain rules are feature-specific.
-
-## 8. Building a feature action
-
-The shared layer should answer:
+The feature action answers:
 
 ```text
-Which logical rows are targeted?
-```
-
-The feature should answer:
-
-```text
-What business operation should happen to them?
+What should happen to them?
 ```
 
 Conceptually:
@@ -322,81 +248,125 @@ const target = buildGridSelectionActionTarget(
   translatedFilters,
 );
 
-return {
+const request = {
   ...target,
-  action: { type: 'approve' },
+  changes: featureSpecificChanges,
 };
 ```
 
-`excludeScope` above is frontend-only construction context. It is not serialized in `target.selection`.
+`excludeScope` is frontend construction context used to decide whether filters belong in the request. It is not serialized inside the logical selection object.
 
-Transactions may instead add:
+A different business action owns its own endpoint/mutation/payload. Shared selection code does not choose unrelated business endpoints.
 
-```ts
-changes: { status: 'Failed' }
-```
+## 10. Selection lifecycle
 
-The shared helper must not know what `approve`, `Failed`, `assignedTo`, etc. mean.
-
-## 9. Filter-change selection rules
-
-Do not apply one blanket "filter changed -> clear selection" rule.
-
-Use the selection meaning:
+Use selection meaning rather than one blanket reset rule:
 
 ```text
-explicit/include ids
--> survive filter changes
+explicit/include IDs
+→ preserve across filter changes
 
-Select All Filtered / filtered exclude
--> reset when its defining filter changes
+All Filtered/exclude
+→ reset when its defining filter changes
 
-Select All Records / all exclude
--> survive visible filter changes
+All Records/exclude
+→ preserve across visible filter changes
 ```
 
-This lets a user intentionally accumulate exact selected IDs across different filters.
+Sorting and pagination change presentation, not stable identity, so they do not clear logical selection.
 
-## 10. Stable row IDs are mandatory
+## 11. Tracked editing
 
-Every server-backed feature should provide a stable backend identity through `getRowId`.
+Unsaved drafts live outside transient RowNodes by stable row ID.
 
-Do not use row position as identity.
+The shared state tracks:
 
-Stable IDs are what allow selection, tracked edits and backend-authoritative reloads to survive pagination, sorting, cache eviction and RowNode recreation.
+```text
+BASE
+LOCAL
+REMOTE
+```
 
-## 11. Grid State persistence
+For a dirty field:
 
-Use the shared `useGridStatePersistence(...)` boundary for common user table preferences.
+```text
+REMOTE == BASE
+→ keep LOCAL dirty
 
-Keep separate keys for distinct table/row-model instances.
+REMOTE == LOCAL
+→ clean automatically
 
-Do not mirror native column/filter/sort state into a second React state model.
+REMOTE differs from BASE and LOCAL
+→ keep LOCAL visible
+→ record conflict
+```
 
-## 12. Quick checklist for a new table
+Selected Save persists only:
 
-For a new feature such as Payables:
+```text
+dirty rows ∩ current logical selection
+```
 
-1. Define the feature row/API contracts.
-2. Define columns and a stable `getRowId`.
-3. Reuse `serverBackedGridDefaults`.
-4. Create one feature query/filter mapper.
-5. Reuse the Infinite or SSRM datasource/loading helper.
-6. Reuse the appropriate row-model-specific selection controller.
-7. Map the feature's row policy to shared interaction modes and native AG Grid callbacks.
-8. Enforce equivalent selection/edit eligibility in the feature backend for unloaded/stale requests.
-9. Reuse `buildGridSelectionActionTarget(...)` for selection-based actions without adding disabled IDs.
-10. Add only the feature-specific action payload/API call in the feature.
-11. Reuse Grid State persistence if the table needs saved preferences.
-12. Add tests for feature translation/business behavior and row-policy integration; do not re-test AG Grid internals.
+It never turns Select All into changes for clean/unloaded rows.
 
-## 13. Things not to generalize prematurely
+## 12. Grid State
+
+Use native AG Grid Grid State for supported durable view preferences.
+
+Current persisted slices are:
+
+- column order;
+- pinning;
+- sizing;
+- visibility;
+- filters;
+- sort.
+
+Use distinct persistence keys for independent grids. Pagination position and business selection remain transient.
+
+## 13. Refresh and teardown
+
+Use the actual row model's lifecycle:
+
+```text
+Infinite
+→ refreshInfiniteCache()
+
+SSRM
+→ refreshServerSide()
+→ retryServerSideLoads() for failed loads
+```
+
+Datasource destroy/replacement cancels obsolete in-flight requests.
+
+Concrete roots clear their authoritative GridApi refs during pre-destroy lifecycle.
+
+## 14. New server-backed table checklist
+
+For a new feature:
+
+1. Define row/API contracts.
+2. Define columns and stable `getRowId`.
+3. Choose Infinite or SSRM explicitly.
+4. Start from server-backed defaults.
+5. Create one feature sort/filter/query mapper.
+6. Reuse the chosen row-model datasource/loading boundary.
+7. Reuse the chosen row-model selection controller where its semantics match.
+8. Map feature row policy into `enabled | selectionDisabled | readOnly` and native callbacks.
+9. Enforce equivalent eligibility/write policy in the backend.
+10. Reuse the logical selection-target helper for selected operations.
+11. Keep feature business-action endpoints/payloads feature-owned.
+12. Reuse stable-ID tracked editing/conflict mechanics when needed.
+13. Reuse Grid State persistence when the table needs durable view preferences.
+14. Add focused tests for feature mapping, row policy, API behavior and row-model integration.
+
+## 15. Do not generalize prematurely
 
 Do not create shared code only because two files look similar.
 
-Keep something feature-owned when its meaning is domain-specific.
+Keep behavior feature-owned when its meaning is domain-specific.
 
-Prefer small duplication over a generic abstraction that requires flags such as:
+Prefer small duplication over abstractions that need flags such as:
 
 ```text
 isPayable
@@ -405,13 +375,4 @@ useSpecialStatus
 rowModelMode
 ```
 
-A reusable helper should have one clear capability and a domain-neutral reason to exist.
-
-## Related documentation
-
-- `docs/ag-grid.md` - detailed architecture and ownership rules.
-- `docs/ag-grid-foundation-status.md` - foundation status/guardrails.
-- `docs/row-interaction.md` - reusable selection-disabled/read-only row policy.
-- `frontend/src/infinite-selection-contract.md` - detailed Infinite selection scenarios.
-- `frontend/src/ssrm-selection-contract.md` - detailed SSRM selection scenarios.
-- `docs/transaction-editing.md` - current Transactions editing behavior.
+A shared abstraction should own one stable, domain-neutral responsibility.

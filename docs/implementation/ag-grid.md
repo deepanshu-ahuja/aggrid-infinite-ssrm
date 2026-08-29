@@ -1,9 +1,5 @@
 # AG Grid Architecture
 
-This document describes the **current implemented** AG Grid ownership model across Client-Side, Infinite and SSRM.
-
-It is an implementation reference. Planned capabilities and configurable-table target architecture live in their dedicated backlog/proposal documents.
-
 ## Core rule
 
 Use native AG Grid behavior and APIs first.
@@ -284,16 +280,3 @@ Custom code that can outlive native grid teardown checks destroyed API state bef
 Infinite/SSRM datasources cancel outstanding work on destroy/replacement.
 
 Render-count freshness is owned by the latest-started server request, not the latest-resolved request.
-
-## Related current implementation references
-
-- `docs/grid-capabilities.md`
-- `docs/ag-grid-native-usage.md`
-- `docs/api-data-flow.md`
-- `docs/client-side-grid.md`
-- `docs/selection-counts.md`
-- `docs/selected-action-selection-lifecycle.md`
-- `docs/row-interaction.md`
-- `docs/transaction-editing.md`
-- `docs/edit-conflict-reconciliation.md`
-- `docs/grid-export.md`
