@@ -1,5 +1,21 @@
 // GRIDCAP-EDIT-VALIDATION
 
+/**
+ * Shared validation foundation.
+ *
+ * Call flow for feature code:
+ *
+ *   feature rules/messages (for example transactionValidation.ts)
+ *     -> validateGridValue(...)
+ *     -> registry[rule.key] (for example defaultGridValidationRules.ts)
+ *     -> normalized GridValidationError[]
+ *     -> stable row-id/field validation state
+ *
+ * This file deliberately owns mechanics/state only. It must not know Transaction fields or business
+ * messages, and it must never execute arbitrary JavaScript supplied by configuration/backend data.
+ * See docs/implementation/grid-validation.md for the complete capability contract.
+ */
+
 export type GridValidationParams = Readonly<Record<string, unknown>>;
 
 export interface GridValidationRule<TKey extends string = string> {
@@ -71,6 +87,7 @@ export function validateGridValue<TKey extends string, TValue>(
   return errors;
 }
 
+/** Replace one row/field error list; an empty list removes stale validation for that field. */
 export function setGridFieldValidationErrors<TField extends string, TKey extends string>(
   state: GridValidationState<TField, TKey>,
   rowId: string,
@@ -90,6 +107,7 @@ export function setGridFieldValidationErrors<TField extends string, TKey extends
   return next;
 }
 
+/** Discard/row cleanup boundary: remove every validation error currently owned by one stable row ID. */
 export function clearGridRowValidationErrors<TField extends string, TKey extends string>(
   state: GridValidationState<TField, TKey>,
   rowId: string,
@@ -115,6 +133,12 @@ export function hasGridRowValidationError<TField extends string, TKey extends st
   return Boolean(state[rowId] && Object.keys(state[rowId]).length > 0);
 }
 
+/**
+ * Save guard helper for an explicit update set.
+ *
+ * It checks only fields actually present in each patch, which is important for Save Selected: unrelated
+ * invalid fields outside the exact dirty-selected payload must not block a mutation that does not touch them.
+ */
 export function hasGridUpdateValidationError<
   TField extends string,
   TKey extends string,
