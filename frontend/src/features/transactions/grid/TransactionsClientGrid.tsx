@@ -49,7 +49,6 @@ import {
   getTransactionRowClass,
   isTransactionRowSelectable,
 } from './transactionRowInteraction';
-import type { SelectionAfterSuccessPolicy } from './transactionSelectionAction';
 import { useTransactionEditPersistence } from './useTransactionEditPersistence';
 import { useTransactionSelectionAction } from './useTransactionSelectionAction';
 
@@ -157,25 +156,22 @@ export function TransactionsClientGrid({
     onPersistedRows: applyAuthoritativeRows,
   });
 
-  const handleSelectionActionApplied = useCallback(
-    (selectionAfterSuccess: SelectionAfterSuccessPolicy) => {
-      // GRIDCAP-ACTION-SELECTED | GRIDCAP-LIFECYCLE-REFRESH
-      // The feature action chooses whether its successful mutation keeps or clears checkbox state.
-      // Client selection is fully native, so delegate clearing to the Client selection controller.
-      if (selectionAfterSuccess === 'clear') clearSelection();
+  const handleSelectedTransactionUpdateApplied = useCallback(() => {
+    // GRIDCAP-ACTION-SELECTED | GRIDCAP-LIFECYCLE-REFRESH
+    // Change Status has one known completion behavior: clear the successful target. Client selection is
+    // fully native, so call the existing row-model controller directly instead of carrying a policy key.
+    clearSelection();
 
-      // Selection status API returns only updatedCount. Refetch the bounded collection so Client rowData
-      // receives authoritative changed values/policy; stable getRowId lets AG Grid reconcile row identity.
-      void refetch();
-    },
-    [clearSelection, refetch],
-  );
+    // Selection status API returns only updatedCount. Refetch the bounded collection so Client rowData
+    // receives authoritative changed values/policy; stable getRowId lets AG Grid reconcile row identity.
+    void refetch();
+  }, [clearSelection, refetch]);
 
   const {
-    applySelectionAction,
-    isApplyingSelectionAction,
-    selectionActionError,
-  } = useTransactionSelectionAction({ onApplied: handleSelectionActionApplied });
+    updateSelectedTransactions,
+    isUpdatingSelectedTransactions,
+    selectedTransactionUpdateError,
+  } = useTransactionSelectionAction({ onApplied: handleSelectedTransactionUpdateApplied });
 
   const hasSelection = selectedRowCount > 0;
   const selectedDirtyUpdates = buildSelectedTrackedGridUpdatePayload(state, selectionSnapshot).updates;
@@ -214,7 +210,7 @@ export function TransactionsClientGrid({
   }, [conflictTarget, discardRows, readSelectionIntent, state]);
 
   const handleSetSelectedStatus = useCallback(
-    (status: TransactionStatus, selectionAfterSuccess: SelectionAfterSuccessPolicy) => {
+    (status: TransactionStatus) => {
       const currentSelection = readSelectionIntent();
       if (
         currentSelection.ids.length === 0 ||
@@ -226,15 +222,12 @@ export function TransactionsClientGrid({
       // Every Client-Side selected row is concrete and therefore expressible as an explicit include
       // target. The wire contract deliberately omits filters for include selections because exact IDs
       // already define the complete target; backend filter translation is only needed for exclude mode.
-      applySelectionAction(
-        {
-          selection: currentSelection,
-          changes: { status },
-        },
-        selectionAfterSuccess,
-      );
+      updateSelectedTransactions({
+        selection: currentSelection,
+        changes: { status },
+      });
     },
-    [applySelectionAction, readSelectionIntent, state],
+    [readSelectionIntent, state, updateSelectedTransactions],
   );
 
   const handleExportCurrentPage = useCallback(() => {
@@ -333,9 +326,9 @@ export function TransactionsClientGrid({
       <TransactionSelectionActions
         hasSelection={hasSelection}
         selectedRowCount={selectedRowCount}
-        isApplying={isApplyingSelectionAction}
+        isApplying={isUpdatingSelectedTransactions}
         statusActionBlockedByConflict={statusActionBlockedByConflict}
-        error={selectionActionError}
+        error={selectedTransactionUpdateError}
         onSetStatus={handleSetSelectedStatus}
       />
 
