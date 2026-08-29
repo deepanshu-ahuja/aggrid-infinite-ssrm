@@ -53,11 +53,8 @@ for (const route of routes) {
   test(`${route}: Flow 2 applies one valid checked field to editable page rows only`, async ({ page }) => {
     const pageErrors = await openGrid(page, route);
 
-    const currencyCheckbox = page.getByRole('checkbox', { name: 'Currency', exact: true });
-    await currencyCheckbox.click();
-    const currencyInput = currencyCheckbox.locator(
-      'xpath=ancestor::label/following-sibling::div[1]//input',
-    );
+    await page.getByRole('checkbox', { name: 'Currency', exact: true }).click();
+    const currencyInput = page.getByTestId('flow2-currency-input');
     await expect(currencyInput).toBeEnabled();
     await currencyInput.fill('GBP');
     await page.getByRole('button', { name: 'Apply bulk edit', exact: true }).click();
