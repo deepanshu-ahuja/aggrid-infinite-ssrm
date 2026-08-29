@@ -11,10 +11,6 @@ body {
 /**
  * Row interaction presentation only. Native AG Grid callbacks and backend validation enforce the
  * actual behavior; these styles make the restriction obvious without becoming another source of truth.
- *
- * AG Grid already prevents selection for these RowNodes. We deliberately give the native checkbox
- * a conventional neutral disabled appearance instead of merely lowering the opacity of the normal
- * accent-coloured control.
  */
 .grid-row--selection-disabled .ag-selection-checkbox,
 .grid-row--read-only .ag-selection-checkbox {
@@ -31,7 +27,6 @@ body {
   opacity: 0.78;
 }
 
-/** Selection-disabled rows remain editable, so use a light review treatment. */
 .grid-row--selection-disabled {
   box-shadow: inset 3px 0 0 #b54708;
 }
@@ -40,7 +35,6 @@ body {
   background-color: #fffaeb;
 }
 
-/** Read-only rows are the stronger state: selection, editing and modifying row actions are blocked. */
 .grid-row--read-only {
   box-shadow: inset 3px 0 0 #667085;
 }
@@ -52,10 +46,28 @@ body {
 }
 
 /**
- * Field-level edit conflict treatment.
- *
- * The cell continues to display the user's LOCAL unsaved value. The inset border and warning glyph say
- * that a different REMOTE value arrived from the server; clicking the cell opens the feature resolver.
+ * Validation errors leave LOCAL values editable and visible so the user can correct them in place.
+ * Conflict styling may coexist on the same cell; neither condition is encoded through the other.
+ */
+.grid-cell--validation-error {
+  position: relative;
+  box-shadow: inset 0 0 0 2px #d92d20;
+  background-color: #fef3f2 !important;
+  padding-right: 30px !important;
+}
+
+.grid-cell--validation-error::after {
+  content: '!';
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-weight: 700;
+  line-height: 1;
+}
+
+/**
+ * Field-level edit conflict treatment. LOCAL remains visible while the user explicitly resolves REMOTE.
  */
 .grid-cell--edit-conflict {
   position: relative;
@@ -73,4 +85,15 @@ body {
   transform: translateY(-50%);
   font-size: 14px;
   line-height: 1;
+}
+
+/** Both states are meaningful: retain conflict affordance while also showing invalid LOCAL input. */
+.grid-cell--edit-conflict.grid-cell--validation-error {
+  box-shadow: inset 0 0 0 2px #d92d20, inset 0 -3px 0 #f79009;
+  background-color: #fff6ed !important;
+}
+
+.grid-cell--edit-conflict.grid-cell--validation-error::after {
+  content: '⚠!';
+  font-size: 12px;
 }
