@@ -1,8 +1,8 @@
 # Infinite Row Model implementation guide
 
-This is the current row-model entry point for AG Grid **Infinite Row Model** in this repository.
+This document is the current source of truth for the repository's AG Grid **Infinite Row Model** implementation.
 
-Use this document when you want to understand or extract the Infinite implementation without first reading the Client or SSRM implementation.
+Its scope is Infinite Row Model only. Shared capabilities are linked where useful, but this guide does not document other row-model implementations.
 
 ## Current ownership
 
@@ -18,14 +18,14 @@ feature request mapper
 backend query endpoint
 ```
 
-AG Grid owns block demand, pagination/model lifecycle and loaded RowNodes. The application owns backend request translation, durable editing state and the logical dataset-wide selection state that Infinite cannot represent for unloaded rows.
+AG Grid owns block demand, pagination/model lifecycle and loaded RowNodes. The application owns backend request translation, durable editing state and the logical dataset-wide selection state required for unloaded rows.
 
 ## Loading and query behavior
 
 Infinite uses:
 
 - `rowModelType="infinite"`;
-- the shared Infinite datasource adapter;
+- the Infinite datasource adapter;
 - stable backend `getRowId`;
 - backend sort/filter mapping;
 - bounded cache defaults;
@@ -72,7 +72,7 @@ See [Selected-row totals](../selection-counts.md).
 
 ## Editing and conflicts
 
-Infinite reuses the shared stable-ID tracked editing engine. Unsaved LOCAL work lives outside transient RowNodes so block eviction/reload cannot destroy drafts.
+Infinite uses the shared stable-ID tracked editing engine. Unsaved LOCAL work lives outside transient RowNodes so block eviction/reload cannot destroy drafts.
 
 Fresh block data is reconciled against BASE / LOCAL / REMOTE state before remaining LOCAL values are restored to loaded RowNodes.
 
@@ -94,7 +94,7 @@ See [Grid export](../grid-export.md).
 
 ## Grid State and lifecycle
 
-The concrete Infinite root owns its `GridApi`, Grid State persistence lifecycle, datasource replacement, refresh and teardown. Do not hide this behind a universal row-model wrapper.
+The concrete Infinite root owns its `GridApi`, Grid State persistence lifecycle, datasource replacement, refresh and teardown.
 
 ## Main implementation entry points
 
@@ -108,4 +108,6 @@ For the searchable frontend footprint, use `GRIDCAP-ROWMODEL-INFINITE` in the [c
 
 ## Verification
 
-Use [Server-backed manual regression](../testing/server-backed-manual-testing.md) for the current Infinite browser scenarios. A successful Client or SSRM run does not substitute for Infinite verification.
+Use [Server-backed manual regression](../testing/server-backed-manual-testing.md) for the current Infinite browser scenarios.
+
+Manual verification must not be marked complete unless the Infinite scenarios were actually run.
