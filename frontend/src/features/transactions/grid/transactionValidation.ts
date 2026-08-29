@@ -32,6 +32,7 @@ export const TRANSACTION_VALIDATION_RULES: Readonly<
     { key: 'maxLength', params: { max: 3 }, message: 'Currency must be 3 characters or fewer.' },
   ],
   status: [{ key: 'required', message: 'Status is required.' }],
+  transactionDate: [{ key: 'required', message: 'Transaction date is required.' }],
 };
 
 /** Transaction owns its business rule selection/messages; shared grid code owns rule execution/state. */
