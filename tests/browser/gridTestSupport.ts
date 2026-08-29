@@ -23,11 +23,18 @@ export function dateEditorInput(page: Page) {
   return page.getByTestId('transaction-date-editor-input');
 }
 
-function isInitialDataResponse(route: Route, responseUrl: string, method: string) {
+function isAuthoritativeDataResponse(route: Route, responseUrl: string, method: string) {
   if (route === '/client') {
     return method === 'GET' && responseUrl.endsWith('/api/transactions/');
   }
   return method === 'POST' && responseUrl.endsWith('/api/transactions/query/');
+}
+
+export function waitForAuthoritativeDataResponse(page: Page, route: Route) {
+  return page.waitForResponse(
+    (response) =>
+      isAuthoritativeDataResponse(route, response.url(), response.request().method()) && response.ok(),
+  );
 }
 
 /**
@@ -39,10 +46,7 @@ export async function openGrid(page: Page, route: Route) {
   const pageErrors: Error[] = [];
   page.on('pageerror', (error) => pageErrors.push(error));
 
-  const initialData = page.waitForResponse(
-    (response) =>
-      isInitialDataResponse(route, response.url(), response.request().method()) && response.ok(),
-  );
+  const initialData = waitForAuthoritativeDataResponse(page, route);
 
   await page.goto(route);
   await initialData;
