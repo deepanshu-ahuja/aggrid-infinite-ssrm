@@ -104,6 +104,10 @@ Native SSRM explicit/All Records selection relies on native selectability for lo
 
 Custom Current Page / All Filtered synchronization also skips non-selectable loaded RowNodes.
 
+AG Grid 36.1 can preserve an already-selected explicit SSRM ID in its flat native selection rules when an authoritative store refresh changes that loaded row to non-selectable. The shared SSRM controller therefore reconciles the refreshed loaded nodes against the native flat selection state and removes newly ineligible IDs only when `selectAll: false`, where `toggledNodes` means explicit selected IDs.
+
+The controller deliberately does **not** rewrite `toggledNodes` for native All Records (`selectAll: true`), because in that state those IDs mean explicit user deselection exceptions. A backend restriction must never be manufactured into a user exception. Server-wide backend eligibility remains authoritative for those unloaded/dataset-wide operations.
+
 ## Authoritative interaction-mode transitions
 
 A refresh after Save, selected action or Import can change a row's mode. The next rendered/native state must move together rather than mixing old and new policy.
@@ -253,6 +257,10 @@ frontend/src/shared/grid/rows/gridRowInteraction.ts
 frontend/src/shared/grid/rows/gridRowInteractionClass.ts
 → dynamic rowClassRules + additive/static row-class helper
 
+frontend/src/shared/grid/selection/serverSideSelection.ts
+frontend/src/shared/grid/selection/server-side/useSsrmSelectionController.ts
+→ flat SSRM native selection-state adaptation and loaded eligibility reconciliation
+
 frontend/src/features/transactions/grid/transactionRowInteraction.ts
 → Transaction adapters + transactionRowClassRules
 
@@ -277,6 +285,7 @@ Verification should cover:
 - `selectionDisabled → enabled`, `enabled → selectionDisabled` and `enabled → readOnly` authoritative transitions;
 - transition refresh through Import, row Save, Save Selected/bulk persistence and selected Change Status;
 - selected rows being deselected if an authoritative Save Selected result makes them non-selectable;
+- SSRM explicit native selection rules dropping loaded IDs that become non-selectable without converting restrictions into All Records user exceptions;
 - stale restricted row classes are removed when the latest mode becomes enabled;
 - a newly enabled checkbox can be checked and produces normal selected/header state;
 - Client native Page/Filtered/All selection excluding restricted rows;
