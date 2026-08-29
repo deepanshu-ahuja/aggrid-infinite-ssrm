@@ -1,9 +1,5 @@
 # Client-Side Row Model implementation guide
 
-This document is the current source of truth for the repository's AG Grid **Client-Side Row Model** implementation.
-
-Its scope is Client-Side only. Shared capabilities such as editing, conflicts, row interaction and export are linked where useful, but this guide does not compare or document other row-model implementations.
-
 ## When Client-Side Row Model is appropriate
 
 Use this foundation when the complete working set is reasonably bounded and can be held in browser memory.
@@ -104,8 +100,6 @@ The business target is therefore an explicit include target:
 }
 ```
 
-Client does not need a separate dataset-wide unloaded-row selection representation.
-
 ## Filter-dependent selection reset
 
 When Client scope is `filtered`, Select All Filtered is defined by the current filter universe.
@@ -175,11 +169,9 @@ backend succeeds
 
 On failure, the success callback does not run and selection remains available.
 
-See [Selected business-action lifecycle](../selected-action-selection-lifecycle.md).
-
 ## Editing and conflicts
 
-Client uses the shared stable-ID tracked editing state while its authoritative-data lifecycle remains Client-specific.
+Client uses stable-ID tracked editing state while authoritative data arrives through the TanStack Query collection lifecycle.
 
 ```text
 TanStack Query cache changes
@@ -191,11 +183,24 @@ TanStack Query cache changes
 
 Unsaved drafts remain outside transient AG Grid row objects.
 
-See [Transaction editing](../transaction-editing.md) and [Edit conflict reconciliation](../edit-conflict-reconciliation.md).
+For a dirty field:
+
+```text
+REMOTE == BASE
+→ keep LOCAL dirty
+
+REMOTE == LOCAL
+→ clean automatically
+
+REMOTE differs from BASE and LOCAL
+→ keep LOCAL visible
+→ retain REMOTE
+→ mark conflict
+```
 
 ## Row interaction
 
-Client maps the shared row interaction meanings to native Client behavior:
+Client maps row interaction meanings to native Client behavior:
 
 ```text
 enabled
@@ -208,13 +213,13 @@ readOnly
 → not selectable + not editable
 ```
 
-See [Row interaction](../row-interaction.md).
+The backend remains authoritative for writes and selected business operations.
 
 ## Export
 
 ### Current Page
 
-Client uses the shared exact-page helper and native AG Grid CSV export:
+Client uses the exact current pagination page and native AG Grid CSV export:
 
 ```text
 native pagination model
@@ -240,8 +245,6 @@ native Client selection
 
 Client does not call the backend selected-export endpoint because every selected row is already available locally.
 
-See [Grid export](../grid-export.md).
-
 ## Grid State
 
 Client uses native Grid State persistence for durable view preferences such as:
@@ -252,7 +255,7 @@ Client uses native Grid State persistence for durable view preferences such as:
 
 Pagination and row selection remain transient under the current application contract.
 
-## Current Client limitations
+## Current limitations
 
 The current Client foundation assumes:
 
@@ -260,8 +263,6 @@ The current Client foundation assumes:
 - local AG Grid shaping after the collection is loaded;
 - exact local selection;
 - local Selected export.
-
-It does not implement server block loading or unloaded-row dataset selection because those mechanics are unnecessary for this row model.
 
 ## Main implementation entry points
 
@@ -273,9 +274,9 @@ It does not implement server block loading or unloaded-row dataset selection bec
 - `frontend/src/features/transactions/grid/TransactionsClientGrid.tsx`
 - `frontend/src/features/transactions/grid/transactionColumns.tsx`
 
-For the searchable frontend footprint, use `GRIDCAP-ROWMODEL-CLIENT` in the [capability tag registry](../grid-capability-tags.md).
+Search `GRIDCAP-ROWMODEL-CLIENT` across frontend source/tests to locate the Client row-model footprint.
 
-## Manual verification
+## Verification
 
 When testing `/client`, verify at least:
 
@@ -294,4 +295,4 @@ When testing `/client`, verify at least:
 13. Grid State restores the documented view preferences without persisting business selection.
 14. Navigation/remount/teardown produces no destroyed-GridApi warning.
 
-Manual verification must not be marked complete unless these browser scenarios were actually run.
+Do not mark manual verification complete unless these browser scenarios were actually run.
