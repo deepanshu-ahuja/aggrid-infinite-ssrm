@@ -330,7 +330,7 @@ A new browser spec must use the repository fixture so its starting data does not
 
 ## Local execution
 
-Install once as needed:
+Install once as needed from the repository root:
 
 ```bash
 npm ci
@@ -339,24 +339,63 @@ cd tests/browser && npm install
 npx playwright install chromium
 ```
 
-Start the dedicated E2E backend in one terminal:
+Start the dedicated E2E backend in terminal 1:
 
 ```bash
+source .venv/bin/activate
 E2E_TESTING=true python backend/manage.py runserver 127.0.0.1:8000 --noreload
 ```
 
-Start Vite in another:
+Start Vite in terminal 2:
 
 ```bash
 npm run dev -- --host 127.0.0.1
 ```
 
-Run the browser suite:
+Use terminal 3 for Playwright.
+
+Normal headless run, matching CI behavior most closely:
 
 ```bash
 cd tests/browser
 npx playwright test
 ```
+
+Visible Chromium run, useful when you want to watch the browser perform the interactions:
+
+```bash
+cd tests/browser
+npx playwright test --headed
+```
+
+Interactive Playwright UI mode, useful for choosing one test, rerunning it and inspecting steps:
+
+```bash
+cd tests/browser
+npx playwright test --ui
+```
+
+Run one spec visibly instead of the complete suite:
+
+```bash
+npx playwright test validation.spec.ts --headed
+npx playwright test conflict.spec.ts --headed
+npx playwright test selection.spec.ts --headed
+```
+
+Run one matching scenario visibly:
+
+```bash
+npx playwright test --headed -g "/ssrm: Use server"
+```
+
+For a paused inspector/debug session:
+
+```bash
+npx playwright test --debug -g "/ssrm: Use server"
+```
+
+`--headed` is the simplest way to watch the suite operate a real Chromium window. `--ui` is usually the easiest mode for local development because it lets a developer browse the test list and rerun individual scenarios interactively.
 
 Normal development/manual Django startup should not set `E2E_TESTING=true` unless the developer intentionally wants the reset endpoint for an E2E run.
 
