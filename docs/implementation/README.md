@@ -35,6 +35,7 @@ Use these when you are interested in one capability across the supported row mod
 - [Grid validation](grid-validation.md)
 - [Edit conflict reconciliation](edit-conflict-reconciliation.md)
 - [Edited-row total](edited-row-count.md)
+- [Transaction Import](grid-import.md)
 - [Grid export](grid-export.md)
 - [Row interaction](row-interaction.md)
 - [Reusable server-backed grid guide](server-backed-grid-reuse.md)
@@ -49,6 +50,7 @@ Browser/manual verification material lives under `docs/implementation/testing/`:
 - [Browser regression architecture](testing/browser-regression.md) — TypeScript Playwright flow, per-test data reset/isolation, selector/readiness rules, CI diagnostics, future E2E database/auth boundary, and local execution.
 - [Regression coverage matrix](testing/coverage-matrix.html) — readable HTML inventory of focused frontend/backend tests and Client/Infinite/SSRM Playwright coverage. Open the file locally in a browser for the intended styled table view.
 - [Grid validation manual regression](testing/validation-manual-testing.md)
+- [Transaction Import manual verification](testing/import-manual-testing.md)
 - [Server-backed Infinite + SSRM manual regression](testing/server-backed-manual-testing.md)
 - [Row interaction manual verification](testing/row-interaction-manual-testing.md)
 
