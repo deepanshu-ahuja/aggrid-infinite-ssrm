@@ -15,11 +15,12 @@ async function editStatus(page: Page, rowId: string, status: 'Completed' | 'Pend
   const cell = rowById(page, rowId).locator('.ag-cell[col-id="status"]');
   await cell.dblclick();
 
-  const editor = page.locator('.ag-cell-inline-editing [role="combobox"]');
+  const editor = cell.getByRole('combobox');
   await expect(editor).toBeVisible();
   await editor.click();
   await page.getByRole('option', { name: status, exact: true }).click();
   await expect(cell).toContainText(status);
+  await expect(editor).toHaveCount(0);
 }
 
 function waitForServerRowModelRefresh(page: Page, route: Route) {
