@@ -27,6 +27,32 @@ export function createEmptyServerSideSelectionState(): FlatServerSideSelectionSt
 }
 
 /**
+ * Remove loaded IDs that are no longer eligible from native EXPLICIT SSRM selection.
+ *
+ * This helper deliberately does nothing for `selectAll: true`. In that state AG Grid interprets
+ * `toggledNodes` as USER DESELECTION EXCEPTIONS, so adding/removing IDs because backend eligibility
+ * changed would corrupt the meaning of the user's All Records selection. Eligibility for server-wide
+ * selection remains independently enforced by the backend.
+ */
+export function removeIdsFromExplicitServerSideSelectionState(
+  state: FlatServerSideSelectionState,
+  idsToRemove: Iterable<string>,
+): FlatServerSideSelectionState {
+  if (state.selectAll || state.toggledNodes.length === 0) return state;
+
+  const removals = new Set(idsToRemove);
+  if (removals.size === 0) return state;
+
+  const nextToggledNodes = state.toggledNodes.filter((id) => !removals.has(id));
+  if (nextToggledNodes.length === state.toggledNodes.length) return state;
+
+  return {
+    selectAll: false,
+    toggledNodes: nextToggledNodes,
+  };
+}
+
+/**
  * Narrows AG Grid's SSRM selection state to the flat shape expected by Transactions today.
  *
  * `GridApi#getServerSideSelectionState()` can return either a flat state or a hierarchical group

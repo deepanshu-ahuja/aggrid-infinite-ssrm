@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createEmptyServerSideSelectionState,
   readFlatServerSideSelectionState,
+  removeIdsFromExplicitServerSideSelectionState,
   serverSideSelectionToIntent,
 } from './serverSideSelection';
 
@@ -35,6 +36,32 @@ describe('SSRM selection adapter', () => {
       mode: 'exclude',
       ids: ['row-a'],
     });
+  });
+
+  it('removes newly ineligible IDs from native explicit selection', () => {
+    expect(
+      removeIdsFromExplicitServerSideSelectionState(
+        {
+          selectAll: false,
+          toggledNodes: ['row-a', 'row-b', 'row-c'],
+        },
+        ['row-b', 'row-c'],
+      ),
+    ).toEqual({
+      selectAll: false,
+      toggledNodes: ['row-a'],
+    });
+  });
+
+  it('does not reinterpret All Records exceptions as selected IDs', () => {
+    const state = {
+      selectAll: true,
+      toggledNodes: ['user-deselected-row'],
+    };
+
+    expect(removeIdsFromExplicitServerSideSelectionState(state, ['user-deselected-row'])).toBe(
+      state,
+    );
   });
 
   it('rejects hierarchical/group SSRM state instead of guessing', () => {

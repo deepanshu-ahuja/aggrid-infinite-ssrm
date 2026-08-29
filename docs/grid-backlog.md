@@ -23,14 +23,17 @@ Statuses used here: **VERIFY**, **DESIGN**, **TODO**, **PLANNED**, **DEFERRED**.
 
 The existing-capability regression-hardening implementation is complete. The implementation browser run passed 80/80 TypeScript Playwright scenarios across Client, Infinite and SSRM, alongside passing frontend and backend checks. The later Playwright local-workflow/coverage-view cleanup was merged through PR #35 and its exact head passed Frontend, Backend and Browser regression CI.
 
-Transaction Import is now implemented on `grid-foundation` and is in verification/PR review. PR #37 was merged while the workflow was still being built; the remaining frontend, tests and implementation documentation continue in PR #38 after synchronizing `grid-foundation` with that new `main` history.
+Transaction Import was completed and merged to `main` through PR #38. Manual use then exposed a row-interaction presentation regression when an authoritative write changed `interactionMode`: an old `selectionDisabled` class could remain on a now-enabled row. PR #39 fixes mutable interaction presentation with native `rowClassRules` and is the active verification PR.
+
+PR #39 also contains real-grid regression scenarios for interaction-mode transitions through Import, single-row Save, Save Selected/bulk persistence and selected Change Status on Client, Infinite and SSRM. Those newly added mutation-path scenarios are not considered passed coverage until the exact PR head completes browser CI successfully.
 
 Current handoff sequence:
 
 ```text
-1. Finish Import CI/verification and merge only when explicitly requested
-2. Build an isolated fourth configurable SSRM-based grid experiment
-3. Evaluate reuse/migration only after that experiment proves its boundary
+1. Finish PR #39 exact-head CI / row-interaction verification and merge only when explicitly requested
+2. After merge, synchronize grid-foundation with the new main head
+3. Build an isolated fourth configurable SSRM-based grid experiment
+4. Evaluate reuse/migration only after that experiment proves its boundary
 ```
 
 Do not keep expanding Playwright merely to increase test count. Add browser coverage when a new capability or a concrete regression introduces a material real-browser/AG Grid/backend risk.
@@ -126,6 +129,25 @@ References:
 - `docs/implementation/grid-validation.md`
 - `docs/implementation/transaction-editing.md`
 
+### A7. Dynamic row-interaction transitions
+**Status:** VERIFY
+
+Authoritative writes can change the backend-derived `interactionMode`. Mutable `selectionDisabled` / `readOnly` presentation must use native `rowClassRules` so old restricted classes are removed when a surviving RowNode becomes enabled.
+
+PR #39 regression coverage exercises the transition lifecycle across all three row models through:
+
+- Import;
+- single-row Save;
+- Save Selected / bulk persistence;
+- selected Change Status.
+
+The Save Selected scenario also verifies that rows selected while enabled do not remain selected after the authoritative response makes them non-selectable.
+
+References:
+
+- `docs/implementation/row-interaction.md`
+- `docs/implementation/testing/row-interaction-manual-testing.md`
+
 ## B. Capability discoverability
 
 ### B1. `GRIDCAP-*` registry and source markers
@@ -192,6 +214,8 @@ Current implemented contract:
 - concrete Client/Infinite/SSRM authoritative refresh after Apply;
 - existing LOCAL drafts remain separate and reconcile against imported REMOTE values normally.
 
+Import implementation is merged on `main`. The remaining VERIFY status is for broader/manual verification and the row-interaction regression discovered during that verification; it does not mean the Import feature is still waiting to be implemented.
+
 Current deliberate non-goals:
 
 - create/upsert;
@@ -212,7 +236,7 @@ Do not hide Import inside ordinary cell-edit persistence.
 ## E. Isolated configurable SSRM experiment
 
 ### E1. Fourth configurable grid path
-**Status:** PLANNED / AFTER IMPORT
+**Status:** PLANNED / AFTER PR #39 VERIFICATION
 
 Build a separate SSRM-based grid composition path to prove the metadata compiler/resolver/registry boundary.
 
