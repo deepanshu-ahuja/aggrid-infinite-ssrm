@@ -69,7 +69,7 @@ jobs:
         run: python backend/manage.py test apps.transactions
 
   browser:
-    name: Browser validation regression
+    name: Browser regression
     needs: [frontend, backend]
     runs-on: ubuntu-latest
     steps:
@@ -93,19 +93,26 @@ jobs:
         run: |
           npm ci
           python -m pip install -r requirements.txt
+          cd tests/browser && npm install
 
       - name: Install Playwright Chromium
-        run: |
-          python -m pip install 'playwright==1.55.0'
-          python -m playwright install --with-deps chromium
+        run: cd tests/browser && npx playwright install --with-deps chromium
 
       - name: Start Django and Vite
         run: |
           python backend/manage.py runserver 127.0.0.1:8000 > /tmp/grid-backend.log 2>&1 &
           npm run dev -- --host 127.0.0.1 > /tmp/grid-vite.log 2>&1 &
 
-      - name: Real-grid validation regression
-        run: python tests/browser/grid_validation_playwright.py
+      - name: Real-grid browser regression
+        run: cd tests/browser && npx playwright test
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/browser/playwright-report
+          if-no-files-found: ignore
 
       - name: Show app logs on browser failure
         if: failure()
