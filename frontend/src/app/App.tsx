@@ -1,14 +1,14 @@
 import { Box, Button, Container, Stack, Typography } from '@mui/material';
 import { NavLink, Navigate, Route, Routes } from 'react-router';
 import { TransactionsClientGrid } from '@/features/transactions/grid/TransactionsClientGrid';
+import { TransactionsConfigurableSsrmGrid } from '@/features/transactions/grid/TransactionsConfigurableSsrmGrid';
 import { TransactionsInfiniteGrid } from '@/features/transactions/grid/TransactionsInfiniteGrid';
 import { TransactionsSsrmGrid } from '@/features/transactions/grid/TransactionsSsrmGrid';
 
 /**
- * Small application shell for comparing the three AG Grid row models.
- *
- * Each URL renders one real grid root. This keeps Client-Side, Infinite and SSRM lifecycle code
- * separate while making it easy to open, refresh, and test each implementation directly in browser.
+ * Small application shell for comparing the three proven AG Grid row models plus one isolated
+ * configurable SSRM experiment. The experiment is deliberately separate so it cannot silently change
+ * the established Client / Infinite / SSRM lifecycle implementations while its boundary is evaluated.
  */
 export function App() {
   return (
@@ -24,7 +24,7 @@ export function App() {
             </Typography>
           </Box>
 
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             <Button component={NavLink} to="/client" variant="outlined">
               Client-Side Row Model
             </Button>
@@ -34,6 +34,9 @@ export function App() {
             <Button component={NavLink} to="/ssrm" variant="outlined">
               Server-Side Row Model
             </Button>
+            <Button component={NavLink} to="/configurable-ssrm" variant="outlined">
+              Configurable SSRM Experiment
+            </Button>
           </Stack>
 
           <Routes>
@@ -41,6 +44,7 @@ export function App() {
             <Route path="/client" element={<TransactionsClientGrid />} />
             <Route path="/infinite" element={<TransactionsInfiniteGrid />} />
             <Route path="/ssrm" element={<TransactionsSsrmGrid />} />
+            <Route path="/configurable-ssrm" element={<TransactionsConfigurableSsrmGrid />} />
             <Route path="*" element={<Navigate to="/client" replace />} />
           </Routes>
         </Stack>
