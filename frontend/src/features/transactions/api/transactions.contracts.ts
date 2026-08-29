@@ -31,20 +31,20 @@ export interface Transaction {
   amount: number;
   currency: string;
   status: TransactionStatus;
+  /** ISO calendar date (`YYYY-MM-DD`) returned by DRF. */
   transactionDate: string;
   interactionMode: GridRowInteractionMode;
   interactionReason?: string | null;
 }
 
 /**
- * Backend-writable Transaction fields. Identity/reference/date/interaction policy remain read-only
- * even though they are present on the row returned by the API.
+ * Backend-writable Transaction fields. Identity/reference/interaction policy remain read-only.
  *
  * The backend validates the same editable surface. The grid's editing configuration remains free to
  * choose how these fields are presented/edited without leaking AG Grid concepts into this contract.
  */
 export type TransactionUpdateChanges = Partial<
-  Pick<Transaction, 'account' | 'amount' | 'currency' | 'status'>
+  Pick<Transaction, 'account' | 'amount' | 'currency' | 'status' | 'transactionDate'>
 >;
 
 /** One explicit row patch used by the bulk update endpoint. */
@@ -68,77 +68,26 @@ export interface TransactionBulkUpdateResponse {
   updatedCount: number;
 }
 
-/**
- * Fields that the Transactions backend explicitly allows for server-side sorting/filtering.
- *
- * Do NOT replace this with plain `string`.
- *
- * The AG Grid column id is translated through `transactionRequest.mapper.ts` into one of these
- * values before a request reaches the backend. Keeping a closed union prevents arbitrary frontend
- * column/property names from becoming backend query fields.
- *
- * When adding a new sortable/filterable Transactions column, review all of these together:
- *
- * 1. the AG Grid column definition;
- * 2. `FIELD_MAP` in `transactionRequest.mapper.ts`;
- * 3. this `TransactionField` union;
- * 4. backend support for sorting/filtering that field;
- * 5. mapper/API tests.
- */
+/** Fields that the Transactions backend explicitly allows for server-side sorting/filtering. */
 export type TransactionField =
   'reference' | 'account' | 'amount' | 'currency' | 'status' | 'transactionDate';
 
-/**
- * Transaction-facing alias for the shared backend filter operators.
- *
- * The operator vocabulary is currently standard across server-backed tables, so its source of truth
- * lives in `gridQuery.contracts.ts`.
- *
- * This alias is intentionally retained because Transactions mapper code speaks in domain terms and
- * already imports `TransactionFilterOperator`. It can be removed later if a second feature proves
- * that importing the shared name directly is clearer.
- */
+/** Transaction-facing alias for the shared backend filter operators. */
 export type TransactionFilterOperator = GridFilterOperator;
 
-/**
- * One server-side sort instruction restricted to valid Transaction fields.
- *
- * Payload shape remains:
- *
- * `{ field: TransactionField, direction: 'asc' | 'desc' }`
- */
+/** One server-side sort instruction restricted to valid Transaction fields. */
 export type TransactionSort = GridQuerySort<TransactionField>;
 
-/**
- * One server-side filter instruction restricted to valid Transaction fields.
- *
- * The shared contract currently supports a single primitive condition per field. AG Grid can model
- * richer conditions (for example AND/OR or Set Filter arrays), but the Transactions column UI must
- * not expose those shapes until the mapper + shared contract + backend support them end-to-end.
- */
+/** One server-side filter instruction restricted to valid Transaction fields. */
 export type TransactionFilter = GridQueryFilter<TransactionField>;
 
-/**
- * Operation-neutral target for any backend action against a logical server-backed selection.
- *
- * The shared selection target owns explicit / filtered / all selection meaning. Transactions owns only
- * the translation from its AG Grid filter model into Transaction backend filters. A future Payables or
- * other table can reuse the same shared target with its own filter mapper and operation payload.
- *
- * Export and status mutation intentionally share this exact `selection + filters` contract so the
- * backend cannot resolve different row sets merely because the requested operation is different.
- */
+/** Operation-neutral target for backend actions against a logical server-backed selection. */
 export type TransactionSelectionTargetRequest = GridSelectionActionTarget<
   Transaction['id'],
   TransactionFilter
 >;
 
-/**
- * Transactions adds only its domain mutation payload to the operation-neutral selection target.
- *
- * Keeping `changes` outside the shared selection contract is important: selection answers WHICH rows,
- * while this feature-specific payload answers WHAT the business action should change.
- */
+/** Transactions adds only its domain mutation payload to the operation-neutral selection target. */
 export type TransactionSelectionActionRequest = TransactionSelectionTargetRequest & {
   changes: TransactionUpdateChanges;
 };
@@ -147,39 +96,8 @@ export interface TransactionSelectionActionResponse {
   updatedCount: number;
 }
 
-/**
- * Backend request for a flat Transactions grid query.
- *
- * The structure is shared across server-backed tables:
- *
- * - `offset`
- * - `limit`
- * - `sort`
- * - `filters`
- *
- * Only the allowed field union is Transactions-specific.
- *
- * AG Grid does NOT create this object directly. `transactionRequest.mapper.ts` translates AG Grid's
- * `startRow`, `endRow`, `sortModel`, and `filterModel` into this backend-owned representation.
- */
+/** Backend request for a flat Transactions grid query. */
 export type TransactionListRequest = GridListRequest<TransactionField>;
 
-/**
- * Backend response for a Transactions grid query.
- *
- * This reuses the shared `{ rows, totalCount, filteredCount }` response shape while preserving the
- * concrete `Transaction[]` row type.
- *
- * - `totalCount`: complete Transactions dataset before applying the request filters;
- * - `filteredCount`: number of Transactions matching the current request filters.
- *
- * Infinite/SSRM use `filteredCount` to size the current AG Grid row model. Both server-backed grids
- * also use these normal response totals for dataset-wide selected-count presentation:
- * `totalCount` for All Records and `filteredCount` for All Filtered. Select All therefore does not need
- * a second count-only backend request.
- *
- * These are query counts, not selection-eligibility-aware counts. A future backend may add eligible
- * totals when a product requires the displayed Select-All number to exclude every disabled/unselectable
- * server row, including rows that were never loaded in the browser.
- */
+/** Backend response for a Transactions grid query. */
 export type TransactionListResponse = GridListResponse<Transaction>;
