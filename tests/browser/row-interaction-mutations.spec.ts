@@ -97,15 +97,21 @@ for (const route of routes) {
     await bulkResponse;
     if (authoritativeRefresh) await authoritativeRefresh;
 
+    const selectionDisabledCheckbox = becomesSelectionDisabled.getByRole('checkbox').first();
     await expect(becomesSelectionDisabled).toHaveClass(/grid-row--selection-disabled/);
     await expect(becomesSelectionDisabled.getByText('Selection disabled', { exact: true })).toBeVisible();
-    await expect(becomesSelectionDisabled.getByRole('checkbox').first()).toBeDisabled();
+    await expect(selectionDisabledCheckbox).toBeDisabled();
+    await expect(selectionDisabledCheckbox).not.toBeChecked();
 
+    const readOnlyCheckbox = becomesReadOnly.getByRole('checkbox').first();
     await expect(becomesReadOnly).toHaveClass(/grid-row--read-only/);
     await expect(becomesReadOnly.getByText('Read only', { exact: true })).toBeVisible();
-    await expect(becomesReadOnly.getByRole('checkbox').first()).toBeDisabled();
+    await expect(readOnlyCheckbox).toBeDisabled();
+    await expect(readOnlyCheckbox).not.toBeChecked();
 
-    // Native selectability owns this consequence: rows that become ineligible cannot remain selected.
+    // Once authoritative policy makes explicitly selected rows ineligible, their old selected IDs must
+    // leave the active selection too. SSRM needs explicit native-state reconciliation for this because
+    // its rule-based selection can otherwise preserve a selected ID across a store refresh.
     await expect(page.getByText('0 selected', { exact: true }).first()).toBeVisible();
 
     await expectNoPageErrors(pageErrors, `${route} Save selected interaction transition`);
@@ -139,6 +145,7 @@ for (const route of routes) {
     await expect(row).toHaveClass(/grid-row--selection-disabled/);
     await expect(row.getByText('Selection disabled', { exact: true })).toBeVisible();
     await expect(row.getByRole('checkbox').first()).toBeDisabled();
+    await expect(row.getByRole('checkbox').first()).not.toBeChecked();
 
     await expectNoPageErrors(pageErrors, `${route} selected status interaction transition`);
   });
