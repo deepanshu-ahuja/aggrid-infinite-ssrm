@@ -84,6 +84,8 @@ Do not put these into current implementation docs merely because they were discu
 
 Current limitations are appropriate when they state what the implementation does or does not support today. Do not add a speculative future solution merely to explain a limitation.
 
+When ownership, call flow, lifecycle or state transitions are materially easier to understand visually, add a small diagram to the relevant implementation document. Portable plain-text/ASCII diagrams are the default because they remain readable in raw Markdown and ordinary local viewers. Do not rely on Mermaid-only diagrams unless rendering is explicitly guaranteed, and do not add diagrams merely for decoration.
+
 ### Row-model implementation entry points
 
 A developer must be able to understand one row model without first reading all three.
@@ -106,6 +108,7 @@ Examples:
 
 - `docs/implementation/selection-counts.md`;
 - `docs/implementation/transaction-editing.md`;
+- `docs/implementation/grid-validation.md`;
 - `docs/implementation/edit-conflict-reconciliation.md`;
 - `docs/implementation/grid-export.md`;
 - `docs/implementation/row-interaction.md`.
@@ -452,7 +455,10 @@ Current editing includes:
 - Save/Discard selected dirty rows;
 - safe in-flight acknowledgement;
 - BASE/LOCAL/REMOTE conflict reconciliation;
-- local-overlay protection so programmatic values are not mistaken for fresh REMOTE data.
+- local-overlay protection so programmatic values are not mistaken for fresh REMOTE data;
+- field validation integrated with direct/programmatic LOCAL edits;
+- Row Save and exact Save Selected validation guards;
+- backend field validation error mapping without losing rejected LOCAL work.
 
 For a dirty field:
 
@@ -471,13 +477,13 @@ REMOTE differs from BASE and LOCAL
 
 ---
 
-## Validation — next implementation
+## Validation — implemented baseline
 
 Validation is a first-class capability independent of configurable-table metadata.
 
-Static Transaction configuration must be able to use it directly.
+Static Transaction configuration uses it directly.
 
-The validation engine should consume resolved rule arrays with stable registered rule keys plus JSON-safe params/messages, conceptually:
+The validation engine consumes resolved rule arrays with stable registered rule keys plus JSON-safe params/messages:
 
 ```text
 rules: [
@@ -489,20 +495,24 @@ rules: [
 
 Frontend owns executable validator functions. Do not accept arbitrary executable JavaScript/expressions from backend/configuration.
 
-Required state behavior:
+Current state behavior:
 
 ```text
 invalid LOCAL value
 → keep LOCAL visible
 → keep row dirty
 → record field error by stable row ID + field
-→ block relevant Save
+→ block relevant Row Save / exact Save Selected target
 → correction/revert revalidates and clears stale errors
 ```
 
-Backend structured field errors should map into the same validation state while rejected LOCAL input remains visible.
+Direct cell edits and current-page programmatic edits run the same validation semantics.
 
-Validation and conflict remain separate:
+Backend structured field errors map into the same validation state while rejected LOCAL input remains visible and dirty.
+
+Discard clears validation for discarded work. `Use server` clears validation for the LOCAL value it removes. `Keep my edit` revalidates the retained LOCAL value.
+
+Validation and conflict remain separate and may coexist:
 
 ```text
 Validation
@@ -512,17 +522,19 @@ Conflict
 → did REMOTE diverge from BASE while LOCAL exists?
 ```
 
-A field may be invalid, conflicted, or both.
+Current implementation reference:
 
-Review `docs/implementation/grid-capability-tags.md` before adding/reusing a validation marker.
+- `docs/implementation/grid-validation.md`.
+
+Review `docs/implementation/grid-capability-tags.md` when the validation footprint changes.
 
 ---
 
-## Import — after validation
+## Import — next implementation
 
 Import is a separate workflow, not normal grid editing.
 
-Design/implementation should cover the required file format, identifiers, mapping, preview, validation, duplicate/error semantics and authoritative refresh without hiding Import inside normal tracked editing.
+Design/implementation should cover the required file format, identifiers, mapping, preview, validation reuse, duplicate/error semantics and authoritative refresh without hiding Import inside normal tracked editing.
 
 ---
 
@@ -552,10 +564,9 @@ Current agreed sequence:
 
 ```text
 1. maintain existing Client/Infinite/SSRM baseline verification
-2. implement validation
-3. design/implement Import
-4. build isolated configurable SSRM-based experiment
-5. evaluate reuse/migration only after the experiment proves its boundary
+2. design/implement Import
+3. build isolated configurable SSRM-based experiment
+4. evaluate reuse/migration only after the experiment proves its boundary
 ```
 
 When sequencing changes, update this file and `docs/grid-backlog.md` together.
@@ -639,6 +650,7 @@ If the user says a PR was merged, verify GitHub state first.
 - `docs/implementation/selected-action-selection-lifecycle.md`
 - `docs/implementation/row-interaction.md`
 - `docs/implementation/transaction-editing.md`
+- `docs/implementation/grid-validation.md`
 - `docs/implementation/edit-conflict-reconciliation.md`
 - `docs/implementation/grid-export.md`
 
@@ -666,12 +678,15 @@ If the user says a PR was merged, verify GitHub state first.
 - `frontend/src/shared/grid/data/server-side/createServerSideDatasource.ts`
 - `frontend/src/shared/grid/data/server-side/useServerSideRowLoading.ts`
 
-### Editing
+### Editing and validation
 
 - `frontend/src/shared/grid/editing/trackedGridEditing.ts`
 - `frontend/src/shared/grid/editing/useTrackedGridEditing.ts`
 - `frontend/src/shared/grid/editing/useCurrentPageEditActions.ts`
+- `frontend/src/shared/grid/validation/gridValidation.ts`
+- `frontend/src/shared/grid/validation/defaultGridValidationRules.ts`
 - `frontend/src/features/transactions/grid/transactionEditing.ts`
+- `frontend/src/features/transactions/grid/transactionValidation.ts`
 - `frontend/src/features/transactions/grid/useTransactionEditPersistence.ts`
 
 ### Backend authority
