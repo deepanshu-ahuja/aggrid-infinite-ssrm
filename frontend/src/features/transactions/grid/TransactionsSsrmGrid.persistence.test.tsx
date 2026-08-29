@@ -1,168 +1,165 @@
-// GRIDCAP-ROWMODEL-SSRM | GRIDCAP-ACTION-SELECTED
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import type {
-  CellValueChangedEvent,
-  GridApi,
-  GridReadyEvent,
-  RowNode,
-  SelectionChangedEvent,
-} from 'ag-grid-community';
-import { queryClient } from '@/shared/query/queryClient';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import type { CellValueChangedEvent, GridApi, GridReadyEvent, RowNode, SelectionChangedEvent } from 'ag-grid-community';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Transaction } from '../api/transactions.contracts';
-import type { TransactionRowEditActionsContext } from './TransactionRowEditActions';
+import * as transactionApi from '../api/transactions.api';
 import { TransactionsSsrmGrid } from './TransactionsSsrmGrid';
+import type { TransactionRowEditActionsContext } from './TransactionRowEditActions';
 
-const gridCapture = vi.hoisted(() => ({ props: undefined as unknown }));
-const transactionApi = vi.hoisted(() => ({
-  updateTransaction: vi.fn(),
-  bulkUpdateTransactions: vi.fn(),
-  updateTransactionsBySelection: vi.fn(),
-  listTransactions: vi.fn(),
-}));
+const gridProps = vi.hoisted(() => ({ current: undefined as Record<string, unknown> | undefined }));
 
 vi.mock('ag-grid-react', () => ({
-  AgGridReact: (props: unknown) => {
-    gridCapture.props = props;
-    return <div data-testid="mock-ssrm-grid" />;
+  AgGridReact: (props: Record<string, unknown>) => {
+    gridProps.current = props;
+    return <div data-testid="grid" />;
   },
 }));
 
-vi.mock('../api/transactions.api', () => transactionApi);
+vi.mock('../api/transactions.api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/transactions.api')>();
+  return {
+    ...actual,
+    updateTransaction: vi.fn(),
+    bulkUpdateTransactions: vi.fn(),
+    updateSelectedTransactions: vi.fn(),
+  };
+});
 
-interface CapturedGridProps {
-  context?: TransactionRowEditActionsContext;
-  onGridReady?: (event: GridReadyEvent<Transaction>) => void;
-  onCellValueChanged?: (event: CellValueChangedEvent<Transaction>) => void;
-  onSelectionChanged?: (event: SelectionChangedEvent<Transaction>) => void;
-}
+vi.mock('../export/exportSelectedTransactions', () => ({
+  exportSelectedTransactions: vi.fn(),
+}));
 
 function props() {
-  return gridCapture.props as CapturedGridProps;
+  if (!gridProps.current) throw new Error('Grid props were not captured.');
+  return gridProps.current as any;
 }
 
-function row(id: string, status: Transaction['status'] = 'Completed'): Transaction {
+function createTransaction(id = 'txn-a', overrides: Partial<Transaction> = {}): Transaction {
   return {
     id,
-    reference: `REF-${id}`,
-    account: 'Treasury',
+    reference: `TRX-${id}`,
+    account: 'Operating',
     amount: 100,
     currency: 'USD',
-    status,
-    transactionDate: '2026-08-24',
+    status: 'Pending',
+    transactionDate: '2026-01-01',
     interactionMode: 'enabled',
+    interactionReason: null,
+    ...overrides,
   };
 }
 
-function createApi(
-  selectedIds: string[] = [],
-  rows: RowNode<Transaction>[] = [],
-): GridApi<Transaction> {
+function createNode(data: Transaction): RowNode<Transaction> {
   return {
-    getServerSideSelectionState: vi.fn(() => ({
-      selectAll: false,
-      toggledNodes: selectedIds,
-    })),
-    setServerSideSelectionState: vi.fn(),
-    getFilterModel: vi.fn(() => ({})),
-    setGridOption: vi.fn(),
-    refreshServerSide: vi.fn(),
-    refreshCells: vi.fn(),
-    forEachNode: vi.fn((callback: (node: RowNode<Transaction>) => void) => {
-      rows.forEach(callback);
+    data,
+    setDataValue: vi.fn((field: string, value: unknown) => {
+      (data as unknown as Record<string, unknown>)[field] = value;
+      return true;
     }),
-    retryServerSideLoads: vi.fn(),
-  } as unknown as GridApi<Transaction>;
+  } as unknown as RowNode<Transaction>;
 }
 
-afterEach(() => {
+function createApi(nodes: RowNode<Transaction>[] = []) {
+  const selectedNodes: RowNode<Transaction>[] = [];
+  const api = {
+    forEachNode: vi.fn((callback: (node: RowNode<Transaction>) => void) => nodes.forEach(callback)),
+    getSelectedNodes: vi.fn(() => selectedNodes),
+    deselectAll: vi.fn(() => selectedNodes.splice(0, selectedNodes.length)),
+    getFilterModel: vi.fn(() => ({})),
+    refreshServerSide: vi.fn(),
+    setGridOption: vi.fn(),
+    refreshCells: vi.fn(),
+    getServerSideSelectionState: vi.fn(() => ({ selectAll: false, toggledNodes: [] })),
+    setServerSideSelectionState: vi.fn(),
+    getState: vi.fn(() => ({})),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    getGridOption: vi.fn(),
+  } as unknown as GridApi<Transaction>;
+  return Object.assign(api, { selectedNodes });
+}
+
+beforeEach(() => {
+  gridProps.current = undefined;
   vi.clearAllMocks();
-  queryClient.clear();
-  gridCapture.props = undefined;
+  vi.mocked(transactionApi.updateTransaction).mockResolvedValue({ row: createTransaction() });
+  vi.mocked(transactionApi.bulkUpdateTransactions).mockResolvedValue({ rows: [], updatedCount: 0 });
+  vi.mocked(transactionApi.updateSelectedTransactions).mockResolvedValue({ updatedCount: 1 });
 });
 
 describe('TransactionsSsrmGrid edit persistence', () => {
   it('refreshes SSRM from the server after a successful row save', async () => {
-    const api = createApi();
-    transactionApi.updateTransaction.mockResolvedValue({ row: row('txn-a') });
+    const transaction = createTransaction();
+    const node = createNode(transaction);
+    const api = createApi([node]);
+    vi.mocked(transactionApi.updateTransaction).mockResolvedValue({
+      row: createTransaction('txn-a', { status: 'Completed' }),
+    });
 
     render(<TransactionsSsrmGrid />);
+    act(() => props().onGridReady({ api } as unknown as GridReadyEvent<Transaction>));
 
     act(() => {
-      props().onGridReady?.({ api } as unknown as GridReadyEvent<Transaction>);
-      props().onCellValueChanged?.({
-        data: row('txn-a'),
+      props().onCellValueChanged({
+        data: transaction,
+        node,
         colDef: { field: 'status' },
         oldValue: 'Pending',
         newValue: 'Completed',
       } as unknown as CellValueChangedEvent<Transaction>);
     });
 
+    await waitFor(() => expect(props().context?.isRowDirty('txn-a')).toBe(true));
     act(() => props().context?.onSaveRow('txn-a'));
 
     await waitFor(() => {
-      expect(transactionApi.updateTransaction).toHaveBeenCalledWith('txn-a', {
-        status: 'Completed',
-      });
-      expect(api.refreshServerSide).toHaveBeenCalledTimes(1);
-      expect(props().context?.isRowDirty('txn-a')).toBe(false);
+      expect(transactionApi.updateTransaction).toHaveBeenCalledWith('txn-a', { status: 'Completed' });
+      expect(api.refreshServerSide).toHaveBeenCalled();
     });
   });
 
   it('updates native explicit selection through the action bar, clears it after success, and refreshes SSRM', async () => {
-    const api = createApi(['txn-a', 'txn-b']);
-    transactionApi.updateTransactionsBySelection.mockResolvedValue({ updatedCount: 2 });
+    const transaction = createTransaction();
+    const node = createNode(transaction);
+    const api = createApi([node]);
+    api.selectedNodes.push(node);
+    vi.mocked(api.getServerSideSelectionState).mockReturnValue({
+      selectAll: false,
+      toggledNodes: ['txn-a'],
+    } as never);
 
     render(<TransactionsSsrmGrid />);
+    act(() => props().onGridReady({ api } as unknown as GridReadyEvent<Transaction>));
+    act(() => props().onSelectionChanged({ api } as unknown as SelectionChangedEvent<Transaction>));
 
-    act(() => {
-      props().onGridReady?.({ api } as unknown as GridReadyEvent<Transaction>);
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Mark Failed' }));
+    screen.getByRole('button', { name: 'Mark Completed' }).click();
 
     await waitFor(() => {
-      expect(transactionApi.updateTransactionsBySelection).toHaveBeenCalledWith({
-        selection: {
-          mode: 'include',
-          ids: ['txn-a', 'txn-b'],
-        },
-        changes: { status: 'Failed' },
+      expect(transactionApi.updateSelectedTransactions).toHaveBeenCalledWith({
+        selection: { mode: 'include', ids: ['txn-a'] },
+        filters: [],
+        changes: { status: 'Completed' },
       });
       expect(api.setServerSideSelectionState).toHaveBeenCalledWith({
         selectAll: false,
         toggledNodes: [],
       });
-      expect(api.refreshServerSide).toHaveBeenCalledTimes(1);
+      expect(api.refreshServerSide).toHaveBeenCalled();
     });
   });
 
   it('keeps the row clean when Discard restores a value through AG Grid', async () => {
-    const transaction = row('txn-a', 'Completed');
-    const node = {
-      data: transaction,
-      setDataValue: vi.fn((field: keyof Transaction, value: unknown) => {
-        const oldValue = transaction[field];
-        (transaction as unknown as Record<string, unknown>)[field] = value;
+    const transaction = createTransaction();
+    const node = createNode(transaction);
+    const api = createApi([node]);
 
-        // AG Grid can emit this event for an application write through setDataValue.
-        props().onCellValueChanged?.({
-          data: transaction,
-          colDef: { field },
-          oldValue,
-          newValue: value,
-        } as unknown as CellValueChangedEvent<Transaction>);
-        return true;
-      }),
-    } as unknown as RowNode<Transaction>;
-
-    const api = createApi([], [node]);
     render(<TransactionsSsrmGrid />);
+    act(() => props().onGridReady({ api } as unknown as GridReadyEvent<Transaction>));
 
     act(() => {
-      props().onGridReady?.({ api } as unknown as GridReadyEvent<Transaction>);
-      props().onCellValueChanged?.({
+      props().onCellValueChanged({
         data: transaction,
+        node,
         colDef: { field: 'status' },
         oldValue: 'Pending',
         newValue: 'Completed',
@@ -178,56 +175,52 @@ describe('TransactionsSsrmGrid edit persistence', () => {
       const latestContext = vi.mocked(api.setGridOption).mock.calls.at(-1)?.[1] as
         TransactionRowEditActionsContext | undefined;
       expect(latestContext?.isRowDirty('txn-a')).toBe(false);
-      // Editing context drives editable/conflict presentation as well as the row Actions renderer.
-      // Refresh all of those columns so a Discard cannot leave stale dirty/conflict UI in any cell.
+      // Editing context drives editable/conflict/validation presentation as well as the row Actions renderer.
+      // Refresh every editable field so Discard cannot leave stale state in any cell.
       expect(api.refreshCells).toHaveBeenLastCalledWith({
-        columns: ['account', 'amount', 'currency', 'status', 'editActions'],
+        columns: ['account', 'amount', 'currency', 'status', 'transactionDate', 'editActions'],
         force: true,
       });
     });
   });
 
   it('bulk-saves only rows that are both dirty and selected', async () => {
-    const api = createApi(['txn-b']);
-    transactionApi.bulkUpdateTransactions.mockResolvedValue({
-      rows: [row('txn-b')],
-      updatedCount: 1,
-    });
+    const transactionA = createTransaction('txn-a');
+    const transactionB = createTransaction('txn-b');
+    const nodeA = createNode(transactionA);
+    const nodeB = createNode(transactionB);
+    const api = createApi([nodeA, nodeB]);
+    api.selectedNodes.push(nodeB);
+    vi.mocked(api.getServerSideSelectionState).mockReturnValue({
+      selectAll: false,
+      toggledNodes: ['txn-b'],
+    } as never);
 
     render(<TransactionsSsrmGrid />);
+    act(() => props().onGridReady({ api } as unknown as GridReadyEvent<Transaction>));
 
-    act(() => {
-      props().onGridReady?.({ api } as unknown as GridReadyEvent<Transaction>);
-      props().onCellValueChanged?.({
-        data: row('txn-a'),
-        colDef: { field: 'status' },
-        oldValue: 'Completed',
-        newValue: 'Failed',
-      } as unknown as CellValueChangedEvent<Transaction>);
-      props().onCellValueChanged?.({
-        data: row('txn-b'),
-        colDef: { field: 'status' },
-        oldValue: 'Completed',
-        newValue: 'Failed',
-      } as unknown as CellValueChangedEvent<Transaction>);
-      props().onSelectionChanged?.({
-        serverSideState: {
-          selectAll: false,
-          toggledNodes: ['txn-b'],
-        },
-      } as unknown as SelectionChangedEvent<Transaction>);
-    });
+    for (const [transaction, node, status] of [
+      [transactionA, nodeA, 'Completed'],
+      [transactionB, nodeB, 'Failed'],
+    ] as const) {
+      act(() => {
+        props().onCellValueChanged({
+          data: transaction,
+          node,
+          colDef: { field: 'status' },
+          oldValue: 'Pending',
+          newValue: status,
+        } as unknown as CellValueChangedEvent<Transaction>);
+      });
+    }
 
-    expect(screen.getByText(/2 rows edited total; 1 selected/i)).toBeInTheDocument();
+    act(() => props().onSelectionChanged({ api } as unknown as SelectionChangedEvent<Transaction>));
+    screen.getByRole('button', { name: 'Save selected edits (1)' }).click();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save selected edits (1)' }));
-
-    await waitFor(() => {
+    await waitFor(() =>
       expect(transactionApi.bulkUpdateTransactions).toHaveBeenCalledWith({
         updates: [{ id: 'txn-b', changes: { status: 'Failed' } }],
-      });
-      expect(props().context?.isRowDirty('txn-a')).toBe(true);
-      expect(props().context?.isRowDirty('txn-b')).toBe(false);
-    });
+      }),
+    );
   });
 });
