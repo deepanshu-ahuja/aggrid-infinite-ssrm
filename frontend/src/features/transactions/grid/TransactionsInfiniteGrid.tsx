@@ -55,6 +55,7 @@ import { mapTransactionGridRequest } from './transactionRequest.mapper';
 import {
   getTransactionRowClass,
   isTransactionRowSelectable,
+  refreshTransactionRowSelectability,
 } from './transactionRowInteraction';
 import {
   buildTransactionSelectionActionRequest,
@@ -318,8 +319,9 @@ export function TransactionsInfiniteGrid({
   );
 
   const handleRowsChanged = useCallback(() => {
-    syncSelectionAfterRowsChange();
     const api = gridApi.current;
+    if (api) refreshTransactionRowSelectability(api);
+    syncSelectionAfterRowsChange();
     if (api) restoreTrackedEdits(api);
   }, [restoreTrackedEdits, syncSelectionAfterRowsChange]);
 
