@@ -10,7 +10,10 @@ import {
   mapTransactionBulkUpdateItems,
   mapTransactionUpdateChanges,
 } from './transactionUpdate.mapper';
-import { mapTransactionServerValidationErrors } from './transactionValidation';
+import {
+  mapTransactionServerValidationErrors,
+  type TransactionServerValidationRowErrors,
+} from './transactionValidation';
 
 type TransactionUpdate = TransactionUpdatePayload['updates'][number];
 
@@ -22,9 +25,7 @@ interface UseTransactionEditPersistenceOptions {
   updates: TransactionUpdate[];
   acknowledgeChanges: (updates: TransactionUpdate[]) => void;
   onPersistedRows: (rows: Transaction[]) => void;
-  onServerValidationErrors: ReturnType<typeof mapTransactionServerValidationErrors> extends infer TResult
-    ? (errors: TResult) => void
-    : never;
+  onServerValidationErrors: (errors: TransactionServerValidationRowErrors[]) => void;
 }
 
 /** Transactions persistence lifecycle for tracked grid edits. */
