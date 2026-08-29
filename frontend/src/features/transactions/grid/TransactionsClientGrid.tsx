@@ -54,6 +54,7 @@ import { transactionClientColumns } from './transactionColumns';
 import {
   getTransactionRowClass,
   isTransactionRowSelectable,
+  refreshTransactionRowSelectability,
 } from './transactionRowInteraction';
 import { useTransactionEditPersistence } from './useTransactionEditPersistence';
 import { useTransactionSelectionAction } from './useTransactionSelectionAction';
@@ -289,6 +290,7 @@ export function TransactionsClientGrid({
 
   const handleRowDataUpdated = useCallback(
     (event: RowDataUpdatedEvent<Transaction>) => {
+      refreshTransactionRowSelectability(event.api);
       restoreTrackedEdits(event.api);
     },
     [restoreTrackedEdits],
