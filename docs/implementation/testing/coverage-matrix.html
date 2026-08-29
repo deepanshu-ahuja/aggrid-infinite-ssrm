@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Grid Regression Coverage Matrix</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f6f8fa;
+      --panel: #ffffff;
+      --text: #1f2328;
+      --muted: #59636e;
+      --border: #d0d7de;
+      --header: #f6f8fa;
+      --pass-bg: #dafbe1;
+      --pass-text: #116329;
+      --focused-bg: #fff8c5;
+      --focused-text: #7d4e00;
+      --na-bg: #eff2f5;
+      --na-text: #59636e;
+      --accent: #0969da;
+      --shadow: 0 1px 2px rgba(31, 35, 40, 0.08);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1117;
+        --panel: #161b22;
+        --text: #e6edf3;
+        --muted: #9198a1;
+        --border: #30363d;
+        --header: #21262d;
+        --pass-bg: #1b4721;
+        --pass-text: #7ee787;
+        --focused-bg: #4b3a16;
+        --focused-text: #e3b341;
+        --na-bg: #21262d;
+        --na-text: #9198a1;
+        --accent: #58a6ff;
+        --shadow: none;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 32px auto 56px;
+    }
+
+    h1 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 40px); }
+    h2 { margin: 0; font-size: 21px; }
+    p { margin: 8px 0; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+    .subtitle { color: var(--muted); margin-bottom: 24px; }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin: 18px 0 24px;
+    }
+
+    .summary-card,
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+    }
+
+    .summary-card { padding: 16px; }
+    .summary-card strong { display: block; font-size: 24px; }
+    .summary-card span { color: var(--muted); font-size: 14px; }
+
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin: 0 0 18px;
+    }
+
+    .toolbar input {
+      min-width: min(420px, 100%);
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+      font: inherit;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 22px;
+    }
+
+    .legend-item { display: inline-flex; align-items: center; gap: 7px; }
+
+    .section { margin: 20px 0; }
+    .section-heading { padding: 16px 18px 8px; }
+    .section-heading p { color: var(--muted); font-size: 14px; }
+
+    .table-wrap { overflow-x: auto; border-radius: 0 0 10px 10px; }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      min-width: 760px;
+    }
+
+    th, td {
+      padding: 11px 12px;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    th {
+      background: var(--header);
+      font-size: 13px;
+      color: var(--muted);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    th:first-child,
+    td:first-child {
+      text-align: left;
+      white-space: normal;
+      min-width: 330px;
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      background: var(--panel);
+    }
+
+    th:first-child { background: var(--header); z-index: 3; }
+    tbody tr:hover td { background-color: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
+    tbody tr:hover td:first-child { background-color: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 68px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .pass { background: var(--pass-bg); color: var(--pass-text); }
+    .focused { background: var(--focused-bg); color: var(--focused-text); }
+    .na { background: var(--na-bg); color: var(--na-text); }
+
+    .notes { padding: 18px; }
+    .notes ul { margin: 8px 0 0; padding-left: 22px; }
+    .notes li { margin: 6px 0; }
+
+    .footer-note {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 20px;
+    }
+
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Grid regression coverage</h1>
+    <p class="subtitle">Quick visual inventory of automated protection across Frontend, Backend, Client, Infinite and SSRM.</p>
+
+    <div class="summary" aria-label="Coverage summary">
+      <div class="summary-card"><strong>80</strong><span>Playwright browser scenarios in the regression baseline</span></div>
+      <div class="summary-card"><strong>3</strong><span>independently exercised grid row models</span></div>
+      <div class="summary-card"><strong>4</strong><span>coverage groups below</span></div>
+    </div>
+
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Filter capabilities, e.g. conflict, selection, save…" aria-label="Filter capabilities" />
+    </div>
+
+    <div class="legend" aria-label="Coverage legend">
+      <span class="legend-item"><span class="badge pass">Covered</span> meaningful automated coverage exists</span>
+      <span class="legend-item"><span class="badge focused">Focused</span> intentionally kept at unit/state/component level</span>
+      <span class="legend-item"><span class="badge na">N/A</span> not applicable or not enabled on that demo route</span>
+    </div>
+
+    <section class="panel section coverage-section">
+      <div class="section-heading">
+        <h2>Core grid and row-model behavior</h2>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Capability</th><th>Frontend</th><th>Backend</th><th>Client</th><th>Infinite</th><th>SSRM</th></tr></thead>
+          <tbody>
+            <tr><td>Initial grid load + real API</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Pagination / 25-row page boundary</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Server sort + filter request mapping</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Request freshness / stale-response guard</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge focused">Focused</span></td><td><span class="badge focused">Focused</span></td><td><span class="badge focused">Focused</span></td></tr>
+            <tr><td>Datasource cancellation / destroyed-grid guards</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge focused">Focused</span></td><td><span class="badge focused">Focused</span></td><td><span class="badge focused">Focused</span></td></tr>
+            <tr><td>Server load error + Retry</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Grid State persistence</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Invalid Currency/Date formatter safety</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel section coverage-section">
+      <div class="section-heading"><h2>Selection, actions and export</h2></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Capability</th><th>Frontend</th><th>Backend</th><th>Client</th><th>Infinite</th><th>SSRM</th></tr></thead>
+          <tbody>
+            <tr><td>Explicit select / deselect + count</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Current Page selection</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Select All Records</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Select All Filtered</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Filter-change selection lifecycle</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge focused">Focused</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td><code>selectionDisabled</code> / <code>readOnly</code> policy</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Selected Change Status success</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Selected Change Status failure keeps selection</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Export Current Page</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Export Selected explicit rows</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel section coverage-section">
+      <div class="section-heading"><h2>Editing and persistence</h2></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Capability</th><th>Frontend</th><th>Backend</th><th>Client</th><th>Infinite</th><th>SSRM</th></tr></thead>
+          <tbody>
+            <tr><td>Direct cell editing</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>MUI Account cell editor</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Transaction Date editor + validation</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Flow 1 — replay last edit to page</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Flow 2 — checked-field page edit</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Dirty-row count</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Row Save</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Row Discard</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Save Selected exact <code>dirty ∩ selection</code></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Discard Selected exact target</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Safe in-flight acknowledgement state machine</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge focused">Focused</span></td><td><span class="badge focused">Focused</span></td><td><span class="badge focused">Focused</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel section coverage-section">
+      <div class="section-heading"><h2>Validation, conflicts and row recreation</h2></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Capability</th><th>Frontend</th><th>Backend</th><th>Client</th><th>Infinite</th><th>SSRM</th></tr></thead>
+          <tbody>
+            <tr><td>Validation rules + Save guards</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Validation correction + BASE revert</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Backend validation rejection remains LOCAL</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>BASE / LOCAL / REMOTE conflict creation</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Conflict — Use server</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Conflict — Keep my edit</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Validation + conflict coexistence</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>Unsaved LOCAL survives authoritative refresh</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+            <tr><td>LOCAL survives Infinite cache eviction</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td></tr>
+            <tr><td>LOCAL survives SSRM store refresh</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge na">N/A</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel notes">
+      <h2>How to read the exceptions</h2>
+      <ul>
+        <li><strong>Focused</strong> is intentional for deterministic race/state-machine behavior such as request freshness, cancellation and safe in-flight acknowledgement.</li>
+        <li><strong>N/A</strong> means the capability is not applicable or is not enabled on that current demo route; it is not automatically a test gap.</li>
+        <li>The browser routes are tested as they are configured today. We do not create fake E2E-only routes just to turn every cell green.</li>
+        <li>Backend stale-write/version concurrency remains a separate deferred contract and is not represented as implemented coverage here.</li>
+      </ul>
+    </section>
+
+    <p class="footer-note">Maintenance rule: update the relevant row when coverage changes, and never label a browser scenario “Covered” until the corresponding test has actually passed CI.</p>
+  </main>
+
+  <script>
+    const search = document.querySelector('#search');
+    const sections = [...document.querySelectorAll('.coverage-section')];
+
+    search.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase();
+
+      for (const section of sections) {
+        const rows = [...section.querySelectorAll('tbody tr')];
+        let visible = 0;
+
+        for (const row of rows) {
+          const matches = row.textContent.toLowerCase().includes(query);
+          row.classList.toggle('hidden', !matches);
+          if (matches) visible += 1;
+        }
+
+        section.classList.toggle('hidden', visible === 0);
+      }
+    });
+  </script>
+</body>
+</html>

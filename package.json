@@ -18,10 +18,13 @@
     "e2e:install": "cd tests/browser && npm install && npm run install:chromium",
     "e2e:backend": "E2E_TESTING=true python3 backend/manage.py runserver 127.0.0.1:8001 --noreload",
     "e2e:frontend": "VITE_API_PROXY_TARGET=http://127.0.0.1:8001 vite --host 127.0.0.1 --port 5174",
+    "e2e:reset": "curl -fsS -X POST http://127.0.0.1:8001/api/transactions/__e2e__/reset/",
     "e2e:test": "cd tests/browser && PLAYWRIGHT_BASE_URL=http://127.0.0.1:5174 npm test",
     "e2e:headed": "cd tests/browser && PLAYWRIGHT_BASE_URL=http://127.0.0.1:5174 npm run test:headed",
+    "e2e:watch": "cd tests/browser && PLAYWRIGHT_BASE_URL=http://127.0.0.1:5174 npm run test:watch",
     "e2e:ui": "cd tests/browser && PLAYWRIGHT_BASE_URL=http://127.0.0.1:5174 npm run test:ui",
-    "e2e:debug": "cd tests/browser && PLAYWRIGHT_BASE_URL=http://127.0.0.1:5174 npm run test:debug"
+    "e2e:debug": "cd tests/browser && PLAYWRIGHT_BASE_URL=http://127.0.0.1:5174 npm run test:debug",
+    "e2e:record": "cd tests/browser && npm run record"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

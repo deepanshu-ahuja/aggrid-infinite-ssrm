@@ -59,7 +59,7 @@ Important ownership:
 
 ```text
 playwright.config.ts
-→ browser/project settings, retries, diagnostics, base URL
+→ browser/project settings, retries, diagnostics, base URL, optional local slow motion
 
 fixtures.ts
 → mandatory automatic per-test E2E data reset
@@ -147,7 +147,7 @@ The reset route is test infrastructure, not a product API:
 - `E2E_TESTING` defaults to `false`;
 - normal local/production application mode cannot use it;
 - browser CI enables it only for its dedicated backend process;
-- every Playwright test and retry resets before user actions begin.
+- every normal Playwright test and retry resets before user actions begin.
 
 Current stable seed examples used by browser tests:
 
@@ -300,9 +300,15 @@ Good Playwright candidates include row-model loading/sort/filter/pagination inte
 
 Keep combinatorial rule/state math and deterministic races in focused tests when a browser adds no useful evidence.
 
-The compact current inventory is:
+The readable current inventory is:
 
-- `docs/implementation/testing/coverage-matrix.md`.
+- `docs/implementation/testing/coverage-matrix.html`.
+
+Open it locally for the intended styled view:
+
+```bash
+open docs/implementation/testing/coverage-matrix.html
+```
 
 ## Adding or changing a feature
 
@@ -378,68 +384,119 @@ Vite :5174
 /api proxy → http://127.0.0.1:8001
 ```
 
-Terminal C — choose how to run Playwright:
+Terminal C — choose the Playwright mode that matches what you want to do.
+
+### Fast automated run
 
 ```bash
-# Headless complete suite
 npm run e2e:test
+```
 
-# Visible Chromium, one test at a time
+Headless and fast. This is closest to normal CI behavior.
+
+### Visible but still fast
+
+```bash
 npm run e2e:headed
+```
 
-# Interactive Playwright UI
+A Chromium window is visible and tests run one at a time, but Playwright still performs actions at machine speed.
+
+### Visible and deliberately slow
+
+```bash
+npm run e2e:watch
+```
+
+This is the easiest mode when the goal is simply to **watch what the automated test is doing**. It runs headed, one worker at a time, and inserts roughly 700 ms of Playwright slow motion between operations.
+
+Slow motion is only a local viewing aid. CI does not use it.
+
+### Interactive Playwright UI
+
+```bash
 npm run e2e:ui
+```
 
-# Playwright inspector/debug mode
+Use this to browse the test list, run one test, rerun failures and inspect the timeline. The test itself still runs quickly unless a slow-motion configuration is used.
+
+### Debug an existing test step-by-step
+
+```bash
 npm run e2e:debug
 ```
 
-For watching and selecting individual tests locally, `npm run e2e:ui` is usually the easiest option.
+Debug mode is for an **existing test**. Playwright Inspector opens and pauses execution. Use its Resume/Play control to continue normally or Step Over to advance through one Playwright action at a time. The locator picker can also show which element a locator points to.
 
-The root scripts set `PLAYWRIGHT_BASE_URL=http://127.0.0.1:5174`, so Playwright never accidentally drives the normal development frontend on `5173` when using these commands.
+Think of debug mode as:
 
-### Direct commands from `tests/browser`
+```text
+existing test code
+→ pause
+→ inspect current browser
+→ step one action
+→ inspect again
+```
+
+It is not the easiest tool for creating a brand-new flow from manual clicking. Use recording/codegen for that.
+
+## Record a manual flow and generate Playwright code
+
+Playwright Codegen is useful when a developer does not yet know Playwright syntax and wants to create a starting test by using the application normally.
+
+Keep the dedicated E2E backend and frontend running, then reset the E2E data once before recording if the flow depends on known seed values:
+
+```bash
+npm run e2e:reset
+```
+
+Start the recorder:
+
+```bash
+npm run e2e:record
+```
+
+Two windows open:
+
+```text
+Chromium window
+→ you click, type, select, edit and navigate normally
+
+Playwright Inspector
+→ generated Playwright test code appears as you perform those actions
+```
+
+The recorder can capture normal actions such as clicks and fills. Its toolbar can also generate basic visibility/text/value assertions.
+
+When the flow is finished, stop recording and copy the generated code into the appropriate `tests/browser/*.spec.ts` file.
+
+### Generated code is a starting point, not the final committed test
+
+Codegen does not know all repository contracts. Before committing generated code:
+
+1. import `test` / `expect` from `./fixtures`, not directly from `@playwright/test`, so the automatic per-test data reset remains active;
+2. use stable seeded row IDs and durable role/test-id selectors rather than fragile positional AG Grid selectors;
+3. add meaningful assertions for the business outcome, not only clicks;
+4. wait for the real API/grid readiness condition where needed;
+5. make the test independent of previous tests and recording-session mutations;
+6. reuse `gridTestSupport.ts` helpers where they already express the correct readiness/row contract.
+
+Codegen itself does not execute the normal `fixtures.ts` test fixture while you are interactively recording. That is why `npm run e2e:reset` is available before recording. Once the generated flow becomes a real spec using `./fixtures`, normal per-test reset happens automatically.
+
+### Direct browser-package commands
 
 The browser package also exposes convenience scripts:
 
 ```bash
 cd tests/browser
 npm run test:headed
+npm run test:watch
 npm run test:ui
 npm run test:debug
+npm run record
 ```
 
-Those direct browser-package commands use the Playwright config base URL. If the separate E2E frontend on `5174` is desired, either use the root `npm run e2e:*` commands above or set `PLAYWRIGHT_BASE_URL` explicitly.
-
-## Before starting the next grid capability
-
-The regression-hardening phase that preceded the next product capability required:
-
-```text
-per-test deterministic E2E reset
-→ stable browser selectors/readiness
-→ existing-capability coverage audit
-→ high-value Client / Infinite / SSRM Playwright gaps
-→ compact coverage matrix
-→ durable AGENTS/testing rules
-→ complete frontend + backend + browser CI
-```
-
-That implementation phase has been completed. The implementation browser run passed 80/80 TypeScript Playwright scenarios across the current Client, Infinite and SSRM routes, alongside passing frontend and backend checks.
-
-No additional random Playwright expansion is required before the next capability. Add more tests later when a new capability or a concrete regression introduces a new risk.
-
-The handoff gate is therefore:
-
-```text
-PR #33 documentation/status accurate
-→ exact latest PR head CI green
-→ user merges PR #33
-→ sync grid-foundation with main
-→ begin Import as the next planned capability
-```
-
-Do not merge PR #33 automatically; merge remains an explicit user action.
+The root `npm run e2e:*` commands are preferred because they consistently target the separate local E2E application on `5174 → 8001`.
 
 ## Manual verification relationship
 
