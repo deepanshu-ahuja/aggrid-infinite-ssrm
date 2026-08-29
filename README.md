@@ -39,7 +39,7 @@ The app exposes all three real row-model roots directly:
 /ssrm
 ```
 
-`frontend/src/features/transactions/transactionsGrid.config.ts` keeps row-model-specific configuration such as Client/Infinite selection scope (`page`, `filtered`, or `all`) and native grid options. Client-Side, Infinite and SSRM lifecycle/selection implementations remain separate rather than being hidden behind one universal wrapper.
+`frontend/src/features/transactions/transactionsGrid.config.ts` keeps row-model-specific static choices such as Client/Infinite selection scope and native grid options. Client-Side, Infinite and SSRM lifecycle/selection implementations remain separate rather than being hidden behind one universal wrapper.
 
 ## Verification
 
@@ -54,7 +54,7 @@ python backend/manage.py test apps.transactions
 
 Pull requests also run these checks in GitHub Actions. See [GitHub Actions CI](docs/github-actions-ci.md) for the current workflow explanation.
 
-Manual browser verification may be performed later as a consolidated pass. Use [Client-Side Row Model foundation](docs/client-side-grid.md) for Client scenarios and [Pre-Client manual testing](docs/pre-client-manual-testing.md) for the pending Infinite + SSRM regression checklist. Do not mark either complete unless the browser scenarios were actually run.
+Manual browser verification may be performed later as a consolidated pass. Use the row-model and testing links in the [current implementation documentation](docs/implementation/README.md). Do not mark manual verification complete unless the browser scenarios were actually run.
 
 ## Databricks Apps
 
@@ -64,45 +64,61 @@ Configure `DJANGO_SECRET_KEY` and the AG Grid license key through Databricks App
 
 ## Continuing in a new chat or coding-agent session
 
-Read [AGENTS.md](AGENTS.md) **first**. It is the repository-owned developer/AI working contract for architecture, documentation scope, capability discovery, testing, Git/PR workflow and current roadmap sequencing.
+Read [AGENTS.md](AGENTS.md) **first**. It is the repository-owned developer/AI working contract for architecture, documentation scope, capability discovery, testing, Git/PR workflow and roadmap sequencing.
 
-When changing or extracting one frontend grid capability, use the [Grid capability tag registry](docs/grid-capability-tags.md): find the relevant `GRIDCAP-*` marker, read its row-model notes, then inspect the exact marker across frontend source and focused frontend tests. Backend contracts remain documented/tested normally and intentionally do not carry `GRIDCAP-*` comments.
+Then open [Current Grid Implementation Documentation](docs/implementation/README.md). That directory is the canonical home for behavior implemented by the repository now.
+
+If you are interested in only one row model, start with:
+
+- [Client-Side Row Model](docs/implementation/row-models/client.md)
+- [Infinite Row Model](docs/implementation/row-models/infinite.md)
+- [Server-Side Row Model (SSRM)](docs/implementation/row-models/ssrm.md)
+
+If you are changing or extracting one frontend grid capability, use the [Grid capability tag registry](docs/implementation/grid-capability-tags.md): find the relevant `GRIDCAP-*` marker, read its row-model notes, then inspect that marker across frontend source and focused frontend tests. Backend contracts remain documented/tested normally and intentionally do not carry `GRIDCAP-*` comments.
 
 ## Documentation scope
 
-Current implementation docs describe what the code supports now. They should not be used as a place to record rejected or hypothetical runtime options.
+Documentation is intentionally separated by purpose:
 
-Planning belongs in [Grid foundation backlog](docs/grid-backlog.md). Configurable-table target architecture is kept in its clearly identified architecture/proposal documents.
+```text
+docs/implementation/
+→ implemented runtime behavior only
+
+row-models/
+→ Client / Infinite / SSRM focused entry points
+
+shared implementation docs
+→ capabilities that span row models, with differences called out explicitly
+
+docs/grid-backlog.md
+→ unfinished/planned work
+
+configurable / metadata architecture documents
+→ target or exploratory architecture, not current runtime claims
+```
+
+If a current implementation document says a configuration/API/capability exists, the code must actually support it. Rejected approaches, hypothetical options and conversation history do not belong in the current implementation area.
 
 ## Current implementation references
 
-Start with:
+Start with [docs/implementation/README.md](docs/implementation/README.md). Important direct references include:
 
-- [Project handoff / working contract](AGENTS.md) — durable engineering/workflow rules and current sequencing.
-- [Grid capability tag registry](docs/grid-capability-tags.md) — frontend capability-discovery markers.
-- [Grid capability catalog](docs/grid-capabilities.md) — current logical capabilities across Client, Infinite and SSRM.
-- [Architecture](docs/architecture.md) — current repository/application boundaries.
-- [AG Grid architecture](docs/ag-grid.md) — current native/shared/feature ownership.
-- [AG Grid foundation status](docs/ag-grid-foundation-status.md) — current implementation snapshot.
-- [AG Grid native usage reference](docs/ag-grid-native-usage.md) — native AG Grid runtime surface currently used.
-- [API and data flow](docs/api-data-flow.md) — current Client and server-backed API flows.
-- [Client-Side Row Model foundation](docs/client-side-grid.md) — current Client ownership and behavior.
-- [Selected-row totals](docs/selection-counts.md) — current Infinite/SSRM dataset-wide selected-count contract.
-- [Edited-row total](docs/edited-row-count.md) — current dirty-row count shared by all three row models.
-- [Selected action lifecycle](docs/selected-action-selection-lifecycle.md) — current Change Status success/failure and row-model clear behavior.
-- [Row interaction](docs/row-interaction.md) — current enabled/selection-disabled/read-only capability across all three row models.
-- [Transaction editing](docs/transaction-editing.md) — current tracked editing and persistence behavior.
-- [Unsaved edit conflict reconciliation](docs/edit-conflict-reconciliation.md) — current BASE/LOCAL/REMOTE state machine and guards.
-- [Grid export](docs/grid-export.md) — current Current Page and Selected export behavior across all three row models.
-- [Selection/edit/export index](docs/selection-edit-export.md) — navigation to the dedicated implementation references.
-- [Theming and design tokens](docs/theming.md) — current styling/theme boundary.
-- [Frontend conventions](docs/frontend-conventions.md) — frontend engineering conventions.
-- [GitHub Actions CI](docs/github-actions-ci.md) — current CI workflow explanation.
+- [Grid capability catalog](docs/implementation/grid-capabilities.md)
+- [Capability tag registry](docs/implementation/grid-capability-tags.md)
+- [Application architecture](docs/implementation/architecture.md)
+- [AG Grid architecture](docs/implementation/ag-grid.md)
+- [AG Grid native usage](docs/implementation/ag-grid-native-usage.md)
+- [API and data flow](docs/implementation/api-data-flow.md)
+- [Selected-row totals](docs/implementation/selection-counts.md)
+- [Selected action lifecycle](docs/implementation/selected-action-selection-lifecycle.md)
+- [Row interaction](docs/implementation/row-interaction.md)
+- [Transaction editing](docs/implementation/transaction-editing.md)
+- [Edit conflict reconciliation](docs/implementation/edit-conflict-reconciliation.md)
+- [Grid export](docs/implementation/grid-export.md)
 
 ## Planning / proposal references
 
 - [Grid foundation backlog](docs/grid-backlog.md) — unfinished work, sequencing, verification and deferred decisions.
 - [Configurable table architecture brief](docs/configurable-table-architecture-brief.md) — standalone target architecture.
 - [Detailed metadata-driven table architecture](docs/metadata-driven-table-architecture.md) — detailed proposal/discussion material.
-
-Manual testing guides remain verification checklists and do not imply that browser verification has already been completed.
+- [Metadata-driven UI overview](docs/metadata-driven-ui-overview.md) — supporting proposal material.
