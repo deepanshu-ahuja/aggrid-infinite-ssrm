@@ -1,245 +1,173 @@
 # Grid Foundation Backlog
 
-This is the **single living TODO/control list** for unfinished grid-foundation work. It exists so decisions and remaining work live in the repository rather than only in chat history.
+This is the living planning/control list for unfinished grid-foundation work.
 
-Use it with:
-- `docs/grid-capabilities.md` — implemented logical capabilities;
-- `docs/grid-capability-tags.md` — searchable frontend capability footprint/extraction registry;
-- `docs/client-side-grid.md` — Client-Side capability matrix, ownership and verification;
-- `docs/ag-grid-native-usage.md` — meaningful native AG Grid dependencies;
-- `docs/selection-edit-export.md` — navigation to the detailed selection/edit/export docs;
-- detailed feature/manual-test docs.
+Current implementation truth lives under `docs/implementation/`. This backlog may contain unfinished work, sequencing and deferred decisions.
 
-The backlog is a tracking/control document. It is **not** a rule that every verification item must be completed before implementation work can continue.
+Useful current references:
 
-## Maintenance rule
+- `docs/implementation/README.md` — current implementation documentation entry point;
+- `docs/implementation/grid-capabilities.md` — implemented capability catalog;
+- `docs/implementation/grid-capability-tags.md` — searchable frontend capability registry;
+- `docs/implementation/row-models/client.md` — Client-Side implementation guide;
+- `docs/implementation/row-models/infinite.md` — Infinite implementation guide;
+- `docs/implementation/row-models/ssrm.md` — SSRM implementation guide;
+- `docs/implementation/ag-grid-native-usage.md` — native AG Grid surface used by current code;
+- `docs/implementation/testing/` — manual verification guides.
 
-Statuses: **VERIFY**, **DESIGN**, **TODO**, **PLANNED**, **DEFERRED**.
-
-When something is fully implemented and verified, remove it from Active backlog, record it under Completed history, and update capability/native/detailed docs when behavior or AG Grid dependencies changed.
+Statuses used here: **VERIFY**, **DESIGN**, **TODO**, **PLANNED**, **DEFERRED**.
 
 ## Current agreed sequence
 
 ```text
 1. Keep Client-Side, Infinite and SSRM baseline verification available
-   - focused automated coverage exists
-   - manual browser verification remains pending and can be consolidated later
-   - manual verification is important but is not a blocker for architecture/reference work
-
 2. Implement field/input validation
-   - validation is required independently of configurable-table metadata
-   - keep invalid LOCAL input visible and dirty
-   - block relevant Save paths while invalid
-   - map backend field errors into the same validation state
-   - keep validation and BASE/LOCAL/REMOTE conflict state separate but able to coexist
-   - use resolved rule arrays built from registered rule keys + JSON-safe params
-
-3. Design and implement Import as its own workflow
-   - file/template format, mapping, preview, identifiers and create/update/upsert semantics
-   - row/field validation, duplicates, atomic/partial success, error reporting and refresh
-
+3. Design and implement Import as a separate workflow
 4. Build an isolated fourth configurable SSRM-based grid experiment
-   - do not modify the three proven Transaction grids merely to make the experiment work
-   - do not rewrite shared row-model mechanics while the composition/compiler boundary is still being proven
-   - duplicate/adapt feature-level composition in a separate area when that is safer for the experiment
-   - frontend/application chooses the supported AG Grid row model; backend table metadata does not dynamically choose Client/Infinite/SSRM
-   - prove metadata/compiler/registry boundaries before considering migration into existing grids
-
-5. Maintain frontend capability discoverability throughout
-   - GRIDCAP-* registry remains authoritative for frontend source/tests
-   - backend contracts remain documented/tested normally but are intentionally untagged
+5. Evaluate reuse/migration only after that experiment proves its boundary
 ```
 
-Manual verification remains important, but it is intentionally schedulable as a later consolidated pass. Only a genuine core correctness defect should interrupt other agreed foundation work.
+Manual browser verification remains required but may be consolidated later unless a real correctness defect requires immediate interruption.
 
 # Active backlog
 
-## A. Infinite + SSRM baseline verification
+## A. Baseline verification
 
-### A1. Manual Infinite + SSRM regression pass
+### A1. Client / Infinite / SSRM manual regression
 **Status:** VERIFY  
 **Priority:** Pending manual pass; non-blocking
 
-Verify both row models independently when the manual pass is scheduled:
-- explicit/manual selection;
-- Current Page selection;
-- Select All Filtered / All Records with exceptions;
-- selected-row total updates;
-- `selectionDisabled` and `readOnly` behavior;
-- ordinary dirty edits and total edited-row count;
-- server-converged edits;
-- BASE / LOCAL / REMOTE conflicts;
-- Use server / Keep my edit;
-- row Save and selected Save conflict guards;
-- field-aware business-action guard;
-- Discard restoring latest REMOTE;
-- Export Current Page;
-- Export Selected for explicit / filtered / all selection;
-- local-overlay revisit vs genuine server refresh;
-- cache/reload behavior;
-- navigation/remount/teardown without AG Grid warning #26.
+Automated coverage exists. When the browser pass is scheduled, verify row models independently.
 
-A pass in Infinite does not prove SSRM and vice versa. Do not mark this complete unless the browser scenarios were actually run.
+Server-backed guide:
 
-### A2. Selected-row total
+- `docs/implementation/testing/server-backed-manual-testing.md`
+
+Row-interaction guide:
+
+- `docs/implementation/testing/row-interaction-manual-testing.md`
+
+Client-specific scenarios are documented in:
+
+- `docs/implementation/row-models/client.md`
+
+Do not mark manual verification complete unless the scenarios were actually run.
+
+### A2. Selected-row totals
 **Status:** VERIFY
 
-Implemented rule:
+Implemented current contract:
 
 ```text
-explicit/manual/current-page -> exact include ID count
-Select All Filtered          -> filteredCount - user exceptions
-Select All Records           -> totalCount - user exceptions
+Client
+→ exact native selected rows
+
+Infinite / SSRM explicit/manual/current-page
+→ exact include ID count
+
+Infinite / SSRM All Filtered
+→ filteredCount - user exceptions
+
+Infinite / SSRM All Records
+→ totalCount - user exceptions
 ```
 
-Current dataset-wide limitation is intentional: normal `totalCount` / `filteredCount` may include backend-ineligible rows. Do not subtract only disabled rows currently loaded in the browser because that creates false accuracy for unloaded rows.
+Current server-wide limitation is intentional: `totalCount` / `filteredCount` describe query membership, not exact selection eligibility for unloaded rows.
 
-Future production option if exact actionable counts are required:
+Do not subtract only restricted rows currently loaded in browser memory.
+
+Current implementation reference:
+
+- `docs/implementation/selection-counts.md`
+
+### A3. Edited-row total
+**Status:** VERIFY
+
+`Edited` means dirty rows, not dirty cells. Multiple dirty fields in one row count as one edited row.
+
+Current implementation reference:
+
+- `docs/implementation/edited-row-count.md`
+
+### A4. Export
+**Status:** VERIFY
+
+Implemented ownership:
 
 ```text
-selectionEligibleTotalCount
-selectionEligibleFilteredCount
+Current Page
+→ native AG Grid CSV over exact resolved pagination page
+
+Selected Client
+→ native/local selected CSV
+
+Selected Infinite / SSRM
+→ backend resolves logical selected target and writes CSV
 ```
 
-See `docs/selection-counts.md`.
+Current implementation reference:
 
-### A3. Edited/dirty-row total
+- `docs/implementation/grid-export.md`
+
+### A5. Request/lifecycle hardening
+**Status:** VERIFY / ongoing engineering rule
+
+Already protected by focused code/tests:
+
+- request-start-order freshness;
+- datasource cancellation;
+- GridApi pre-destroy cleanup;
+- destroyed-API guards;
+- local-overlay versus genuinely fresh REMOTE distinction;
+- programmatic-write guards.
+
+Do not suppress AG Grid lifecycle warnings; fix concrete ownership/timing defects.
+
+## B. Capability discoverability
+
+### B1. `GRIDCAP-*` registry and source markers
 **Status:** VERIFY
 
-The existing tracked-editing state is authoritative. `Edited` means number of dirty rows, not dirty cells. Multiple dirty fields in one row count as one edited row; conflicts remain dirty until resolved/removed from tracked state.
+`docs/implementation/grid-capability-tags.md` is authoritative for searchable frontend capability markers.
 
-See `docs/edited-row-count.md`.
+Markers remain frontend-only. Backend authority remains documented/tested through normal backend contracts and tests.
 
-### A4. Export Current Page + Export Selected
-**Status:** VERIFY
+When a frontend capability footprint changes:
 
-Implemented server-backed ownership:
-- Current Page -> native AG Grid CSV export over the exact loaded pagination-page RowNodes;
-- Selected -> backend resolves the same logical selection/filter target used by selection-based business actions and returns CSV.
+1. inspect its registry entry;
+2. search current source/test occurrences;
+3. update meaningful markers;
+4. update focused tests and implementation docs.
 
-Dataset-wide selected export must never fetch the whole selected server dataset into the browser first.
+## C. Field/input validation
 
-Import is intentionally separate.
-
-See `docs/grid-export.md`.
-
-### A5. GitHub Actions explanation
-**Status:** VERIFY
-
-`docs/github-actions-ci.md` explains workflow/event/job/step syntax, `uses` vs `run`, permissions, concurrency, Node/Python setup, `npm ci`, every validation command, failure diagnosis, and real CI findings from this repository.
-
-### A6. Lifecycle/race hardening
-**Status:** Ongoing engineering rule
-
-Warning #26 established the policy: fix concrete lifecycle ownership/timing bugs and add regression coverage. Do not suppress warnings or build speculative frameworks.
-
-Already protected: root GridApi pre-destroy cleanup, destroyed-API guards, datasource cancellation, request-start-order freshness, programmatic-write guards, and LOCAL-overlay vs fresh-REMOTE distinction.
-
-## B. Client-Side Row Model baseline
-
-### B1. Reusable Client-Side foundation
-**Status:** VERIFY
-
-Rule:
-
-```text
-same logical capability != same row-model implementation
-```
-
-Implemented native-first baseline:
-- one complete bounded Transaction collection request through TanStack Query;
-- native Client-Side sorting, filtering and pagination over `rowData`;
-- native header selection scopes `currentPage`, `filtered` and `all`;
-- Transactions demo default scope `all`;
-- exact explicit selected IDs/count because the complete working set is local;
-- existing `selectionDisabled` / `readOnly` native selectability adapter;
-- shared tracked editing, Save/Discard and BASE/LOCAL/REMOTE conflict mechanics;
-- explicit-ID backend selected status actions;
-- shared native Current Page CSV helper;
-- native local Selected CSV across pagination pages;
-- separate Client pagination defaults with no server cache/block configuration.
-
-The complete capability/ownership matrix lives in `docs/client-side-grid.md`.
-
-Do **not** port Infinite unloaded-row include/exclude machinery, SSRM selection-state ownership, server datasource translation, or server cache-specific code unless a real semantic gap requires it.
-
-Potentially reusable mechanics remain stable IDs, row capability semantics, tracked edits, Save/Discard, selected-dirty saves, conflict mechanics when locally held data is refreshed from server, validation mechanics, Grid State persistence, feature-owned actions, and presentation for selected/edited totals.
-
-Manual `/client` verification is documented in `docs/client-side-grid.md` and remains pending until actually run.
-
-### B2. Many Client-Side tables without repetition
-**Status:** PLANNED
-
-Assume Client Grid A/B/C/D have different columns, rows, endpoints and business rules.
-
-Feature owns domain data, columns, validation/business rules, actions, formatting and restriction reasons. Shared Client-Side code owns only repeated Client-Side mechanics. AG Grid owns native behavior whenever possible.
-
-The current foundation is intentionally shaped so additional real tables can compose the existing row-model mechanics without introducing one universal grid wrapper. A second real Client table should validate whether any **additional** extraction is actually justified; it is not a prerequisite for treating multi-table reuse as a foundation goal.
-
-Do not create a universal `AgGridReact` wrapper or giant `useGrid()` just to remove a few repeated props.
-
-### B3. Client-Side-specific docs
-**Status:** VERIFY
-
-`docs/client-side-grid.md` records:
-- the Client / Infinite / SSRM capability matrix;
-- data and TanStack Query ownership;
-- Client-Side native AG Grid selection/filtering/pagination/export behavior;
-- exact Client selected-count semantics;
-- row eligibility and editing/conflict reconciliation;
-- implementation map;
-- limitations / row-model choice guidance;
-- deferred manual verification scenarios.
-
-`README.md`, `docs/grid-capabilities.md`, `docs/ag-grid-native-usage.md`, `docs/api-data-flow.md` and `AGENTS.md` should remain aligned with the implemented Client baseline.
-
-## C. Capability discoverability / extraction hardening
-
-### C1. `GRIDCAP-*` capability registry and source markers
-**Status:** VERIFY
-
-The repository now maintains `docs/grid-capability-tags.md` as the authoritative stable registry for searchable **frontend** capability markers.
-
-The markers intentionally span important frontend extraction boundaries such as:
-- Client / Infinite / SSRM concrete roots;
-- row-model selection controllers;
-- current-page resolution;
-- server datasource loading, cancellation and request freshness;
-- query/filter translation and frontend API integration;
-- tracked editing, Save/Discard and conflicts;
-- selected counts;
-- Current Page / Selected export integration;
-- Grid State;
-- row eligibility presentation/guards;
-- modules/licensing/theme;
-- focused frontend executable tests.
-
-Backend contracts, eligibility, persistence and backend tests remain first-class architecture/test concerns but are deliberately not decorated with `GRIDCAP-*` comments.
-
-One frontend source boundary may have multiple markers when it participates in several capabilities. Do not tag every trivial line. A marker means the frontend location participates in the capability; it does not mean the same implementation should be copied to every row model.
-
-When a frontend capability footprint changes, review the registry and current frontend occurrences in the same work.
-
-## D. Core/product decisions that do not block current implementation unless a real defect requires them
-
-### D2. Field validation + backend validation errors
+### C1. Validation engine + editing integration
 **Status:** DESIGN / IMPLEMENT NEXT
 
-Validation is a first-class capability independent of configurable-table metadata. Static Transaction configuration should be able to use it directly; future metadata may later compile to the same inputs.
+Validation is a first-class capability independent of configurable-table metadata.
 
-Implement domain-neutral mechanics for:
-- invalid LOCAL values remaining visible rather than being immediately reverted;
-- validation state keyed outside transient RowNodes by stable row ID + field;
-- dirty state continuing to represent unsaved LOCAL work even when invalid;
-- row Save and selected/bulk Save guards for relevant invalid fields;
-- backend structured field-error mapping into the same validation state;
-- preserving rejected LOCAL input after backend validation failure;
-- clearing/re-evaluating errors when the user corrects or reverts a value;
-- validation and BASE/LOCAL/REMOTE conflict state coexisting without being collapsed into one concept;
-- UI/editor/cell presentation and help text;
-- rule-registry failure behavior and focused tests across Client / Infinite / SSRM integration points.
+Static Transaction configuration must be able to use validation directly. A configurable-table compiler may later produce the same resolved validation inputs, but validation must not depend on that architecture.
 
-Primary validation input should be a resolved rule array using stable registered keys plus JSON-safe params/messages, conceptually:
+Required domain-neutral behavior:
+
+- invalid LOCAL values remain visible;
+- invalid LOCAL work remains dirty;
+- validation state lives outside transient RowNodes and is keyed by stable row ID + field;
+- row Save is blocked when relevant dirty fields are invalid;
+- Save Selected Dirty is blocked when its exact dirty target contains invalid fields;
+- direct cell edits and current-page/programmatic edits run the same validation semantics;
+- backend structured field errors map into the same validation state;
+- rejected LOCAL input remains visible/dirty after backend validation failure;
+- correction/revert revalidates and clears stale errors;
+- Discard clears validation belonging to discarded LOCAL work;
+- validation and BASE/LOCAL/REMOTE conflict state remain separate and can coexist;
+- conflict resolution revalidates the resulting effective value;
+- invalid/conflict presentation can coexist predictably;
+- unknown required rule keys fail predictably;
+- no arbitrary executable JavaScript/expression is accepted from backend/configuration;
+- focused Client/Infinite/SSRM integration tests cover lifecycle differences.
+
+Primary engine input:
 
 ```text
 rules: [
@@ -249,117 +177,158 @@ rules: [
 ]
 ```
 
-A higher-level reusable `ruleSetKey` may be added later only when repeated real rule combinations justify it. The validation engine itself should consume resolved rules rather than depend on metadata or opaque business profiles.
+A reusable higher-level rule-profile key should be considered only if repeated real rule combinations justify it. The validation engine itself should consume resolved rules.
 
-### D3. Application-level unsaved-draft lifetime
-**Status:** DEFERRED / hold until a real product need
+Before adding a validation capability marker, review:
 
-Do not add application/session draft persistence now. Revisit only if a future product requires unsaved edits to survive route changes, grid destroy/remount, browser refresh, or leaving/returning to the feature. Cache/RowNode persistence is not the same as application/session persistence.
+- `docs/implementation/grid-capability-tags.md`
 
-### D4. Backend optimistic concurrency / stale-write protection
-**Status:** DESIGN / DEFERRED until multi-user contract discussion
+## D. Deferred core/product decisions
 
-Frontend BASE/LOCAL/REMOTE reconciliation sees only remote changes that reach the browser. A stale client that never refreshes needs backend version/ETag/revision protection if the product requires it.
-
-### D5. Undo/redo
+### D1. Application/session unsaved-draft lifetime
 **Status:** DEFERRED
 
-Do not enable spreadsheet-style undo/redo until its interaction with durable dirty state, programmatic edits, conflicts, validation and Save/Discard is explicitly designed.
+Current stable-ID tracked edits survive row-object/RowNode recreation while the grid feature is alive.
 
-## E. Product-driven capabilities
+Do not add route/session/browser-refresh draft persistence until the product requires a longer draft lifetime.
 
-### E1. Import
-**Status:** TODO / NEXT AFTER VALIDATION
+### D2. Backend optimistic concurrency / stale-write protection
+**Status:** DEFERRED
 
-Design Import as a separate workflow before the configurable-grid experiment. Cover:
+Current BASE/LOCAL/REMOTE reconciliation detects divergence only after fresh authoritative data reaches the browser.
+
+Backend version/ETag/revision protection requires a separate product/API contract if stale writes must be rejected even without an intervening refresh.
+
+### D3. Undo/redo
+**Status:** DEFERRED
+
+Do not enable spreadsheet-style undo/redo until its interaction with tracked drafts, programmatic edits, conflicts, validation and Save/Discard is defined.
+
+### D4. User/profile Grid State persistence
+**Status:** DEFERRED
+
+Current native Grid State persists supported preferences through the replaceable browser-storage boundary.
+
+Backend/user-profile persistence is not part of the current implementation.
+
+### D5. Grouping/tree/aggregation/pivot and other advanced AG Grid features
+**Status:** DEFERRED
+
+Current SSRM implementation is flat. Do not introduce advanced semantics without an explicit product contract.
+
+## E. Import
+
+### E1. Import workflow
+**Status:** TODO / AFTER VALIDATION
+
+Import is separate from ordinary tracked editing.
+
+Design/implementation should cover as required:
+
 - accepted file/template formats;
-- create/update/upsert semantics and stable identifiers;
-- column/field mapping;
-- preview/dry-run behavior;
-- reuse of field/business validation where appropriate;
+- stable identifiers;
+- create/update/upsert semantics;
+- field mapping;
+- preview/dry-run;
+- validation reuse where appropriate;
 - duplicate handling;
-- atomic versus partial-success semantics;
-- row/field error reporting and downloadable error output if useful;
-- progress/cancellation behavior for large jobs if required;
+- atomic versus partial-success behavior;
+- row/field error reporting;
+- downloadable error output when useful;
+- progress/cancellation for large jobs when required;
 - authoritative post-import refresh.
 
-Import/template/sample upload is not part of the Client-Side foundation and must not be hidden inside normal grid editing.
+Do not hide Import inside ordinary cell-edit persistence.
 
-### E2. Conditional styling / lock indicators
-**Status:** Core native approach implemented; further abstraction DEFERRED
+## F. Isolated configurable SSRM experiment
 
-Prefer native renderers, `cellClassRules`, tooltips and feature presentation. Do not build a custom styling engine without repeated real use cases.
-
-### E3. Advanced permissions / conditional columns
-**Status:** DEFERRED
-
-Current row capability is intentionally small: `enabled`, `selectionDisabled`, `readOnly`. Future field/action/column authorization should remain separate from role-specific shared-grid knowledge.
-
-### E4. User/profile Grid State persistence
-**Status:** DEFERRED
-
-Current native Grid State is behind replaceable browser storage. Add backend/user persistence only when preferences must follow users across devices/sessions.
-
-### E5. Isolated configurable SSRM experiment
+### F1. Fourth configurable grid path
 **Status:** PLANNED / AFTER IMPORT
 
-Build a fourth grid path in a separate feature/composition area, initially using SSRM semantics as the reference. The experiment exists to prove the correct metadata compiler/resolver/registry boundary without risking the three proven Transaction grids.
+Build a separate SSRM-based grid composition path to prove the metadata compiler/resolver/registry boundary.
 
 Rules:
-- do not refactor `/client`, `/infinite`, or `/ssrm` merely to accommodate the experiment;
-- do not rewrite shared loading, selection, tracked-editing, conflict, freshness, lifecycle or Grid State algorithms while the experiment is still proving its boundary;
-- intentional temporary feature-level duplication is acceptable when it protects proven behavior and makes comparison explicit;
-- metadata should describe table/business composition such as fields, renderers, editors, validation, authorization and actions;
-- backend metadata should not dynamically select the AG Grid row model. The frontend/application decides which row model(s) the real product supports;
-- once the fourth grid proves the architecture, review whether its composition boundary should replace Transaction-specific composition in existing grids. Do not migrate automatically.
 
-## F. Reuse proof
+- do not refactor `/client`, `/infinite` or `/ssrm` merely to make the experiment work;
+- do not rewrite proven shared loading, selection, tracked editing, conflict, freshness, lifecycle or Grid State mechanics while the composition boundary is still being proven;
+- temporary feature-level duplication is acceptable when it protects proven behavior and makes comparison explicit;
+- backend metadata may describe supported JSON-safe table/business composition;
+- backend metadata does not dynamically select Client/Infinite/SSRM;
+- frontend/application chooses the supported AG Grid row model(s);
+- executable renderers/editors/formatters/validators/action behavior remain frontend implementations;
+- evaluate migration/reuse only after the isolated path proves the boundary;
+- migration is not automatic.
 
-### F1. Second real business entity
+Architecture proposal material remains separate from current implementation docs.
+
+## G. Reuse proof
+
+### G1. Second real business entity
 **Status:** TODO when available
 
-A real Payables/Invoices/Orders-style integration should prove domain neutrality, feature-owned filters/endpoints/actions, row interaction/editing reuse, separate row-model roots and documentation quality. Do not invent a fake business feature merely to manufacture reuse.
+A real second table should prove domain neutrality of the shared mechanics.
 
-Client-Side A/B/C/D reuse is a related proof: shared Client-Side plumbing must not be copied into every table.
-
-## G. Advanced AG Grid — deliberately deferred
-
-- grouped/tree/aggregation/pivot SSRM;
-- advanced column management / named views;
-- clipboard / range / fill-handle / mass editing;
-- row create/delete.
-
-Each requires explicit product semantics before implementation. Grouping/tree/aggregation/pivot are explicitly on hold for now rather than part of the near-term foundation sequence.
+Do not invent a fake business feature merely to manufacture reuse.
 
 # Completed history
 
-## 2026-08 — Selected status success lifecycle simplification
-The Transaction Change Status action family now carries only the real business status/request. After a successful update, each concrete grid root directly calls its row-model selection controller's existing `clearSelection()` and refreshes authoritative rows. Failed updates leave selection untouched because the success callback never runs. Selected export remains non-mutating and simply does not clear selection. A configurable clear/preserve policy is deliberately not carried through hardcoded actions; a future config-driven action registry may introduce behavior keys only if real dynamic actions require them.
+## 2026-08 — Three row-model baseline
 
-## 2026-08 — Row eligibility / selectability
-Implemented `enabled / selectionDisabled / readOnly`, native loaded-row guards, backend eligibility for unloaded actions, and consistent editing/action behavior. See `docs/row-interaction.md`.
+Client-Side, Infinite and flat SSRM exist as separate concrete routes with native-first loading/selection ownership and focused automated coverage.
 
-## 2026-08 — Single-row + selected-dirty editing persistence
-Implemented stable-ID dirty tracking, row Save/Discard, selected dirty Save/Discard, separate single/bulk backend writes, read-only protection and safe in-flight acknowledgement. See `docs/transaction-editing.md`.
+## 2026-08 — Row interaction
 
-## 2026-08 — BASE / LOCAL / REMOTE reconciliation
-Implemented unchanged/converged/divergent reconciliation, Use server, Keep my edit, conflict guards and Discard-to-latest-REMOTE. See `docs/edit-conflict-reconciliation.md`.
+Implemented `enabled | selectionDisabled | readOnly`, native loaded-row guards, backend authority for server-wide operations, editing integration and presentation.
 
-## 2026-08 — AG Grid warning #26 hardening
-Implemented GridApi pre-destroy ownership cleanup, destroyed-API guards and regression coverage. Manual teardown remains in A1.
+Current reference:
 
-## 2026-08 — Repository CI + executable validation
-Added GitHub CI without Docker: frontend lint/typecheck/tests/build and backend Django check/Transactions tests. The first run exposed two stale Discard-test expectations; those tests were corrected to the intentional editable-column + action-column refresh contract.
+- `docs/implementation/row-interaction.md`
+
+## 2026-08 — Tracked editing and persistence
+
+Implemented stable-ID dirty tracking, row Save/Discard, selected dirty Save/Discard, separate single/bulk writes and safe in-flight acknowledgement.
+
+Current reference:
+
+- `docs/implementation/transaction-editing.md`
+
+## 2026-08 — BASE / LOCAL / REMOTE conflicts
+
+Implemented unchanged/converged/divergent reconciliation, `Use server`, `Keep my edit`, conflict-aware guards and Discard-to-latest-REMOTE.
+
+Current reference:
+
+- `docs/implementation/edit-conflict-reconciliation.md`
+
+## 2026-08 — Selected Change Status lifecycle
+
+The Change Status mutation carries only the business request. After backend success, each concrete grid root calls its own selection controller's existing `clearSelection()` and refreshes authoritative data. Failed requests retain selection.
+
+There is no current configurable `clear | preserve` runtime policy.
+
+Current reference:
+
+- `docs/implementation/selected-action-selection-lifecycle.md`
+
+## 2026-08 — CI and lifecycle hardening
+
+CI runs frontend lint/typecheck/tests/build plus backend Django checks/tests without Docker. GridApi teardown, datasource cancellation and request freshness have focused regression coverage.
 
 # Explicit non-goals unless requirements change
 
 - universal `AgGridReact` wrapper;
 - giant generic `useGrid()` hiding native AG Grid;
-- configurable preserve-draft policies;
-- bulk Use-all-server / Keep-all-local conflict commands;
-- speculative advanced SSRM features;
-- Docker for this Databricks same-repository app;
-- custom abstractions that duplicate native AG Grid without a real semantic gap;
-- excessive `GRIDCAP-*` markers on trivial frontend implementation details.
+- one fake shared selection controller for all row models;
+- one `clearSelection(rowModelType)` switch;
+- configurable `clear | preserve` policy for a hardcoded action whose behavior is known;
+- one generic mutation that chooses unrelated business endpoints from an action key;
+- server datasource mechanics in Client-Side;
+- duplicate backend interpretations of logical selection;
+- custom abstractions duplicating native AG Grid without a real semantic gap;
+- backend metadata dynamically choosing Client/Infinite/SSRM;
+- refactoring proven grids merely to support the isolated configurable-grid experiment;
+- Docker for this same-repository Databricks App without a real requirement;
+- speculative advanced SSRM/grouping/pivot/aggregation behavior;
+- excessive `GRIDCAP-*` markers on trivial code.
 
-> **Standing rule: Native AG Grid first. Row-model-specific capability second. Share only genuine semantics/mechanics. Feature business rules stay feature/backend-owned.**
+> **Standing rule: native AG Grid first; use the best capability of the actual row model; share only genuine semantics/mechanics; keep business rules feature/backend-owned.**
