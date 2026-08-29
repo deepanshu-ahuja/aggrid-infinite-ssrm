@@ -86,7 +86,7 @@
     <p class="subtitle">Quick visual inventory of automated protection across Frontend, Backend, Client, Infinite and SSRM.</p>
 
     <div class="summary" aria-label="Coverage summary">
-      <div class="summary-card"><strong>86</strong><span>Playwright browser scenarios including interaction-mode refresh regression coverage</span></div>
+      <div class="summary-card"><strong>97</strong><span>Playwright browser scenarios including mutation-path interaction refresh and active indeterminate-header coverage</span></div>
       <div class="summary-card"><strong>3</strong><span>independently exercised grid row models</span></div>
       <div class="summary-card"><strong>4</strong><span>coverage groups below</span></div>
     </div>
@@ -129,7 +129,7 @@
           <tr><td>Select All Filtered</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td></tr>
           <tr><td>Filter-change selection lifecycle</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge focused">Focused</span></td><td><span class="badge pass">Covered</span></td></tr>
           <tr><td><code>selectionDisabled</code> / <code>readOnly</code> policy</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
-          <tr><td>Interaction mode changes after authoritative refresh</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+          <tr><td>Interaction mode changes after authoritative refresh (Import / Save / bulk / selected action)</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
           <tr><td>Selected Change Status success</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
           <tr><td>Selected Change Status failure keeps selection</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
           <tr><td>Export Current Page</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
@@ -185,6 +185,7 @@
         <li><strong>N/A</strong> means the capability is not applicable or is not enabled on that current demo route; it is not automatically a test gap.</li>
         <li>The browser routes are tested as configured today. We do not create fake E2E-only routes just to turn every cell green.</li>
         <li>Import has focused backend validation/atomicity tests, focused frontend workflow tests, one real Preview/Apply/data-refresh scenario per row model, and one real interaction-mode transition scenario per row model.</li>
+        <li>Mutation-path browser coverage exercises Row Save, Save Selected and selected Change Status interaction-mode transitions across all three row models; Client and SSRM also verify an active indeterminate native header remains primary-colored when restricted rows are present.</li>
         <li>Backend stale-write/version concurrency remains a separate deferred contract and is not represented as implemented coverage here.</li>
       </ul>
     </section>
