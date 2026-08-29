@@ -12,18 +12,23 @@ describe('transaction update mapper', () => {
         amount: 1250,
         currency: 'USD',
         status: 'Completed',
+        transactionDate: '2026-01-15',
       }),
     ).toEqual({
       account: 'Treasury',
       amount: 1250,
       currency: 'USD',
       status: 'Completed',
+      transactionDate: '2026-01-15',
     });
   });
 
   it('rejects an invalid generic tracked value before the API call', () => {
     expect(() => mapTransactionUpdateChanges({ amount: 'not-a-number' })).toThrow(
       'Transaction amount must be a finite number.',
+    );
+    expect(() => mapTransactionUpdateChanges({ transactionDate: 'not-a-date' })).toThrow(
+      'Transaction date must be an ISO date (YYYY-MM-DD).',
     );
   });
 
