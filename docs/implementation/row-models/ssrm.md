@@ -1,346 +1,117 @@
-# SSRM Selection Contract
+# Server-Side Row Model (SSRM) implementation guide
 
-This document is the source of truth for selection when a server-backed table uses AG Grid's **Server-Side Row Model (SSRM)**.
+This is the current row-model entry point for AG Grid Enterprise **Server-Side Row Model (SSRM)** in this repository.
 
-The core rule is:
+Use this document when you want to understand or extract the SSRM implementation without first reading the Client or Infinite implementation.
 
-> Use native SSRM selection wherever AG Grid can represent the product requirement. Add application state only for the missing semantic gap.
-
-Transactions is the current example feature, but the selection mechanics here are intended to be reusable.
-
----
-
-## 1. Stable row IDs are mandatory
-
-Every row must have stable backend identity:
-
-```ts
-getRowId={({ data }) => data.id}
-```
-
-Sorting, filtering, pagination and store refresh can move/recreate RowNodes. Identity must not depend on row position.
-
----
-
-## 2. Native SSRM selection remains native
-
-The native SSRM header checkbox represents **All Records inside the selection-eligible universe**.
-
-Native server-side selection state can represent unloaded rows compactly:
-
-```ts
-{
-  selectAll: true,
-  toggledNodes: ['A'],
-}
-```
-
-Meaning for a backend action:
+## Current ownership
 
 ```text
-all eligible records except user-deselected A
+TransactionsSsrmGrid
+        ↓ owns
+AgGridReact + GridApi
+        ↓
+SSRM datasource / server-side store lifecycle
+        ↓
+feature request mapper
+        ↓
+backend query endpoint
 ```
 
-Backend-disabled/read-only rows are outside the selectable universe; they are not added to `toggledNodes` merely because Select All is active.
+AG Grid owns SSRM store/block demand, loaded RowNodes, native server-side selection state, retry and server-side refresh. Application state is added only where the required product meaning is not represented natively.
 
-Use native APIs such as:
+## Loading and query behavior
 
-```ts
-api.getServerSideSelectionState()
-api.setServerSideSelectionState(...)
-```
+SSRM uses:
 
-Do not use `getSelectedRows()` as the source of truth for unloaded dataset selection.
+- `rowModelType="serverSide"`;
+- Enterprise SSRM and SSRM API modules;
+- the shared flat SSRM datasource adapter;
+- stable backend `getRowId`;
+- backend sort/filter mapping;
+- request cancellation on datasource destruction;
+- latest-started-request ownership for renderable `totalCount` / `filteredCount` metadata;
+- native `refreshServerSide()` after successful writes;
+- native `retryServerSideLoads()` for failed loads.
 
----
+The current backend contract is flat. Grouping, tree data, aggregation and pivot request semantics are not implemented.
 
-## 3. Logical selection published to shared/application code
+See [API and data flow](../api-data-flow.md), [AG Grid native usage](../ag-grid-native-usage.md), and [Reusable server-backed grid guide](../server-backed-grid-reuse.md).
 
-The reusable logical shape is always:
+## Selection
 
-```ts
-{
-  mode: 'include' | 'exclude',
-  ids: string[],
-}
-```
-
-Native explicit state maps to:
+SSRM deliberately uses native Enterprise selection where AG Grid represents the requirement:
 
 ```text
-selectAll false + toggledNodes [A, B]
--> include [A, B]
+manual / explicit rows
+→ native SSRM selection state
+
+All Records
+→ native SSRM server-side Select All state
+
+Current Page
+→ explicit operation over concrete selectable page RowNodes
+
+All Filtered
+→ application-owned semantic gap
 ```
 
-Native All Records maps to:
+The shared logical target remains only `include | exclude` plus IDs; backend eligibility stays authoritative.
+
+Read the full [SSRM selection contract](ssrm-selection.md).
+
+## Selected count
 
 ```text
-selectAll true + toggledNodes [A]
--> exclude [A]
+explicit/manual/current-page
+→ exact included/native ID count
+
+All Filtered
+→ API filteredCount - user exceptions
+
+All Records
+→ API totalCount - user exceptions
 ```
 
-This logical shape contains no serialized `scope` and no disabled-row ID list.
+See [Selected-row totals](../selection-counts.md).
 
-`exclude` IDs are user exceptions, not rows that backend policy made ineligible.
+## Editing and conflicts
 
----
+SSRM reuses the shared stable-ID tracked editing engine. Unsaved LOCAL work is not stored only in RowNodes because SSRM store refresh/recreation can replace them.
 
-## 4. Individual/manual selection
+Fresh SSRM rows are reconciled against BASE / LOCAL / REMOTE state before remaining LOCAL values are restored.
 
-Ordinary row checkboxes use native SSRM selection.
+See [Transaction editing](../transaction-editing.md) and [Edit conflict reconciliation](../edit-conflict-reconciliation.md).
 
-The concrete grid supplies the feature's row policy through native `rowSelection.isRowSelectable`.
+## Row interaction
 
-Example:
+Loaded-row selectability/editability uses native AG Grid callbacks over the shared `enabled | selectionDisabled | readOnly` meaning. Backend authority protects unloaded rows and server-wide operations.
 
-```text
-A enabled -> can select
-B selectionDisabled -> cannot select
-C readOnly -> cannot select
-```
+See [Row interaction](../row-interaction.md).
 
-Selecting A produces:
+## Export
 
-```text
-include [A]
-```
+Current Page uses native AG Grid CSV over the exact resolved pagination page.
 
-B and C do not become exclusions. Sorting and visible filter changes do not automatically clear explicit eligible IDs.
+Selected export is backend-owned because native/custom SSRM logical selection can include unloaded rows.
 
----
+See [Grid export](../grid-export.md).
 
-## 5. Select Current Page
+## Grid State and lifecycle
 
-Current Page is an explicit command over the **selectable** RowNodes for the current page.
+The concrete SSRM root owns its `GridApi`, SSRM datasource/store lifecycle, Grid State persistence, native selection APIs, retry, refresh and teardown. Do not force SSRM through Infinite mechanics for code symmetry.
 
-It ultimately produces ordinary explicit selection:
+## Main implementation entry points
 
-```text
-include [eligible ids on current page plus any preserved explicit ids]
-```
+- `frontend/src/features/transactions/grid/TransactionsSsrmGrid.tsx`
+- `frontend/src/shared/grid/data/server-side/createServerSideDatasource.ts`
+- `frontend/src/shared/grid/data/server-side/useServerSideRowLoading.ts`
+- `frontend/src/shared/grid/selection/server-side/useSsrmSelectionController.ts`
+- `frontend/src/shared/grid/gridModules.ts`
+- `frontend/src/features/transactions/grid/transactionRequest.mapper.ts`
 
-Disabled RowNodes are not passed into `setNodesSelected()` and are not recorded as exclusions.
+For the searchable frontend footprint, use `GRIDCAP-ROWMODEL-SSRM` in the [capability tag registry](../grid-capability-tags.md).
 
-Page is how the user selected the IDs; it is not a backend selection scope.
+## Verification
 
-If the expected page rows are not available yet, do not partially select an incomplete page. Surface the existing warning/error behavior and leave selection consistent.
-
----
-
-## 6. Select All Filtered
-
-Select All Filtered is the custom SSRM selection mode in the current product design.
-
-When activated:
-
-```text
-current applied filter
-+
-exclude []
-```
-
-means:
-
-```text
-all selection-eligible backend rows matching that filter
-```
-
-If the user unchecks eligible A:
-
-```text
-exclude [A]
-```
-
-means:
-
-```text
-all eligible matching rows except A
-```
-
-Loaded disabled rows are not programmatically selected during custom filtered reconciliation. Unloaded disabled rows are removed by backend eligibility when the action executes; their IDs are never enumerated into `exclude`.
-
-The filter itself remains AG Grid-owned. When the real action is built, the root reads `api.getFilterModel()` and the feature translates it through the same mapper used by normal row loading.
-
-Do not maintain a second action-only filter interpretation.
-
----
-
-## 7. Filter lifecycle
-
-Use the selection meaning, not one blanket reset rule.
-
-```text
-native explicit/include
--> preserve on visible filter change
-
-native All Records/exclude
--> preserve on visible filter change
-
-custom Select All Filtered/exclude
--> reset when the defining filter changes
-```
-
-The filtered exclusion list belongs to one specific query and must not silently move to a different query.
-
----
-
-## 8. Sorting and pagination
-
-Sorting changes order, not identity, so it does not clear selection.
-
-Pagination changes visibility, not logical selection, so it does not clear native explicit or All Records selection.
-
-Current Page acts only on the page visible when the command is invoked and only on selectable rows in that page.
-
----
-
-## 9. Newly loaded/reloaded rows during custom filtered selection
-
-Custom filtered selection exists beyond currently loaded RowNodes.
-
-When SSRM materialises/replaces an eligible row:
-
-```text
-logical filtered selection
--> resolve loaded row ID
--> sync RowNode checkbox programmatically
-```
-
-When the loaded row is disabled (`node.selectable === false`), custom reconciliation leaves that RowNode untouched.
-
-Programmatic checkbox restoration must not feed back into the logical exception state.
-
----
-
-## 10. Backend action wire contract
-
-The backend does not need `scope` or disabled-row IDs.
-
-### Explicit/manual/current-page
-
-```json
-{
-  "selection": {
-    "mode": "include",
-    "ids": ["A", "B"]
-  }
-}
-```
-
-Meaning: selection-eligible rows among exact A and B. Native UI selection should already prevent disabled rows, but backend eligibility remains authoritative for stale/crafted requests.
-
-### Select All Filtered
-
-```json
-{
-  "selection": {
-    "mode": "exclude",
-    "ids": ["A"]
-  },
-  "filters": [
-    {
-      "field": "status",
-      "operator": "equals",
-      "value": "Completed"
-    }
-  ]
-}
-```
-
-Meaning: eligible matching backend rows except user-deselected A.
-
-### All Records
-
-```json
-{
-  "selection": {
-    "mode": "exclude",
-    "ids": ["A"]
-  }
-}
-```
-
-Meaning: all eligible records except user-deselected A.
-
-The frontend still knows internally whether exclude currently represents filtered-wide or all-record selection. That internal row-model context is used only to decide whether translated filters are attached.
-
----
-
-## 11. Actions and refresh
-
-Selection changes do not call the action endpoint by themselves.
-
-A backend mutation occurs only when the user invokes a real feature action such as the current Transaction status actions.
-
-Before mutation, Python applies the authoritative row eligibility rule to the logical target. This is what protects disabled rows that SSRM never loaded into the browser.
-
-After success, SSRM uses its own native refresh path:
-
-```ts
-api.refreshServerSide();
-```
-
-Do not force SSRM to copy Infinite cache behavior just because both use the same backend query contract.
-
----
-
-## 12. Retry
-
-Datasource failure uses SSRM-native failure bookkeeping.
-
-Retry uses:
-
-```ts
-api.retryServerSideLoads();
-```
-
-Selection is not cleared merely because a server-side load fails or retries.
-
----
-
-## 13. Flat-state assumption
-
-The current selection adapter assumes flat SSRM selection with `groupSelects: 'self'`.
-
-If grouping/tree selection is introduced later, do not flatten hierarchical selection into this contract without deliberate backend/product semantics.
-
----
-
-## 14. Native vs custom ownership
-
-| Behaviour | Owner |
-| --- | --- |
-| Individual eligible rows | Native AG Grid SSRM |
-| Loaded-row selectability | Native AG Grid callback + feature row policy |
-| Explicit multi-row selection | Native AG Grid SSRM |
-| Header All Records | Native AG Grid SSRM |
-| Unloaded all-record selection | Native SSRM selection state + backend eligibility at action time |
-| Current Page command | Small command over selectable native RowNodes |
-| All Filtered logical intent | Application state |
-| Filtered user exclusions | Application state |
-| Loaded-row sync during All Filtered | Application -> eligible AG Grid RowNodes |
-| Disabled unloaded rows | Backend eligibility |
-| Action target construction | Shared grid helper + feature mapper |
-| Retry/refresh | Native SSRM APIs |
-
----
-
-## 15. Rules for future developers and coding assistants
-
-1. Keep stable backend Row IDs.
-2. Prefer native SSRM selection before adding custom state.
-3. Keep the native header meaning as All Records unless product requirements deliberately change it.
-4. Use native server-side selection state for explicit/all-record selection.
-5. Treat Current Page as exact selectable IDs, not a backend page scope.
-6. Disabled rows are outside the selection universe; never manufacture their IDs as include/exclude bookkeeping.
-7. Use native `isRowSelectable` for loaded rows and backend eligibility for unloaded rows.
-8. Keep custom state only where native SSRM cannot represent the required product meaning.
-9. Reset custom All Filtered when its defining filter changes.
-10. Preserve native explicit and All Records selection across visible filter changes.
-11. Preserve selection across sorting/pagination.
-12. Reuse the same feature filter mapper for row loading and filtered actions.
-13. Do not serialize redundant `scope` in action payloads.
-14. Use SSRM-native retry/refresh APIs; do not copy Infinite lifecycle blindly.
-15. Review grouped/hierarchical selection separately if grouping is introduced.
-
-See `docs/row-interaction.md` for the reusable selection-disabled/read-only policy.
+Use [Server-backed manual regression](../testing/server-backed-manual-testing.md) for the current SSRM browser scenarios. A successful Client or Infinite run does not substitute for SSRM verification.
