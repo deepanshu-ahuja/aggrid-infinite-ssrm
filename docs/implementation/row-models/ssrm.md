@@ -1,8 +1,8 @@
 # Server-Side Row Model (SSRM) implementation guide
 
-This is the current row-model entry point for AG Grid Enterprise **Server-Side Row Model (SSRM)** in this repository.
+This document is the current source of truth for the repository's AG Grid Enterprise **Server-Side Row Model (SSRM)** implementation.
 
-Use this document when you want to understand or extract the SSRM implementation without first reading the Client or Infinite implementation.
+Its scope is SSRM only. Shared capabilities are linked where useful, but this guide does not document other row-model implementations.
 
 ## Current ownership
 
@@ -26,7 +26,7 @@ SSRM uses:
 
 - `rowModelType="serverSide"`;
 - Enterprise SSRM and SSRM API modules;
-- the shared flat SSRM datasource adapter;
+- the flat SSRM datasource adapter;
 - stable backend `getRowId`;
 - backend sort/filter mapping;
 - request cancellation on datasource destruction;
@@ -40,7 +40,7 @@ See [API and data flow](../api-data-flow.md), [AG Grid native usage](../ag-grid-
 
 ## Selection
 
-SSRM deliberately uses native Enterprise selection where AG Grid represents the requirement:
+SSRM uses native Enterprise selection where AG Grid represents the required meaning:
 
 ```text
 manual / explicit rows
@@ -56,7 +56,7 @@ All Filtered
 → application-owned semantic gap
 ```
 
-The shared logical target remains only `include | exclude` plus IDs; backend eligibility stays authoritative.
+The logical operation target remains `include | exclude` plus IDs, with backend eligibility authoritative for the final business operation.
 
 Read the full [SSRM selection contract](ssrm-selection.md).
 
@@ -77,7 +77,7 @@ See [Selected-row totals](../selection-counts.md).
 
 ## Editing and conflicts
 
-SSRM reuses the shared stable-ID tracked editing engine. Unsaved LOCAL work is not stored only in RowNodes because SSRM store refresh/recreation can replace them.
+SSRM uses the shared stable-ID tracked editing engine. Unsaved LOCAL work is not stored only in RowNodes because SSRM store refresh/recreation can replace them.
 
 Fresh SSRM rows are reconciled against BASE / LOCAL / REMOTE state before remaining LOCAL values are restored.
 
@@ -93,13 +93,13 @@ See [Row interaction](../row-interaction.md).
 
 Current Page uses native AG Grid CSV over the exact resolved pagination page.
 
-Selected export is backend-owned because native/custom SSRM logical selection can include unloaded rows.
+Selected export is backend-owned because SSRM selection can represent unloaded rows.
 
 See [Grid export](../grid-export.md).
 
 ## Grid State and lifecycle
 
-The concrete SSRM root owns its `GridApi`, SSRM datasource/store lifecycle, Grid State persistence, native selection APIs, retry, refresh and teardown. Do not force SSRM through Infinite mechanics for code symmetry.
+The concrete SSRM root owns its `GridApi`, datasource/store lifecycle, Grid State persistence, native selection APIs, retry, refresh and teardown.
 
 ## Main implementation entry points
 
@@ -114,4 +114,6 @@ For the searchable frontend footprint, use `GRIDCAP-ROWMODEL-SSRM` in the [capab
 
 ## Verification
 
-Use [Server-backed manual regression](../testing/server-backed-manual-testing.md) for the current SSRM browser scenarios. A successful Client or Infinite run does not substitute for SSRM verification.
+Use [Server-backed manual regression](../testing/server-backed-manual-testing.md) for the current SSRM browser scenarios.
+
+Manual verification must not be marked complete unless the SSRM scenarios were actually run.
