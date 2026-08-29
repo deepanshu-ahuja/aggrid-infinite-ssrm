@@ -9,6 +9,10 @@ PROJECT_ROOT = BACKEND_DIR.parent
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 
 DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() == "true"
+# Browser regression needs one explicit switch for test-only HTTP helpers such as deterministic data
+# reset. It is OFF by default so a normal local/Databricks process cannot expose E2E control routes by
+# accident; CI enables it only for the dedicated Playwright backend process.
+E2E_TESTING = os.getenv("E2E_TESTING", "false").lower() == "true"
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 if not SECRET_KEY:
