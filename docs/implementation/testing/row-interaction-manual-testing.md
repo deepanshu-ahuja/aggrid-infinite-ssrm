@@ -27,10 +27,13 @@ frontend/src/shared/grid/rows/gridRowInteraction.ts
 → generic interaction predicates
 
 frontend/src/shared/grid/rows/gridRowInteractionClass.ts
-→ generic row-class mapping
+→ dynamic interaction rowClassRules
 
 frontend/src/features/transactions/grid/transactionRowInteraction.ts
-→ Transaction adapter/presentation inputs
+→ Transaction adapter + transactionRowClassRules
+
+frontend/src/features/transactions/transactionsGrid.config.ts
+→ supplies the dynamic interaction rules to Client, Infinite and SSRM defaults
 
 frontend/src/shared/grid/selection/client-side/useClientSideSelectionController.ts
 frontend/src/shared/grid/selection/infinite/useInfiniteSelectionController.tsx
@@ -153,18 +156,60 @@ Verify:
 4. modifying row actions are unavailable;
 5. selection-based actions do not target the row.
 
-## 2. Verify policy recomputation after Save
+## 2. Verify authoritative interaction-mode transitions
+
+This is a lifecycle check, not only a data-value check. The Access indicator, row treatment and native checkbox eligibility must all reflect the same latest authoritative mode after refresh.
+
+### Save: `selectionDisabled → enabled`
 
 Use `TRX-100001` (`Pending + Treasury`).
 
 1. edit Account from `Treasury` to `Operating`;
 2. Save the row;
 3. wait for authoritative data refresh;
-4. confirm the row becomes `enabled`;
-5. confirm restriction presentation disappears;
-6. confirm the checkbox becomes selectable.
+4. confirm the `Selection disabled` indicator disappears;
+5. confirm the cream/warning restricted-row treatment disappears;
+6. confirm the checkbox becomes enabled;
+7. click the checkbox and confirm the row receives a normal checked state;
+8. with only that row selected, confirm the header represents a normal partial selection rather than a disabled-row artifact.
 
-This verifies that interaction mode comes from authoritative backend data rather than a stale frontend-only flag.
+### Import: exercise all mutable directions together
+
+Restart/reset the demo dataset, then use Import CSV with:
+
+```csv
+id,account,status
+txn-00002,Treasury,Completed
+txn-00003,Treasury,Pending
+txn-00001,Settlement,Completed
+```
+
+After Preview and Apply, wait for the authoritative row-model refresh and verify independently on `/client`, `/infinite`, and `/ssrm`:
+
+```text
+txn-00002 / TRX-100001
+selectionDisabled → enabled
+→ Access restriction disappears
+→ cream/warning row class disappears
+→ checkbox is enabled
+→ clicking it produces a visible check and one selected row
+
+txn-00003 / TRX-100002
+enabled → selectionDisabled
+→ Selection disabled indicator appears
+→ cream/warning row treatment appears
+→ checkbox is disabled
+
+txn-00001 / TRX-100000
+enabled → readOnly
+→ Read only indicator appears
+→ locked row treatment appears
+→ checkbox is disabled
+```
+
+A stale visual class is a failure even if the underlying checkbox can technically be selected. A newly enabled selected checkbox must not still look grey/disabled because of an old `selectionDisabled` class.
+
+The Playwright Import regression automates this exact three-row transition on all three row models; this manual section exists to make the expected UI contract explicit.
 
 ## 3. Client-Side selection
 
