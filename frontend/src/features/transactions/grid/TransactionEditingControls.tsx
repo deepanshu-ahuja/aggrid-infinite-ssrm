@@ -1,3 +1,4 @@
+// GRIDCAP-EDIT-SAVE-SELECTED | GRIDCAP-EDIT-VALIDATION | GRIDCAP-EDIT-CONFLICT
 import { useMemo, useState } from 'react';
 import {
   Alert,
@@ -19,14 +20,12 @@ import type {
 } from './transactionEditing';
 
 interface TransactionEditingControlsProps {
-  /** All real drafts, whether currently selected or not. */
   editedRowCount: number;
-  /** Number of unresolved field conflicts across all tracked drafts. */
   conflictCount: number;
-  /** Only drafts whose row is currently included by the logical checkbox selection. */
+  validationErrorCount: number;
   selectedEditedRowCount: number;
-  /** Selected dirty rows cannot be saved while any of those rows still contains a conflict. */
   selectedEditsHaveConflict: boolean;
+  selectedEditsHaveValidationError: boolean;
   lastEdit?: TransactionLastEdit;
   isSaving: boolean;
   saveError?: string;
@@ -42,8 +41,10 @@ const STATUSES: readonly TransactionStatus[] = ['Completed', 'Pending', 'Failed'
 export function TransactionEditingControls({
   editedRowCount,
   conflictCount,
+  validationErrorCount,
   selectedEditedRowCount,
   selectedEditsHaveConflict,
+  selectedEditsHaveValidationError,
   lastEdit,
   isSaving,
   saveError,
@@ -73,6 +74,7 @@ export function TransactionEditingControls({
 
   const hasBulkChanges = Object.keys(bulkChanges).length > 0;
   const hasSelectedEdits = selectedEditedRowCount > 0;
+  const selectedSaveBlocked = selectedEditsHaveConflict || selectedEditsHaveValidationError;
 
   return (
     <Stack spacing={1.5}>
@@ -80,6 +82,13 @@ export function TransactionEditingControls({
         <Alert severity="warning">
           {conflictCount} field conflict{conflictCount === 1 ? '' : 's'} need review. Click a highlighted
           cell and choose <strong>Use server</strong> or <strong>Keep my edit</strong> before saving that row.
+        </Alert>
+      ) : null}
+
+      {validationErrorCount > 0 ? (
+        <Alert severity="error">
+          {validationErrorCount} validation error{validationErrorCount === 1 ? '' : 's'} need correction.
+          Invalid local edits stay visible and dirty until corrected or discarded.
         </Alert>
       ) : null}
 
@@ -125,7 +134,8 @@ export function TransactionEditingControls({
         <Stack spacing={1}>
           <Typography variant="subtitle2">Flow 2 — bulk edit current page</Typography>
           <Typography variant="body2" color="text.secondary">
-            Only checked fields are changed; unchecked fields remain untouched.
+            Only checked fields are changed; unchecked fields remain untouched. Invalid values are applied
+            as local drafts and highlighted so they can be corrected before Save.
           </Typography>
 
           <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} useFlexGap flexWrap="wrap">
@@ -156,7 +166,7 @@ export function TransactionEditingControls({
         <Button
           size="small"
           variant="contained"
-          disabled={!hasSelectedEdits || isSaving || selectedEditsHaveConflict}
+          disabled={!hasSelectedEdits || isSaving || selectedSaveBlocked}
           onClick={onSaveSelected}
         >
           {isSaving ? 'Saving…' : `Save selected edits (${selectedEditedRowCount})`}
@@ -169,6 +179,11 @@ export function TransactionEditingControls({
       {selectedEditsHaveConflict ? (
         <Typography variant="caption" color="warning.main">
           Selected edits include unresolved conflicts. Resolve the highlighted cells before saving the selection.
+        </Typography>
+      ) : null}
+      {selectedEditsHaveValidationError ? (
+        <Typography variant="caption" color="error.main">
+          Selected edits include invalid fields. Correct or discard the highlighted values before saving the selection.
         </Typography>
       ) : null}
       {saveError ? <Alert severity="error">{saveError}</Alert> : null}
