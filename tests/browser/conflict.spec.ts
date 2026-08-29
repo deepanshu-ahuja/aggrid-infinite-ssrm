@@ -62,7 +62,8 @@ for (const route of routes) {
     await setRemoteAccount(request, remoteValue);
     await triggerNormalAuthoritativeRefresh(page, route);
 
-    const accountCell = rowById(page, SEEDED_ROWS.enabled).locator('.ag-cell[col-id="account"]');
+    const row = rowById(page, SEEDED_ROWS.enabled);
+    const accountCell = row.locator('.ag-cell[col-id="account"]');
     await expect(accountCell).toHaveClass(/grid-cell--edit-conflict/);
     await expect(accountCell).toHaveText(localValue);
 
@@ -74,9 +75,9 @@ for (const route of routes) {
 
     await expect(accountCell).toHaveText(remoteValue);
     await expect(accountCell).not.toHaveClass(/grid-cell--edit-conflict/);
-    await expect(
-      rowById(page, SEEDED_ROWS.enabled).getByRole('button', { name: 'Save', exact: true }),
-    ).toBeDisabled();
+    // Clean rows intentionally render no row Save/Discard controls; the action renderer is dirty-only.
+    await expect(row.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+    await expect(row.getByRole('button', { name: 'Discard', exact: true })).toHaveCount(0);
     await expect(page.getByText(/0 rows edited total; 0 selected/)).toBeVisible();
 
     await expectNoPageErrors(pageErrors, `${route} Use server conflict resolution`);
@@ -112,18 +113,25 @@ for (const route of routes) {
   }) => {
     const pageErrors = await openGrid(page, route);
     const remoteValue = `REMOTE VALID ${route.slice(1)}`;
+    const accountCell = rowById(page, SEEDED_ROWS.enabled).locator('.ag-cell[col-id="account"]');
 
     await setLocalAccount(page, '');
-    await expect(page.getByText('Account is required.', { exact: true })).toBeVisible();
+    // The editor helper disappears after commit. A committed invalid LOCAL value is represented by the
+    // field-local cell state and tooltip, while the editing controls publish the aggregate error count.
+    await expect(accountCell).toHaveClass(/grid-cell--validation-error/);
+    await expect(page.getByText(/1 validation error need correction/)).toBeVisible();
+
     await setRemoteAccount(request, remoteValue);
     await triggerNormalAuthoritativeRefresh(page, route);
 
-    const accountCell = rowById(page, SEEDED_ROWS.enabled).locator('.ag-cell[col-id="account"]');
     await expect(accountCell).toHaveClass(/grid-cell--validation-error/);
     await expect(accountCell).toHaveClass(/grid-cell--edit-conflict/);
     await expect(
       rowById(page, SEEDED_ROWS.enabled).getByRole('button', { name: 'Save', exact: true }),
     ).toBeDisabled();
+
+    await accountCell.hover();
+    await expect(page.getByText(/Validation: Account is required\./)).toBeVisible();
 
     await accountCell.click();
     await page.getByRole('button', { name: 'Keep my edit', exact: true }).click();
