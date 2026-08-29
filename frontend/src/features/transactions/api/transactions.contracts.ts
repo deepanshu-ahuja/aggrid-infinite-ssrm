@@ -68,6 +68,29 @@ export interface TransactionBulkUpdateResponse {
   updatedCount: number;
 }
 
+/** Current Import transports CSV text explicitly so parsing and validation remain backend-authoritative. */
+export interface TransactionImportRequest {
+  filename: string;
+  content: string;
+}
+
+export interface TransactionImportError {
+  /** 1-based CSV line number including the header; null means a file-level error. */
+  row: number | null;
+  id?: string | null;
+  fields: Record<string, string[]>;
+}
+
+export interface TransactionImportPreviewResponse {
+  valid: boolean;
+  rowCount: number;
+  errors: TransactionImportError[];
+}
+
+export interface TransactionImportApplyResponse {
+  updatedCount: number;
+}
+
 /** Fields that the Transactions backend explicitly allows for server-side sorting/filtering. */
 export type TransactionField =
   'reference' | 'account' | 'amount' | 'currency' | 'status' | 'transactionDate';
