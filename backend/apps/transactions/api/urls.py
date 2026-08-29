@@ -2,6 +2,7 @@ from django.urls import path
 
 from .client_views import TransactionCollectionView
 from .e2e_views import TransactionE2EResetView
+from .import_views import TransactionImportApplyView, TransactionImportPreviewView
 from .views import (
     TransactionBulkUpdateView,
     TransactionDetailView,
@@ -17,6 +18,10 @@ urlpatterns = [
     path("", TransactionCollectionView.as_view(), name="transaction-collection"),
     path("query/", TransactionQueryView.as_view(), name="transaction-query"),
     path("bulk/", TransactionBulkUpdateView.as_view(), name="transaction-bulk-update"),
+    # Import is a separate workflow from tracked cell editing. Preview is mutation-free; Apply
+    # revalidates the same CSV and persists its explicit update set atomically.
+    path("import/preview/", TransactionImportPreviewView.as_view(), name="transaction-import-preview"),
+    path("import/apply/", TransactionImportApplyView.as_view(), name="transaction-import-apply"),
     path(
         "selection/export/",
         TransactionSelectionExportView.as_view(),
