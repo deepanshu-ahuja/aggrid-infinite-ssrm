@@ -32,9 +32,9 @@ Playwright TypeScript test runner
         ↓ controls
 Chromium browser
         ↓ opens
-React + AG Grid application from Vite :5173
+React + AG Grid application from Vite
         ↓ HTTP API requests
-Django REST API :8000
+Django REST API
         ↓ reads/writes
 Transaction authoritative data
 ```
@@ -90,6 +90,8 @@ install Chromium
                 ▼
         npx playwright test
 ```
+
+CI deliberately keeps the original `5173 → 8000` ports. The separate `5174 → 8001` pair described below is a local convenience so a developer can keep the normal development app running while Playwright uses its own isolated application processes.
 
 ### Why `E2E_TESTING=true`?
 
@@ -326,74 +328,88 @@ A new browser spec must use the repository fixture so its starting data does not
 
 ## Local execution
 
-Install once as needed from the repository root:
+### Recommended: keep the normal app running in parallel
 
-```bash
-npm ci
-python -m pip install -r requirements.txt
-cd tests/browser && npm install
-npx playwright install chromium
+The local E2E scripts use a separate port pair from the normal development app:
+
+```text
+normal development
+React/Vite :5173 → Django :8000
+
+Playwright E2E
+React/Vite :5174 → Django :8001
 ```
 
-Start the dedicated E2E backend in terminal 1:
+This is important because the E2E Django process repeatedly resets its own in-memory Transaction data. Your normal Django process on `8000` remains separate and is not reset by Playwright.
+
+First-time browser setup from the repository root:
+
+```bash
+npm run e2e:install
+```
+
+Keep your normal development React/Django processes running if you want. Then open two additional terminals for the E2E application.
+
+Terminal A — dedicated E2E Django:
 
 ```bash
 source .venv/bin/activate
-E2E_TESTING=true python backend/manage.py runserver 127.0.0.1:8000 --noreload
+npm run e2e:backend
 ```
 
-Start Vite in terminal 2:
+This starts:
+
+```text
+Django :8001
+E2E_TESTING=true
+--noreload
+```
+
+Terminal B — dedicated E2E Vite:
 
 ```bash
-npm run dev -- --host 127.0.0.1
+npm run e2e:frontend
 ```
 
-Use terminal 3 for Playwright.
+This starts:
 
-Normal headless run:
+```text
+Vite :5174
+/api proxy → http://127.0.0.1:8001
+```
+
+Terminal C — choose how to run Playwright:
+
+```bash
+# Headless complete suite
+npm run e2e:test
+
+# Visible Chromium, one test at a time
+npm run e2e:headed
+
+# Interactive Playwright UI
+npm run e2e:ui
+
+# Playwright inspector/debug mode
+npm run e2e:debug
+```
+
+For watching and selecting individual tests locally, `npm run e2e:ui` is usually the easiest option.
+
+The root scripts set `PLAYWRIGHT_BASE_URL=http://127.0.0.1:5174`, so Playwright never accidentally drives the normal development frontend on `5173` when using these commands.
+
+### Direct commands from `tests/browser`
+
+The browser package also exposes convenience scripts:
 
 ```bash
 cd tests/browser
-npx playwright test
+npm run test:headed
+npm run test:ui
+npm run test:debug
 ```
 
-Visible browser, one test at a time so the flow is easy to watch:
-
-```bash
-cd tests/browser
-npx playwright test --headed --workers=1
-```
-
-Interactive Playwright UI:
-
-```bash
-cd tests/browser
-npx playwright test --ui
-```
-
-Run one spec visibly:
-
-```bash
-npx playwright test validation.spec.ts --headed --workers=1
-npx playwright test conflict.spec.ts --headed --workers=1
-npx playwright test selection.spec.ts --headed --workers=1
-```
-
-Run one matching scenario:
-
-```bash
-npx playwright test --headed --workers=1 -g "/ssrm: Use server"
-```
-
-Paused inspector/debug session:
-
-```bash
-npx playwright test --debug -g "/ssrm: Use server"
-```
-
-`--headed` shows the Chromium window. `--ui` is usually easiest for choosing/rerunning individual scenarios locally.
-
-Normal development/manual Django startup should not set `E2E_TESTING=true` unless the developer intentionally wants the reset endpoint for an E2E run.
+Those direct browser-package commands use the Playwright config base URL. If the separate E2E frontend on `5174` is desired, either use the root `npm run e2e:*` commands above or set `PLAYWRIGHT_BASE_URL` explicitly.
 
 ## Before starting the next grid capability
 

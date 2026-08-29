@@ -14,7 +14,14 @@
     "test": "vitest",
     "test:run": "vitest run",
     "backend:check": "python3 backend/manage.py check",
-    "backend:test": "python3 backend/manage.py test apps.transactions"
+    "backend:test": "python3 backend/manage.py test apps.transactions",
+    "e2e:install": "cd tests/browser && npm install && npm run install:chromium",
+    "e2e:backend": "E2E_TESTING=true python3 backend/manage.py runserver 127.0.0.1:8001 --noreload",
+    "e2e:frontend": "VITE_API_PROXY_TARGET=http://127.0.0.1:8001 vite --host 127.0.0.1 --port 5174",
+    "e2e:test": "cd tests/browser && PLAYWRIGHT_BASE_URL=http://127.0.0.1:5174 npm test",
+    "e2e:headed": "cd tests/browser && PLAYWRIGHT_BASE_URL=http://127.0.0.1:5174 npm run test:headed",
+    "e2e:ui": "cd tests/browser && PLAYWRIGHT_BASE_URL=http://127.0.0.1:5174 npm run test:ui",
+    "e2e:debug": "cd tests/browser && PLAYWRIGHT_BASE_URL=http://127.0.0.1:5174 npm run test:debug"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
