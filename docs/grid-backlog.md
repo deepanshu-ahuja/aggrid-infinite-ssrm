@@ -10,6 +10,7 @@ Useful current references:
 - `docs/implementation/grid-capabilities.md` — implemented capability catalog;
 - `docs/implementation/grid-capability-tags.md` — searchable frontend capability registry;
 - `docs/implementation/grid-import.md` — current Transaction Import contract;
+- `docs/implementation/configurable-ssrm-experiment.md` — current isolated configurable SSRM boundary experiment;
 - `docs/implementation/row-models/client.md` — Client-Side implementation guide;
 - `docs/implementation/row-models/infinite.md` — Infinite implementation guide;
 - `docs/implementation/row-models/ssrm.md` — SSRM implementation guide;
@@ -21,19 +22,20 @@ Statuses used here: **VERIFY**, **DESIGN**, **TODO**, **PLANNED**, **DEFERRED**.
 
 ## Current agreed sequence
 
-The existing-capability regression-hardening implementation is complete. The implementation browser run passed 80/80 TypeScript Playwright scenarios across Client, Infinite and SSRM, alongside passing frontend and backend checks. The later Playwright local-workflow/coverage-view cleanup was merged through PR #35 and its exact head passed Frontend, Backend and Browser regression CI.
+The existing-capability regression-hardening implementation is complete. Transaction Import was merged through PR #38. The later row-interaction refresh hardening was merged through PR #39 after exact-head CI passed; it includes native `rowClassRules`, SSRM eligibility/selection reconciliation, mutation-path regression coverage, and active indeterminate-header presentation coverage.
 
-Transaction Import was completed and merged to `main` through PR #38. Manual use then exposed a row-interaction presentation regression when an authoritative write changed `interactionMode`: an old `selectionDisabled` class could remain on a now-enabled row. PR #39 fixes mutable interaction presentation with native `rowClassRules` and is the active verification PR.
+PR #40 is the current isolated configurable SSRM experiment. Its first code checkpoint implements the JSON-safe provider / validation / compiler / allowlisted registry boundary and one real `/configurable-ssrm` SSRM composition path without refactoring `/client`, `/infinite`, or `/ssrm`.
 
-PR #39 also contains real-grid regression scenarios for interaction-mode transitions through Import, single-row Save, Save Selected/bulk persistence and selected Change Status on Client, Infinite and SSRM. Those newly added mutation-path scenarios are not considered passed coverage until the exact PR head completes browser CI successfully.
+CI run #275 at checkpoint `04a02c63c03f74ef3a08507e3d6f0de9b81cdd3d` passed Frontend lint/typecheck/unit/build, Backend checks/tests, and **98/98** Playwright browser scenarios, including the new configurable SSRM real-query proof. Documentation cleanup follows on the same PR and requires its own exact-head CI before merge readiness is claimed.
 
 Current handoff sequence:
 
 ```text
-1. Finish PR #39 exact-head CI / row-interaction verification and merge only when explicitly requested
-2. After merge, synchronize grid-foundation with the new main head
-3. Build an isolated fourth configurable SSRM-based grid experiment
-4. Evaluate reuse/migration only after that experiment proves its boundary
+1. Finish PR #40 implementation/docs exact-head CI
+2. Merge PR #40 only when explicitly requested
+3. After merge, synchronize grid-foundation with the new main head
+4. If chosen, prove local resolved access projections as the next configurable-table phase
+5. Evaluate reuse/migration only after the isolated boundary has enough evidence; migration is not automatic
 ```
 
 Do not keep expanding Playwright merely to increase test count. Add browser coverage when a new capability or a concrete regression introduces a material real-browser/AG Grid/backend risk.
@@ -53,6 +55,7 @@ Current guides include:
 - `docs/implementation/testing/row-interaction-manual-testing.md`
 - `docs/implementation/testing/validation-manual-testing.md`
 - `docs/implementation/testing/import-manual-testing.md`
+- `docs/implementation/testing/configurable-ssrm-manual-testing.md`
 - Client-specific scenarios in `docs/implementation/row-models/client.md`
 
 Do not mark manual verification complete unless those scenarios were actually run.
@@ -132,16 +135,16 @@ References:
 ### A7. Dynamic row-interaction transitions
 **Status:** VERIFY
 
-Authoritative writes can change the backend-derived `interactionMode`. Mutable `selectionDisabled` / `readOnly` presentation must use native `rowClassRules` so old restricted classes are removed when a surviving RowNode becomes enabled.
+Authoritative writes can change the backend-derived `interactionMode`. Mutable `selectionDisabled` / `readOnly` presentation uses native `rowClassRules` so old restricted classes are removed when a surviving RowNode becomes enabled.
 
-PR #39 regression coverage exercises the transition lifecycle across all three row models through:
+Merged PR #39 regression coverage exercises the transition lifecycle across all three row models through:
 
 - Import;
 - single-row Save;
 - Save Selected / bulk persistence;
 - selected Change Status.
 
-The Save Selected scenario also verifies that rows selected while enabled do not remain selected after the authoritative response makes them non-selectable.
+The Save Selected SSRM scenario also verifies that rows selected while enabled do not remain explicitly selected after the authoritative response makes them non-selectable. Client and SSRM additionally verify that an active indeterminate header remains primary-colored rather than visually resembling a disabled checkbox.
 
 References:
 
@@ -153,7 +156,7 @@ References:
 ### B1. `GRIDCAP-*` registry and source markers
 **Status:** VERIFY
 
-`docs/implementation/grid-capability-tags.md` is authoritative for searchable frontend capability markers.
+`docs/implementation/grid-capability-tags.md` is authoritative for searchable frontend capability markers. The configurable-table boundary uses `GRIDCAP-CONFIGURABLE-TABLE`.
 
 When a frontend capability footprint changes:
 
@@ -214,7 +217,7 @@ Current implemented contract:
 - concrete Client/Infinite/SSRM authoritative refresh after Apply;
 - existing LOCAL drafts remain separate and reconcile against imported REMOTE values normally.
 
-Import implementation is merged on `main`. The remaining VERIFY status is for broader/manual verification and the row-interaction regression discovered during that verification; it does not mean the Import feature is still waiting to be implemented.
+Import implementation is merged on `main`. The remaining VERIFY status is for broader/manual verification, not unfinished implementation.
 
 Current deliberate non-goals:
 
@@ -236,23 +239,57 @@ Do not hide Import inside ordinary cell-edit persistence.
 ## E. Isolated configurable SSRM experiment
 
 ### E1. Fourth configurable grid path
-**Status:** PLANNED / AFTER PR #39 VERIFICATION
+**Status:** VERIFY / PR #40
 
-Build a separate SSRM-based grid composition path to prove the metadata compiler/resolver/registry boundary.
+The first isolated SSRM composition slice is implemented on `/configurable-ssrm` and intentionally does not refactor the proven Client, Infinite or SSRM roots.
 
-Rules:
+Implemented boundary:
 
-- do not refactor `/client`, `/infinite` or `/ssrm` merely to make the experiment work;
-- do not rewrite proven shared loading, selection, tracked editing, conflict, validation, freshness, lifecycle or Grid State mechanics while the composition boundary is still being proven;
-- temporary feature-level duplication is acceptable when it protects proven behavior and makes comparison explicit;
-- backend metadata may describe supported JSON-safe table/business composition;
-- backend metadata does not dynamically select Client/Infinite/SSRM;
-- frontend/application chooses the supported AG Grid row model(s);
-- executable renderers/editors/formatters/validators/action behavior remain frontend implementations;
-- evaluate migration/reuse only after the isolated path proves the boundary;
-- migration is not automatic.
+- JSON-safe table/column metadata contract with `schemaVersion` and `definitionVersion`;
+- explicit stable column `id`, data `field`, optional `semanticKey`, bounded layout, supported sort/filter metadata and registry references;
+- runtime validation before metadata reaches AG Grid;
+- executable metadata values are rejected;
+- asynchronous replaceable definition-provider interface, currently backed by local metadata;
+- frontend allowlisted renderer/editor/formatter compiler registries with controlled unknown-key failure;
+- feature-owned allowlisted data-source resolver;
+- frontend route explicitly chooses SSRM; metadata does not choose Client/Infinite/SSRM;
+- existing SSRM loading/query/row-eligibility mechanics are reused;
+- focused compiler tests plus a real browser scenario proving metadata-compiled columns drive a real SSRM backend sort/query.
 
-Architecture proposal material remains separate from current implementation docs.
+Checkpoint verification: CI #275 passed Frontend, Backend and **98/98** Playwright scenarios at `04a02c63c03f74ef3a08507e3d6f0de9b81cdd3d`. Final documentation commits still require exact-head CI before PR #40 is considered ready.
+
+Current deliberate non-goals:
+
+- backend-served metadata;
+- role/group/access projections;
+- sensitive-field masking/unmasking;
+- tracked-editing parity on the experiment route;
+- metadata-driven business actions;
+- migration of existing routes;
+- JSON exposure of arbitrary AG Grid options;
+- metadata-driven row-model choice.
+
+References:
+
+- `docs/implementation/configurable-ssrm-experiment.md`
+- `docs/implementation/testing/configurable-ssrm-manual-testing.md`
+
+### E2. Local resolved access projections
+**Status:** PLANNED / AFTER E1 MERGE IF CHOSEN
+
+Use one base definition to prove safe local field visibility/read-only projections for two access profiles before involving a backend metadata endpoint.
+
+Keep access/policy semantics out of generic grid mechanics. Unknown or disallowed fields must fail safely rather than becoming visible by default.
+
+### E3. Backend metadata provider
+**Status:** PLANNED / AFTER LOCAL PROJECTION PROOF
+
+Only after the local schema/compiler/projection boundary is proven, replace the local provider with a typed backend metadata source. Preserve the same frontend validation/compiler boundary.
+
+### E4. Reuse/migration decision
+**Status:** DESIGN / AFTER EXPERIMENT EVIDENCE
+
+Evaluate whether any proven existing route should adopt the boundary. Migration is not automatic and should happen only where it reduces real duplication without hiding native AG Grid lifecycle ownership.
 
 ## F. Reuse proof
 
@@ -285,7 +322,7 @@ Client-Side, Infinite and flat SSRM exist as separate concrete routes with nativ
 
 ## 2026-08 — Row interaction
 
-Implemented `enabled | selectionDisabled | readOnly`, native loaded-row guards, backend authority for server-wide operations, editing integration and presentation.
+Implemented `enabled | selectionDisabled | readOnly`, native loaded-row guards, backend authority for server-wide operations, editing integration and presentation. PR #39 later hardened authoritative interaction-mode transitions and SSRM explicit-selection reconciliation.
 
 Reference: `docs/implementation/row-interaction.md`.
 
