@@ -1,4 +1,5 @@
 // GRIDCAP-ROWMODEL-CLIENT | GRIDCAP-ROWMODEL-INFINITE | GRIDCAP-ROWMODEL-SSRM | GRIDCAP-PAGINATION | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-ROW-ELIGIBILITY
+import type { AgGridReactProps } from 'ag-grid-react';
 import {
   clientSideGridDefaults,
   type ClientSideGridOptions,
@@ -13,16 +14,18 @@ import type { Transaction } from './api/transactions.contracts';
 import { transactionRowClassRules } from './grid/transactionRowInteraction';
 
 /**
- * Native AG Grid options that may be supplied to the concrete row-model roots.
- *
- * Grid lifecycle handlers (GridApi ownership, preferences, editing, selection) are intentionally
- * composed inside each concrete Transactions grid root, not hidden in one common page/controller.
- * The GRIDCAP markers above make this feature-level configuration boundary discoverable alongside
- * each row-model implementation without turning the configuration object into a universal wrapper.
+ * Transaction feature options extend the row-model defaults only with the native row-class-rules
+ * property needed by the backend-driven interaction capability. The property remains AG Grid's native
+ * API; this is not a replacement configuration language.
  */
-export type TransactionsClientGridOptions = ClientSideGridOptions<Transaction>;
-export type TransactionsInfiniteGridOptions = ServerBackedGridOptions<Transaction>;
-export type TransactionsSsrmGridOptions = ServerBackedGridOptions<Transaction>;
+type TransactionInteractionGridOptions = Pick<AgGridReactProps<Transaction>, 'rowClassRules'>;
+
+export type TransactionsClientGridOptions = ClientSideGridOptions<Transaction> &
+  TransactionInteractionGridOptions;
+export type TransactionsInfiniteGridOptions = ServerBackedGridOptions<Transaction> &
+  TransactionInteractionGridOptions;
+export type TransactionsSsrmGridOptions = ServerBackedGridOptions<Transaction> &
+  TransactionInteractionGridOptions;
 
 interface TransactionsGridConfig {
   client: {
