@@ -44,6 +44,7 @@ Use these when you are interested in one capability across the supported row mod
 
 ## Manual verification
 
+- [Grid validation manual regression](testing/validation-manual-testing.md)
 - [Server-backed Infinite + SSRM manual regression](testing/server-backed-manual-testing.md)
 - [Row interaction manual verification](testing/row-interaction-manual-testing.md)
 
