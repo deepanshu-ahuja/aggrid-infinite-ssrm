@@ -1,96 +1,104 @@
 # Selected Business Action — Selection Lifecycle
 
-This document records the current rule for selection when a selected-row business mutation completes.
+This document describes the **current implemented** selection lifecycle for the Transactions selected-row business action.
 
-## Current rule
+It is an implementation reference, not a roadmap or a record of discarded designs.
 
-Do not introduce a configurable `clear` / `preserve` policy when an action's behavior is already known in normal frontend code.
+## Current action
 
-The current Transaction Change Status action family always clears its successful target:
+The current selected-row business action is one **Change Status** mutation family:
 
 ```text
-Mark Completed / Mark Pending / Mark Failed
+Mark Completed
+Mark Pending
+Mark Failed
+```
+
+Those controls differ only by the status value they send. They use the same backend mutation path.
+
+Current flow:
+
+```text
+current logical selection
         ↓
-one Change Status mutation family
+Change Status request
         ↓
-backend update succeeds
+PATCH /api/transactions/selection/
         ↓
-call the current row model's existing clearSelection()
+backend succeeds
+        ↓
+current grid root calls its existing clearSelection()
         ↓
 refresh authoritative rows
 ```
 
-If the request fails, the success callback does not run, so the current selection remains available for inspection/retry.
+The backend request contains only the business target and requested status change. Selection clearing is frontend lifecycle behavior and is not serialized to the backend.
 
-Selected export is non-mutating and therefore simply does not clear selection.
+## Mutation ownership
 
-## Business mutation ownership
+`useTransactionSelectionAction(...)` owns the request/pending/error lifecycle for the current Transaction Change Status mutation.
 
-A business mutation owns its own endpoint and payload. Selection lifecycle does not choose the API.
+It does not choose between unrelated business endpoints. A different business operation would own its own feature mutation/API contract.
 
-For example, future actions may be completely separate mutations:
+The success callback is invoked only after the backend update succeeds.
 
-```text
-Change Status -> status/update endpoint
-Approve       -> approval endpoint
-Assign Owner  -> assignment endpoint
-```
+## Row-model ownership of `clearSelection()`
 
-Each action can directly call `clearSelection()` on success if that action requires clearing. An action that should preserve selection does nothing to selection.
-
-Do not build one generic mutation executor merely to route unrelated endpoints.
-
-## Row-model ownership
-
-`clearSelection()` is a shared semantic name, not one implementation covering every row model.
+`clearSelection()` is a common semantic name, not one implementation shared by every row model.
 
 ### Client-Side
 
-The Client selection controller clears native AG Grid selection with `GridApi.deselectAll()` and resets its renderable count/observer.
+`useClientSideSelectionController()` clears native AG Grid selection with `GridApi.deselectAll()` and updates the controller's selected-count/observer state.
 
 ### Infinite
 
-The Infinite selection controller knows whether selection is:
+`useInfiniteSelectionController()` clears whichever selection owner is active:
 
-- page/manual native AG Grid state; or
-- filtered/all compact application state for unloaded rows.
+- native page/manual selection; or
+- compact application-owned filtered/all dataset selection.
 
-Its `clearSelection()` clears the correct owner without enumerating unloaded server rows.
+The feature root does not reproduce those mechanics.
 
 ### SSRM
 
-The SSRM selection controller clears both possible ownership paths correctly:
+`useSsrmSelectionController()` clears both relevant ownership paths:
 
-- native server-side selection state; and
-- the project's custom All Filtered state.
+- native SSRM server-side selection state; and
+- custom All Filtered state.
 
-A feature root should call the controller's `clearSelection()` rather than reproducing those mechanics.
+The feature root delegates to that controller instead of manipulating the two states itself.
 
-## Config-driven actions later
+## Failure behavior
 
-If a future configurable action system genuinely needs selectable behavior, configuration may use a safe behavior key resolved through a frontend registry, for example:
+If Change Status fails:
 
 ```text
-configuration key
-    ↓
-frontend behavior registry
-    ↓
-existing executable behavior such as clearSelection
+backend request fails
+→ success callback does not run
+→ clearSelection() is not called
+→ existing selection remains available
 ```
 
-That registry should be introduced only when actions are actually configuration-driven. Do not add an `if/else` policy layer or no-op preserve handler to hardcoded actions merely because multiple behaviors are theoretically possible.
+This lets the user inspect or retry the same target.
+
+## Non-mutating selected export
+
+Selected export does not change Transaction data, so it does not clear selection.
+
+Client Selected export is local/native. Infinite and SSRM Selected export use the backend selection resolver because their selected universe may include unloaded rows.
 
 ## Focused automated coverage
 
-Current focused coverage checks that:
+Current tests verify that:
 
-- status buttons emit only the chosen status value;
-- the selected Transaction mutation sends only the real backend request;
+- status controls emit only the chosen status value;
+- the mutation hook sends the actual backend request without a selection-lifecycle value;
 - the success callback runs only after backend success;
-- Client successful status update clears native selection and refreshes data;
-- Infinite successful status update clears through the Infinite controller and refreshes data;
-- SSRM successful status update clears through the SSRM controller and refreshes data;
-- Client selected export does not clear selection;
-- row-model-specific selection-controller tests continue to cover their own clear mechanics.
+- Client successful status update clears through the Client selection controller and refetches authoritative data;
+- Infinite successful status update clears through the Infinite selection controller and refreshes its cache;
+- SSRM successful status update clears through the SSRM selection controller and refreshes the server-side store;
+- failed status updates do not clear selection;
+- Client Selected export leaves selection unchanged;
+- row-model-specific controller tests cover their own clear mechanics.
 
-Manual browser regression remains part of the later consolidated verification pass and is not claimed complete here.
+Manual browser verification remains tracked separately and is not claimed complete by this document.
