@@ -121,7 +121,21 @@ Current browser/manual verification guides live under:
 
 - `docs/implementation/testing/`.
 
-They describe scenarios to run. Never claim a manual/browser pass was completed unless it actually was.
+**Manual verification steps are a required deliverable for every meaningful browser-visible or AG Grid lifecycle capability/change.** Do not wait for the user to ask for them.
+
+When such a capability changes, in the same work:
+
+1. create or update the relevant guide under `docs/implementation/testing/`;
+2. cover each applicable row model independently when mechanics/lifecycle differ;
+3. include concrete setup, actions, expected visible/state/network outcomes, important negative cases and pass criteria;
+4. include interactions with existing lifecycle/state that can regress, such as selection, dirty state, validation, conflicts, refresh/recreation, Save/Discard, errors or export as applicable;
+5. link the guide from `docs/implementation/README.md` and the relevant capability document when useful.
+
+Automated tests do not replace these documented browser/manual steps. If a change truly has no meaningful browser/manual surface, a separate checklist is not required, but that should be evident from the capability's scope rather than silently omitted.
+
+If the active execution environment provides a usable browser and the application can be run/accessed, perform the relevant browser verification as part of the work where practical. If the environment cannot run or access the application, keep the steps documented and report that execution limitation precisely.
+
+Never claim a manual/browser pass was completed unless it actually was.
 
 ### Backlog and proposal material
 
@@ -156,7 +170,8 @@ Expected deliverables normally include:
 - useful comments/JSDoc for non-obvious ownership, state or lifecycle logic;
 - current implementation documentation;
 - explicit current limitations;
-- manual verification guidance when browser/AG Grid lifecycle behavior matters;
+- **documented manual/browser verification steps for every meaningful browser-visible or AG Grid lifecycle capability/change**;
+- execution of those browser steps when the active environment can run/access the application;
 - capability-tag review when the frontend capability footprint changes;
 - backlog/status updates when sequencing/status changes;
 - CI validation;
@@ -595,6 +610,8 @@ Meaningful behavior changes should have focused tests at stable boundaries, incl
 
 Test Client, Infinite and SSRM independently where lifecycle or selection implementation differs.
 
+For every browser-visible/AG Grid lifecycle change, automated tests and documented manual/browser steps are complementary deliverables. Keep the manual checklist current in `docs/implementation/testing/`; do not treat green CI as a substitute for documenting what a human/browser regression pass should verify.
+
 Typical frontend verification:
 
 ```bash
@@ -711,12 +728,14 @@ When asked to implement or review something:
 8. preserve useful comments and markers;
 9. add focused tests;
 10. update implementation docs only with implemented behavior;
-11. update relevant row-model guides when ownership/behavior changes;
-12. keep planning/proposal material out of implementation docs;
-13. update backlog/working contract when roadmap or durable rules change;
-14. inspect CI;
-15. keep the open PR accurate;
-16. report manual verification truthfully.
+11. **add/update manual/browser verification steps for every meaningful browser-visible or AG Grid lifecycle change**;
+12. update relevant row-model guides when ownership/behavior changes;
+13. keep planning/proposal material out of implementation docs;
+14. update backlog/working contract when roadmap or durable rules change;
+15. inspect CI;
+16. run browser verification when the active environment can run/access the app;
+17. keep the open PR accurate;
+18. report manual/browser verification truthfully and distinguish documented steps from actually executed scenarios.
 
 Push back when a requested approach weakens architecture or creates an abstraction without a real responsibility.
 
