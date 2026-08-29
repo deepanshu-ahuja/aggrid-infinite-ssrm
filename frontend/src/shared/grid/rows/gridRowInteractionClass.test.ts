@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { RowClassParams } from 'ag-grid-community';
-import { createGridRowInteractionClassGetter } from './gridRowInteractionClass';
+import type { RowClassParams, RowClassRules } from 'ag-grid-community';
+import {
+  createGridRowInteractionClassGetter,
+  createGridRowInteractionClassRules,
+} from './gridRowInteractionClass';
 import type { GridRowInteractionMode } from './gridRowInteraction';
 
 interface TestRow {
@@ -12,29 +15,55 @@ function params(data?: TestRow): RowClassParams<TestRow> {
   return { data } as RowClassParams<TestRow>;
 }
 
-describe('createGridRowInteractionClassGetter', () => {
-  it('uses the common interactionMode property and default classes', () => {
-    const getRowClass = createGridRowInteractionClassGetter<TestRow>();
+function evaluateRule(
+  rules: RowClassRules<TestRow>,
+  className: string,
+  ruleParams: RowClassParams<TestRow>,
+): boolean {
+  const rule = rules[className];
+  if (typeof rule !== 'function') throw new Error(`Expected function rule for ${className}`);
+  return Boolean(rule(ruleParams));
+}
 
-    expect(getRowClass(params({ interactionMode: 'enabled' }))).toBeUndefined();
-    expect(getRowClass(params({ interactionMode: 'selectionDisabled' }))).toBe(
-      'grid-row--selection-disabled',
-    );
-    expect(getRowClass(params({ interactionMode: 'readOnly' }))).toBe('grid-row--read-only');
-  });
-
-  it('supports a feature mode adapter when the backend shape is different', () => {
-    type CustomRow = { access: { mode: GridRowInteractionMode } };
-    const getRowClass = createGridRowInteractionClassGetter<CustomRow>({
-      getMode: (row) => row.access.mode,
-    });
+describe('grid row interaction classes', () => {
+  it('maps mutable interaction modes through rowClassRules', () => {
+    const rules = createGridRowInteractionClassRules<TestRow>();
 
     expect(
-      getRowClass({ data: { access: { mode: 'readOnly' } } } as RowClassParams<CustomRow>),
-    ).toBe('grid-row--read-only');
+      evaluateRule(rules, 'grid-row--selection-disabled', params({ interactionMode: 'enabled' })),
+    ).toBe(false);
+    expect(
+      evaluateRule(
+        rules,
+        'grid-row--selection-disabled',
+        params({ interactionMode: 'selectionDisabled' }),
+      ),
+    ).toBe(true);
+    expect(
+      evaluateRule(rules, 'grid-row--read-only', params({ interactionMode: 'readOnly' })),
+    ).toBe(true);
+
+    // The same rule must become false again when authoritative data changes mode. AG Grid uses this
+    // false result to remove the previously applied class instead of accumulating stale row styling.
+    expect(
+      evaluateRule(rules, 'grid-row--selection-disabled', params({ interactionMode: 'enabled' })),
+    ).toBe(false);
   });
 
-  it('allows class overrides and appends a feature-only class', () => {
+  it('supports a dynamic feature mode adapter', () => {
+    type CustomRow = { access: { mode: GridRowInteractionMode } };
+    const rules = createGridRowInteractionClassRules<CustomRow>({
+      getMode: (row) => row.access.mode,
+    });
+    const rule = rules['grid-row--read-only'];
+    if (typeof rule !== 'function') throw new Error('Expected read-only function rule');
+
+    expect(
+      rule({ data: { access: { mode: 'readOnly' } } } as RowClassParams<CustomRow>),
+    ).toBe(true);
+  });
+
+  it('keeps the additive getter for static/additive class use only', () => {
     const getRowClass = createGridRowInteractionClassGetter<TestRow>({
       classNames: {
         readOnly: 'my-grid--locked',
@@ -50,7 +79,7 @@ describe('createGridRowInteractionClassGetter', () => {
     );
   });
 
-  it('returns no class while a server-backed RowNode has no data', () => {
+  it('returns no additive class while a server-backed RowNode has no data', () => {
     const getRowClass = createGridRowInteractionClassGetter<TestRow>();
     expect(getRowClass(params())).toBeUndefined();
   });
