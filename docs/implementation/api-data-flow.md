@@ -130,6 +130,47 @@ current logical selection
 
 The bulk endpoint is ID-based. It does not use logical exclude-mode selection to manufacture edits for unloaded rows.
 
+## Transaction Import flow
+
+Import is separate from tracked dirty-edit persistence.
+
+```text
+chosen CSV
+  → frontend reads file text
+  → POST /api/transactions/import/preview/
+  → backend parses headers/rows
+  → stable `id` target checks
+  → existing TransactionChangesSerializer validation
+  → structured mutation-free preview result
+```
+
+Apply does not trust the prior Preview result:
+
+```text
+same CSV request
+  → POST /api/transactions/import/apply/
+  → parse + validate again
+  → any error: HTTP 400, no mutation
+  → complete file valid: explicit bulk update
+  → updatedCount
+  → concrete row-model authoritative refresh
+```
+
+Current refresh ownership after successful Import:
+
+```text
+Client
+→ refetch complete TanStack Query collection
+
+Infinite
+→ refreshInfiniteCache()
+
+SSRM
+→ refreshServerSide()
+```
+
+Import does not create LOCAL tracked drafts or deliberately clear checkbox selection. Existing LOCAL drafts are reconciled against the fresh post-import REMOTE values through the existing BASE/LOCAL/REMOTE state machine.
+
 ## Selected Change Status flow
 
 Selected Change Status is a separate business operation from dirty-edit persistence.
@@ -241,6 +282,8 @@ GET   /api/transactions/
 POST  /api/transactions/query/
 PATCH /api/transactions/{id}/
 PATCH /api/transactions/bulk/
+POST  /api/transactions/import/preview/
+POST  /api/transactions/import/apply/
 PATCH /api/transactions/selection/
 POST  /api/transactions/selection/export/
 ```
@@ -259,6 +302,12 @@ query
 
 bulk
 → explicit dirty-row batch Save
+
+import/preview
+→ mutation-free authoritative CSV validation
+
+import/apply
+→ revalidated atomic update-only CSV Import
 
 selection
 → selected Change Status business operation
