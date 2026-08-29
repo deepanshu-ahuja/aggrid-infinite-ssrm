@@ -78,8 +78,10 @@ export function mapTransactionServerValidationErrors(
   if (!isRecord(details) || updates.length === 0) return [];
 
   if (updates.length === 1 && !Array.isArray(details.updates)) {
+    const update = updates[0];
+    if (!update) return [];
     const fields = readFieldErrors(details);
-    return Object.keys(fields).length > 0 ? [{ rowId: updates[0].id, fields }] : [];
+    return Object.keys(fields).length > 0 ? [{ rowId: update.id, fields }] : [];
   }
 
   const updateErrors = details.updates;
