@@ -46,7 +46,8 @@ Use these when you are interested in one capability across the supported row mod
 
 Browser/manual verification material lives under `docs/implementation/testing/`:
 
-- [Browser regression architecture](testing/browser-regression.md)
+- [Browser regression architecture](testing/browser-regression.md) — TypeScript Playwright flow, per-test data reset/isolation, selector/readiness rules, CI diagnostics, future E2E database/auth boundary, and local execution.
+- [Regression coverage matrix](testing/coverage-matrix.md) — current cross-layer inventory of focused frontend/backend tests and Client/Infinite/SSRM Playwright coverage/gaps.
 - [Grid validation manual regression](testing/validation-manual-testing.md)
 - [Server-backed Infinite + SSRM manual regression](testing/server-backed-manual-testing.md)
 - [Row interaction manual verification](testing/row-interaction-manual-testing.md)
@@ -65,7 +66,8 @@ When implementation changes:
 4. update `grid-capability-tags.md` when the frontend capability footprint changes;
 5. update repository entry points such as `README.md` / `AGENTS.md` when navigation or durable rules change;
 6. add/update manual verification steps for browser-visible or AG Grid lifecycle behavior;
-7. keep unimplemented design out of current implementation documents.
+7. update the regression coverage matrix when the applicable automated/manual coverage changes;
+8. keep unimplemented design out of current implementation documents.
 
 When ownership, call flow, lifecycle, or state transitions are easier to understand visually, add a small diagram to the relevant implementation document. **Portable plain-text/ASCII diagrams are the default** because they remain readable in raw Markdown, GitHub, IDE previews, and local viewers. Do not rely on Mermaid-only diagrams unless the repository explicitly guarantees Mermaid rendering for the intended reader.
 
