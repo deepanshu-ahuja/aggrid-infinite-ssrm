@@ -86,7 +86,7 @@ It does not mean the marked implementation can be copied unchanged into another 
 
 **Client:** native local filtering.
 
-**Infinite/SSRM:** AG Grid filter model translated to the backend query contract.
+**Infinite/SSRM:** native AG Grid filter model translated to the backend query contract.
 
 ### `GRIDCAP-PAGINATION`
 
@@ -210,7 +210,7 @@ It does not mean the marked implementation can be copied unchanged into another 
 
 **Invariant:** backend-ineligible rows are not manufactured as user deselection exception IDs.
 
-## Editing and conflicts
+## Editing, validation and conflicts
 
 ### `GRIDCAP-EDIT-TRACKED`
 
@@ -241,6 +241,14 @@ It does not mean the marked implementation can be copied unchanged into another 
 **Meaning:** discard LOCAL unsaved work and restore the latest authoritative value represented by tracked state.
 
 **Ownership:** shared tracked-editing state plus concrete RowNode value restoration.
+
+### `GRIDCAP-EDIT-VALIDATION`
+
+**Meaning:** field validation for LOCAL tracked edits using resolved JSON-safe rule definitions, frontend-registered executable validators, stable row-ID + field error state, Save guards, and backend field-error reconciliation.
+
+**Ownership:** shared validation engine/state plus feature-owned rule configuration/messages and persistence error mapping.
+
+**Invariant:** invalid LOCAL input stays visible and dirty; validation state is separate from BASE/LOCAL/REMOTE conflict state and a field may be both invalid and conflicted.
 
 ### `GRIDCAP-EDIT-CONFLICT`
 
