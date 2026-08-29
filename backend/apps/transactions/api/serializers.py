@@ -12,13 +12,13 @@ TRANSACTION_FIELDS = (
 
 # These are the only fields the current Transactions editing feature allows users to change.
 # Keep this list aligned with the frontend `TRANSACTION_EDITABLE_FIELDS` configuration. Read-only
-# identity/reference/date/interaction policy fields must never become writable merely because they
-# are present on a row.
+# identity/reference/interaction-policy fields must never become writable merely because they are present on a row.
 TRANSACTION_EDITABLE_FIELDS = (
     "account",
     "amount",
     "currency",
     "status",
+    "transactionDate",
 )
 
 FILTER_OPERATORS = (
@@ -58,7 +58,7 @@ class TransactionQuerySerializer(serializers.Serializer):
 
 
 class TransactionChangesSerializer(serializers.Serializer):
-    """Validated patch for one Transaction; identity/reference/date are intentionally not writable."""
+    """Validated patch for one Transaction; identity/reference/interaction policy are not writable."""
 
     # Keep these authoritative constraints aligned with the static frontend Transaction validation rules.
     # Frontend validation improves editing UX; this serializer remains the security/data-integrity boundary.
@@ -69,6 +69,7 @@ class TransactionChangesSerializer(serializers.Serializer):
         choices=("Completed", "Pending", "Failed"),
         required=False,
     )
+    transactionDate = serializers.DateField(required=False)
 
     def to_internal_value(self, data):
         # DRF Serializers ignore undeclared input fields by default. For update requests that would be
