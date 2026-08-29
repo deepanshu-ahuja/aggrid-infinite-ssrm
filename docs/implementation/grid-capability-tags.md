@@ -262,6 +262,18 @@ It does not mean the marked implementation can be copied unchanged into another 
 
 **Ownership:** tracked editing payload derivation and editing-controls presentation.
 
+## Import
+
+### `GRIDCAP-IMPORT`
+
+**Meaning:** Transaction file import as a separate preview/apply workflow, distinct from tracked cell editing.
+
+**Ownership:** feature-owned file selection/presentation and typed Import API integration; backend parsing, persisted-field validation, target validation and atomic application remain authoritative.
+
+**Row-model integration:** after successful Apply, each concrete grid root obtains authoritative data through its existing lifecycle: Client refetches the collection, Infinite refreshes its cache, and SSRM refreshes its server-side store.
+
+**Invariant:** Import does not manufacture LOCAL drafts. Existing LOCAL work is reconciled normally when the authoritative post-import refresh arrives, so a divergent imported value can become an ordinary BASE/LOCAL/REMOTE conflict.
+
 ## Export
 
 ### `GRIDCAP-EXPORT-PAGE`
