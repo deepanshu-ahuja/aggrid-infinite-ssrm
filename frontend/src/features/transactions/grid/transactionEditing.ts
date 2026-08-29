@@ -14,7 +14,13 @@ import { validateTransactionField } from './transactionValidation';
 export const TRANSACTION_EDITABLE_FIELDS = ['account', 'amount', 'currency', 'status'] as const;
 
 export type TransactionEditableField = (typeof TRANSACTION_EDITABLE_FIELDS)[number];
-export type TransactionEditableValue = Transaction[TransactionEditableField];
+
+/**
+ * LOCAL edit state must be able to represent a deliberately cleared editor value before persistence.
+ * The authoritative Transaction/API shape remains strict (`amount: number`, etc.); `null` exists only in
+ * the draft layer so direct and programmatic edits can keep an invalid blank visible and correctable.
+ */
+export type TransactionEditableValue = Transaction[TransactionEditableField] | null;
 export type TransactionChanges = TrackedGridChanges<
   TransactionEditableField,
   TransactionEditableValue
