@@ -80,15 +80,14 @@ for (const route of routes) {
     await expect(discardSelected).toBeEnabled();
     await discardSelected.click();
 
-    await expect(rowById(page, SEEDED_ROWS.enabled).locator('.ag-cell[col-id="account"]')).toHaveText(
-      'Operating',
-    );
+    const selectedRow = rowById(page, SEEDED_ROWS.enabled);
+    await expect(selectedRow.locator('.ag-cell[col-id="account"]')).toHaveText('Operating');
     await expect(
       rowById(page, SEEDED_ROWS.secondEnabled).locator('.ag-cell[col-id="account"]'),
     ).toHaveText(unselectedValue);
-    await expect(
-      rowById(page, SEEDED_ROWS.enabled).getByRole('button', { name: 'Discard', exact: true }),
-    ).toBeDisabled();
+    // Once the selected row is clean the dirty-only row action renderer is intentionally absent.
+    await expect(selectedRow.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+    await expect(selectedRow.getByRole('button', { name: 'Discard', exact: true })).toHaveCount(0);
     await expect(
       rowById(page, SEEDED_ROWS.secondEnabled).getByRole('button', { name: 'Discard', exact: true }),
     ).toBeEnabled();
