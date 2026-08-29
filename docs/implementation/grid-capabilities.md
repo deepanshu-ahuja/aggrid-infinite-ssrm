@@ -356,6 +356,67 @@ If the request fails, the success callback does not run and selection remains av
 
 The request does not carry a selection-lifecycle configuration value.
 
+## Import
+
+Transaction Import is a feature workflow separate from tracked cell editing.
+
+Current contract:
+
+```text
+CSV file
+→ update existing Transactions only
+→ stable Transaction `id` target
+→ one or more editable field columns
+→ Preview validates without mutation
+→ Apply revalidates the file
+→ complete valid file applies atomically
+→ concrete grid root refreshes authoritative data
+```
+
+Supported imported editable fields are:
+
+- `account`;
+- `amount`;
+- `currency`;
+- `status`;
+- `transactionDate`.
+
+The backend owns CSV parsing, target checks, persisted-field validation and mutation. It reuses `TransactionChangesSerializer`, so imported persisted values and ordinary persisted edits share authoritative field rules.
+
+Row interaction follows explicit-edit semantics:
+
+```text
+enabled
+→ import editable
+
+selectionDisabled
+→ import editable
+
+readOnly
+→ import rejected
+```
+
+Import does not create LOCAL tracked drafts and does not deliberately clear selection.
+
+Post-Apply refresh stays row-model-specific:
+
+```text
+Client
+→ refetch complete TanStack Query collection
+
+Infinite
+→ refreshInfiniteCache()
+
+SSRM
+→ refreshServerSide()
+```
+
+Any existing LOCAL drafts then reconcile against imported REMOTE values through the normal BASE/LOCAL/REMOTE state machine. A divergent imported value can therefore become an ordinary edit conflict rather than silently overwriting LOCAL work.
+
+Current deliberate non-goals include create/upsert, XLSX, configurable field mapping, partial success, downloadable error files, asynchronous job progress/cancellation and backend optimistic-concurrency/versioning.
+
+See `grid-import.md` for the complete current contract and `GRIDCAP-IMPORT` for the searchable frontend footprint.
+
 ## Export
 
 ### Current Page
@@ -448,4 +509,5 @@ Feature roots still render `AgGridReact` directly; the foundation does not hide 
 
 - SSRM selection is flat; grouped/tree selection semantics are not implemented.
 - server-wide selected totals are query-membership counts rather than exact eligibility-aware counts;
-- BASE/LOCAL/REMOTE reconciliation detects divergence only after fresh authoritative data reaches the browser; it is not backend stale-write/version enforcement.
+- BASE/LOCAL/REMOTE reconciliation detects divergence only after fresh authoritative data reaches the browser; it is not backend stale-write/version enforcement;
+- Import is currently update-only CSV with atomic apply; create/upsert, XLSX, configurable mapping, partial success and asynchronous job orchestration are not implemented.
