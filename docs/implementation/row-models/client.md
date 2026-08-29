@@ -215,6 +215,29 @@ readOnly
 
 The backend remains authoritative for writes and selected business operations.
 
+## Import
+
+Transaction Import is a separate feature workflow from tracked cell editing.
+
+The feature-owned Import dialog sends CSV text to backend Preview/Apply endpoints. Successful Import does not create LOCAL tracked drafts and does not deliberately clear native Client selection.
+
+The concrete Client root owns authoritative refresh after Apply:
+
+```text
+backend Import Apply succeeds
+→ TransactionImportAction onImported callback
+→ refetch complete Transaction collection
+→ TanStack Query cache updates
+→ fresh editable rowData copies
+→ onRowDataUpdated
+→ reconcile existing BASE / LOCAL / REMOTE state
+→ restore remaining LOCAL overlays
+```
+
+If an imported value differs from both an existing dirty field's BASE and LOCAL values, normal conflict reconciliation keeps LOCAL visible and records the imported value as REMOTE.
+
+See `../grid-import.md` for the complete file/template, validation, atomicity and error-reporting contract. Search `GRIDCAP-IMPORT` for the frontend footprint.
+
 ## Export
 
 ### Current Page
@@ -273,8 +296,9 @@ The current Client foundation assumes:
 - `frontend/src/shared/grid/export/exportSelectedRowsCsv.ts`
 - `frontend/src/features/transactions/grid/TransactionsClientGrid.tsx`
 - `frontend/src/features/transactions/grid/transactionColumns.tsx`
+- `frontend/src/features/transactions/grid/TransactionImportAction.tsx`
 
-Search `GRIDCAP-ROWMODEL-CLIENT` across frontend source/tests to locate the Client row-model footprint.
+Search `GRIDCAP-ROWMODEL-CLIENT` across frontend source/tests to locate the Client row-model footprint. Search `GRIDCAP-IMPORT` for the Import integration.
 
 ## Verification
 
@@ -289,10 +313,11 @@ When testing `/client`, verify at least:
 7. Selected count equals the exact native selected rows.
 8. Row Save and Save Selected Dirty persist only intended drafts.
 9. BASE / LOCAL / REMOTE reconciliation behaves correctly after collection refetch.
-10. Export Current Page contains exactly the current displayed page.
-11. Export Selected includes selected rows across pagination pages and makes no selected-export backend request.
-12. Selected Change Status sends exact selected IDs, clears selection only after success and refetches authoritative data.
-13. Grid State restores the documented view preferences without persisting business selection.
-14. Navigation/remount/teardown produces no destroyed-GridApi warning.
+10. Successful Import refetches the authoritative collection without manufacturing LOCAL drafts.
+11. Export Current Page contains exactly the current displayed page.
+12. Export Selected includes selected rows across pagination pages and makes no selected-export backend request.
+13. Selected Change Status sends exact selected IDs, clears selection only after success and refetches authoritative data.
+14. Grid State restores the documented view preferences without persisting business selection.
+15. Navigation/remount/teardown produces no destroyed-GridApi warning.
 
 Do not mark manual verification complete unless these browser scenarios were actually run.
