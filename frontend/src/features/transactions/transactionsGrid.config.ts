@@ -1,4 +1,4 @@
-// GRIDCAP-ROWMODEL-CLIENT | GRIDCAP-ROWMODEL-INFINITE | GRIDCAP-ROWMODEL-SSRM | GRIDCAP-PAGINATION | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL
+// GRIDCAP-ROWMODEL-CLIENT | GRIDCAP-ROWMODEL-INFINITE | GRIDCAP-ROWMODEL-SSRM | GRIDCAP-PAGINATION | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-ROW-ELIGIBILITY
 import {
   clientSideGridDefaults,
   type ClientSideGridOptions,
@@ -10,6 +10,7 @@ import {
 import type { ClientSideSelectionScope } from '@/shared/grid/selection/client-side/useClientSideSelectionController';
 import type { InfiniteSelectionMode } from '@/shared/grid/selection/serverSelection';
 import type { Transaction } from './api/transactions.contracts';
+import { transactionRowClassRules } from './grid/transactionRowInteraction';
 
 /**
  * Native AG Grid options that may be supplied to the concrete row-model roots.
@@ -48,6 +49,7 @@ export const transactionsGridConfig: TransactionsGridConfig = {
     selectionScope: 'all',
     gridOptions: {
       ...clientSideGridDefaults,
+      rowClassRules: transactionRowClassRules,
     },
   },
 
@@ -55,12 +57,14 @@ export const transactionsGridConfig: TransactionsGridConfig = {
     selectionScope: 'page',
     gridOptions: {
       ...serverBackedGridDefaults,
+      rowClassRules: transactionRowClassRules,
     },
   },
 
   ssrm: {
     gridOptions: {
       ...serverBackedGridDefaults,
+      rowClassRules: transactionRowClassRules,
     },
   },
 };
