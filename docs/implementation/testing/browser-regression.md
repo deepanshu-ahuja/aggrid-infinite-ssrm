@@ -17,23 +17,43 @@ backend tests
 → serializers, authoritative row policy, selected-target resolution, API errors
 
 TypeScript Playwright
-→ real Django + Vite + Chromium + AG Grid DOM
+→ real Chromium + React/AG Grid + Django API together
 → rendering, interaction, network lifecycle and uncaught-browser-error checks
 ```
 
-## Technology and source layout
+## What Playwright and Django each do
 
-Browser tests use TypeScript and `@playwright/test` under:
+Playwright does **not** turn Django into Playwright and it does not run the Django backend inside the browser.
+
+They are separate processes with separate responsibilities:
 
 ```text
-tests/browser/
-├── package.json
-├── playwright.config.ts
-├── fixtures.ts
-├── gridTestSupport.ts
-├── baseline.spec.ts
-└── validation.spec.ts
+Playwright TypeScript test runner
+        ↓ controls
+Chromium browser
+        ↓ opens
+React + AG Grid application from Vite :5173
+        ↓ HTTP API requests
+Django REST API :8000
+        ↓ reads/writes
+Transaction authoritative data
 ```
+
+Django is simply the real backend used by the browser during an end-to-end test. Playwright drives Chromium and can also make normal HTTP requests to the Django API for test setup, such as the E2E data reset.
+
+When this document says the backend is started in **E2E/Playwright test mode**, it means only this:
+
+```text
+E2E_TESTING=true
+→ our Django setting enables the test-only Transaction reset endpoint
+→ normal product behavior/API remains the same
+```
+
+`E2E_TESTING` is our environment flag, not a Playwright feature and not a standard Django mode.
+
+## Technology and source layout
+
+Browser tests use TypeScript and `@playwright/test` under `tests/browser/`.
 
 Important ownership:
 
@@ -58,12 +78,10 @@ Specs must import `test` / `expect` from `./fixtures`, not directly from `@playw
 GitHub Actions checks out the exact PR merge candidate, then:
 
 ```text
-install root frontend dependencies
-install backend Python dependencies
-install tests/browser Playwright dependencies
+install frontend/backend/browser-test dependencies
 install Chromium
         │
-        ├── start one Django process :8000
+        ├── start Django :8000
         │      E2E_TESTING=true
         │      runserver --noreload
         │
@@ -73,13 +91,31 @@ install Chromium
         npx playwright test
 ```
 
-`--noreload` is deliberate. Browser regression needs one clear Django process owning one in-memory authoritative Transaction dataset; the development autoreloader would otherwise create a parent/child process boundary that adds unnecessary ambiguity to test-data ownership.
+### Why `E2E_TESTING=true`?
+
+It enables only the default-off test-data reset endpoint used by the automatic Playwright fixture.
+
+Without it, that endpoint returns 404.
+
+### Why `--noreload`?
+
+Normal Django development `runserver` watches Python files and may restart through its autoreloader. That is useful for development but unnecessary for E2E execution.
+
+The Transaction demo source currently lives in one Python process as an in-memory list. `--noreload` gives the browser suite one unambiguous Django process owning that list:
+
+```text
+one Django process
+→ one TRANSACTIONS list
+→ reset fixture always resets that same authoritative list
+```
+
+It is a test-stability choice, not a Playwright requirement.
 
 ## Per-test data isolation
 
 The Transaction API currently uses the module-level deterministic `TRANSACTIONS` list in `backend/apps/transactions/services.py`. It does not currently persist these rows in SQLite.
 
-One Playwright job keeps one Django process alive for the suite. Without isolation this is order-dependent:
+Without isolation:
 
 ```text
 Test A
@@ -88,43 +124,27 @@ Test A
 
 Test B
 → same Django process
-→ unexpectedly starts with account = "E2E client"
+→ would inherit Test A's value
 ```
 
-The browser base fixture prevents that:
+The automatic browser fixture prevents that:
 
 ```text
-Playwright test starts / retry starts
-        │
-        ▼
-fixtures.ts automatic fixture
-        │
-        ▼
+Playwright test/retry starts
+        ↓
 POST /api/transactions/__e2e__/reset/
-        │
-        ▼
-TransactionE2EResetView
-        │
-        ├── E2E_TESTING false → 404
-        │
-        └── E2E_TESTING true
-                │
-                ▼
-reset_transaction_demo_data()
-                │
-                ▼
-clear current TRANSACTIONS
-+ rebuild deterministic 750 rows
-        │
-        ▼
-run browser scenario against clean data
+        ↓
+E2E_TESTING=false → 404
+E2E_TESTING=true  → rebuild deterministic 750 rows
+        ↓
+run scenario from a known clean state
 ```
 
 The reset route is test infrastructure, not a product API:
 
 - `E2E_TESTING` defaults to `false`;
-- normal local/production application mode returns 404;
-- browser CI explicitly enables the flag only for its dedicated backend process;
+- normal local/production application mode cannot use it;
+- browser CI enables it only for its dedicated backend process;
 - every Playwright test and retry resets before user actions begin.
 
 Current stable seed examples used by browser tests:
@@ -139,16 +159,16 @@ Use stable seeded identifiers rather than whichever rendered row happens to be f
 
 ## Browser test flow
 
-A normal real-grid test should follow this chain:
+A normal real-grid test follows this chain:
 
 ```text
 automatic reset succeeds
         ↓
 page.goto(/client | /infinite | /ssrm)
         ↓
-wait for the row-model's first authoritative API response
+wait for authoritative API response
         ↓
-wait for known seeded AG Grid RowNodes by stable row-id
+wait for known seeded AG Grid RowNodes
         ↓
 perform user interaction
         ↓
@@ -182,7 +202,7 @@ transaction-account-editor-input
 → custom MUI Account cell-editor input
 ```
 
-Do not write selectors such as "first editable row" or `getByLabel('Account').last()` when another Account checkbox/input can legitimately exist. Those tests can pass against the wrong control and become flaky when layout changes.
+Do not use positional assumptions such as "first editable row" or ambiguous `getByLabel(...).last()` selectors.
 
 ## Current Page readiness
 
@@ -190,7 +210,7 @@ Current Page operations are intentionally all-or-nothing. Infinite/SSRM can expo
 
 The application therefore refuses a partial Current Page export/edit instead of silently operating on only loaded rows.
 
-Browser tests should wait/poll the real action contract rather than add unexplained fixed sleeps. A temporary "current page is still loading" result is not a reason to weaken the production all-or-nothing guard.
+Browser tests should wait/poll the real action contract rather than add unexplained fixed sleeps.
 
 ## Failure diagnostics
 
@@ -205,7 +225,7 @@ Django log
 Vite log
 ```
 
-Use the trace/network timeline to distinguish:
+Use those diagnostics to distinguish:
 
 ```text
 product defect
@@ -217,7 +237,7 @@ vs
 row-model loading timing
 ```
 
-Do not "fix" a browser failure by increasing timeouts until the underlying category is understood.
+Do not fix a browser failure by merely increasing timeouts before understanding the cause.
 
 ## Current database boundary
 
@@ -231,7 +251,7 @@ Transaction grid authoritative demo rows
 → Python TRANSACTIONS list in process memory
 ```
 
-The E2E reset abstraction deliberately hides that implementation detail from Playwright. The browser suite asks only for "restore known E2E state".
+The E2E reset abstraction hides that storage implementation from Playwright. The browser fixture asks only for "restore known E2E state".
 
 ## Future database-backed Transactions
 
@@ -240,7 +260,7 @@ When Transactions move to a real repository/database, keep the Playwright fixtur
 ```text
 browser test starts
 → reset dedicated E2E database
-→ run deterministic seed/fixture
+→ seed known rows
 → test through normal UI/API
 ```
 
@@ -254,14 +274,7 @@ Rules:
 
 ## Authentication and credentials
 
-The current app has no authentication:
-
-```text
-DRF authentication classes = []
-permission = AllowAny
-```
-
-Do not add fake credential code until authentication exists.
+The current app has no authentication. Do not add fake credential code until authentication exists.
 
 When authentication is introduced:
 
@@ -272,37 +285,20 @@ Playwright setup project logs in once
         ↓
 save storageState
         ↓
-normal browser projects/specs reuse storageState
+normal browser specs reuse storageState
 ```
 
-Rules:
-
-- dedicated test user only;
-- credentials from CI/environment secrets, never source control;
-- login once per run where practical, not once per test;
-- never reuse a production browser/session state;
-- data reset and authentication setup remain separate concerns.
+Use a dedicated test user and never hardcode real credentials.
 
 ## Coverage strategy
 
 Playwright should cover high-value end-to-end contracts and real AG Grid/browser integration, not every logical permutation already proven by focused tests.
 
-Good Playwright candidates include:
+Good Playwright candidates include row-model loading/sort/filter/pagination integration, selection lifecycle, Save/Discard, selected actions/export, row eligibility, editors/validation, BASE/LOCAL/REMOTE conflicts, cache/store recreation, error/retry and uncaught renderer/formatter errors.
 
-- row-model loading/sort/filter/pagination integration;
-- selection scopes and lifecycle visible to users;
-- Save/Discard and selected Save/Discard wiring;
-- logical selected actions and export;
-- row eligibility;
-- editor integration and validation presentation;
-- BASE/LOCAL/REMOTE conflict presentation/resolution;
-- Infinite cache / SSRM store recreation with LOCAL work;
-- error/retry and request lifecycle where the browser adds evidence;
-- uncaught renderer/formatter exceptions.
+Keep combinatorial rule/state math and deterministic races in focused tests when a browser adds no useful evidence.
 
-Keep combinatorial rule/state math in unit/state tests.
-
-The current cross-layer inventory is tracked in:
+The compact current inventory is:
 
 - `docs/implementation/testing/coverage-matrix.md`.
 
@@ -354,50 +350,80 @@ npm run dev -- --host 127.0.0.1
 
 Use terminal 3 for Playwright.
 
-Normal headless run, matching CI behavior most closely:
+Normal headless run:
 
 ```bash
 cd tests/browser
 npx playwright test
 ```
 
-Visible Chromium run, useful when you want to watch the browser perform the interactions:
+Visible browser, one test at a time so the flow is easy to watch:
 
 ```bash
 cd tests/browser
-npx playwright test --headed
+npx playwright test --headed --workers=1
 ```
 
-Interactive Playwright UI mode, useful for choosing one test, rerunning it and inspecting steps:
+Interactive Playwright UI:
 
 ```bash
 cd tests/browser
 npx playwright test --ui
 ```
 
-Run one spec visibly instead of the complete suite:
+Run one spec visibly:
 
 ```bash
-npx playwright test validation.spec.ts --headed
-npx playwright test conflict.spec.ts --headed
-npx playwright test selection.spec.ts --headed
+npx playwright test validation.spec.ts --headed --workers=1
+npx playwright test conflict.spec.ts --headed --workers=1
+npx playwright test selection.spec.ts --headed --workers=1
 ```
 
-Run one matching scenario visibly:
+Run one matching scenario:
 
 ```bash
-npx playwright test --headed -g "/ssrm: Use server"
+npx playwright test --headed --workers=1 -g "/ssrm: Use server"
 ```
 
-For a paused inspector/debug session:
+Paused inspector/debug session:
 
 ```bash
 npx playwright test --debug -g "/ssrm: Use server"
 ```
 
-`--headed` is the simplest way to watch the suite operate a real Chromium window. `--ui` is usually the easiest mode for local development because it lets a developer browse the test list and rerun individual scenarios interactively.
+`--headed` shows the Chromium window. `--ui` is usually easiest for choosing/rerunning individual scenarios locally.
 
 Normal development/manual Django startup should not set `E2E_TESTING=true` unless the developer intentionally wants the reset endpoint for an E2E run.
+
+## Before starting the next grid capability
+
+The regression-hardening phase that preceded the next product capability required:
+
+```text
+per-test deterministic E2E reset
+→ stable browser selectors/readiness
+→ existing-capability coverage audit
+→ high-value Client / Infinite / SSRM Playwright gaps
+→ compact coverage matrix
+→ durable AGENTS/testing rules
+→ complete frontend + backend + browser CI
+```
+
+That implementation phase has been completed. The implementation browser run passed 80/80 TypeScript Playwright scenarios across the current Client, Infinite and SSRM routes, alongside passing frontend and backend checks.
+
+No additional random Playwright expansion is required before the next capability. Add more tests later when a new capability or a concrete regression introduces a new risk.
+
+The handoff gate is therefore:
+
+```text
+PR #33 documentation/status accurate
+→ exact latest PR head CI green
+→ user merges PR #33
+→ sync grid-foundation with main
+→ begin Import as the next planned capability
+```
+
+Do not merge PR #33 automatically; merge remains an explicit user action.
 
 ## Manual verification relationship
 
@@ -405,4 +431,4 @@ Human-readable manual checklists remain under `docs/implementation/testing/` eve
 
 Automation records repeatable regression coverage. Manual steps remain useful for exploratory review and behavior that is difficult or low-value to automate.
 
-Never claim the entire manual checklist passed merely because a narrower Playwright suite passed.
+Never claim the entire manual checklist passed merely because the Playwright suite passed.
