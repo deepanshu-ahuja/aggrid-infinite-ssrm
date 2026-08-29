@@ -24,8 +24,9 @@ Before changing code:
 2. inspect `grid-foundation`;
 3. inspect the current open PR and recently merged PRs when relevant;
 4. read this file;
-5. read the relevant current implementation docs and capability tags;
-6. inspect current source/tests rather than assuming an old PR description is still true.
+5. open `docs/implementation/README.md`;
+6. read the relevant row-model guide and capability docs;
+7. inspect the current source/tests rather than assuming an old PR description is still true.
 
 Do not ask the user questions that repository inspection can answer.
 
@@ -55,41 +56,78 @@ Do not add console logging merely to understand control flow. Prefer clear code,
 
 ---
 
-## Documentation scope contract
+## Documentation structure and scope contract
 
-Documentation must make its scope clear.
+Documentation must make its purpose clear.
 
-### Current implementation documentation
+### Canonical current implementation area
 
-Docs whose purpose is to explain the current implementation must describe **implemented truth only**.
+`docs/implementation/` is the canonical home for documentation that explains behavior implemented by the repository now.
 
-If a current-state doc says a configuration key, API, behavior, hook, option or capability exists, current code must actually support it.
+Start with:
+
+- `docs/implementation/README.md`.
+
+If a current implementation document says a configuration key, API, behavior, hook, option, state transition or capability exists, the current code must actually support it.
 
 Do not put these into current implementation docs merely because they were discussed:
 
 - rejected approaches;
-- hypothetical configuration;
+- hypothetical runtime configuration;
 - speculative APIs;
 - possible future registries;
 - conversation history;
-- options that the current code does not expose.
+- options that current code does not expose;
+- proposed solutions for requirements that do not exist yet.
 
-Current limitations are appropriate when they explain what the implementation does or does not support today.
+Current limitations are appropriate when they state what the code does **not** implement today. Proposed future solutions belong in backlog/planning or clearly identified architecture proposal material.
 
-Examples of current implementation references include:
+### Row-model implementation entry points
 
-- `docs/grid-capabilities.md`;
-- `docs/ag-grid-native-usage.md`;
-- `docs/ag-grid.md`;
-- `docs/ag-grid-foundation-status.md`;
-- `docs/api-data-flow.md`;
-- `docs/client-side-grid.md`;
-- `docs/selection-counts.md`;
-- `docs/selected-action-selection-lifecycle.md`;
-- `docs/row-interaction.md`;
-- `docs/transaction-editing.md`;
-- `docs/edit-conflict-reconciliation.md`;
-- `docs/grid-export.md`.
+A developer must be able to understand one row model without first reading all three.
+
+Canonical row-model guides are:
+
+- `docs/implementation/row-models/client.md`;
+- `docs/implementation/row-models/infinite.md`;
+- `docs/implementation/row-models/ssrm.md`.
+
+Detailed row-model-specific selection contracts are kept beside the row-model guides where applicable.
+
+Row-model guides should explain the model-specific ownership of:
+
+- loading/data source lifecycle;
+- selection;
+- counts where they differ;
+- refresh/retry;
+- editing integration;
+- export ownership;
+- Grid State/lifecycle;
+- main implementation entry points.
+
+### Shared capability docs
+
+When a user-facing capability is shared across Client, Infinite and SSRM, keep one capability document instead of duplicating it three times.
+
+A shared capability document must explicitly call out meaningful row-model differences.
+
+Examples:
+
+- `docs/implementation/selection-counts.md`;
+- `docs/implementation/transaction-editing.md`;
+- `docs/implementation/edit-conflict-reconciliation.md`;
+- `docs/implementation/grid-export.md`;
+- `docs/implementation/row-interaction.md`.
+
+Do not make a shared document imply one universal implementation when Client, Infinite and SSRM use different native mechanics.
+
+### Manual verification docs
+
+Current manual verification material lives under:
+
+- `docs/implementation/testing/`.
+
+Manual verification documents describe scenarios to run. Never claim a browser/manual pass was completed unless it actually was.
 
 ### Backlog / planning
 
@@ -111,7 +149,9 @@ Do not make proposal text sound like current runtime behavior.
 
 `AGENTS.md` may contain durable engineering/workflow rules and agreed roadmap sequencing. It must not pretend an unsupported runtime capability exists.
 
-When code and a current implementation doc disagree, inspect the source/tests, determine current intended behavior, and fix the inconsistency in the same work.
+When code and a current implementation doc disagree, inspect source/tests, determine current intended behavior and fix the inconsistency in the same work.
+
+When moving/renaming current implementation documentation, update `README.md`, this file, capability registry references and important internal links. Compatibility move stubs may remain at old `docs/*.md` paths, but canonical content belongs under `docs/implementation/`.
 
 ---
 
@@ -140,13 +180,14 @@ Never claim manual/browser verification unless it was actually performed.
 
 ## Capability-tag discoverability
 
-`docs/grid-capability-tags.md` is the authoritative registry for frontend `GRIDCAP-*` markers.
+`docs/implementation/grid-capability-tags.md` is the authoritative registry for frontend `GRIDCAP-*` markers.
 
 Working flow:
 
 ```text
 need a frontend grid capability
 → find its GRIDCAP-* registry entry
+→ read applicability / row-model ownership
 → search the exact marker in frontend source/tests
 → inspect every important marked integration point
 → inspect linked implementation docs
@@ -161,7 +202,7 @@ Rules:
 - use one logical marker across row models when the user-facing capability is shared but implementation differs;
 - a marker means a location participates in a capability, not that its implementation can be copied unchanged;
 - preserve accurate markers during refactors;
-- review the registry and occurrences when a frontend capability materially changes;
+- review registry and occurrences when a frontend capability materially changes;
 - do not tag trivial lines merely to increase coverage.
 
 Core row-model markers:
@@ -187,12 +228,16 @@ Keep comments that explain:
 - native-versus-custom responsibility;
 - backend authority;
 - cache/refresh behavior;
+- selection semantics;
+- conflict semantics;
 - why row models intentionally differ;
 - why a particular source of truth exists.
 
 Rewrite/remove a comment when underlying logic changed, the explanation became obsolete, or it is objectively noise.
 
 New non-obvious logic should have local rationale comments explaining **why**, not syntax.
+
+Capability markers help find code. Explanatory comments explain why the code exists. Preserve both when still accurate.
 
 ---
 
@@ -306,7 +351,9 @@ All Records
 
 Server `totalCount` / `filteredCount` currently describe query membership rather than exact selected-operation eligibility.
 
-Do not subtract only restricted rows currently loaded in the browser; unloaded pages may contain additional restricted rows and that would create false precision.
+Do not subtract only restricted rows currently loaded in browser; unloaded pages may contain additional restricted rows and that would create false precision.
+
+Detailed current behavior: `docs/implementation/selection-counts.md`.
 
 ---
 
@@ -372,6 +419,8 @@ backend eligibility
 
 Restricted rows are not manufactured as logical exclude IDs.
 
+Detailed current behavior: `docs/implementation/row-interaction.md`.
+
 ---
 
 ## Export contract
@@ -393,6 +442,8 @@ Use native/local selected-row CSV across pagination pages.
 Use backend selected export because the logical selected universe can contain unloaded rows.
 
 The same logical backend resolver semantics are reused for selected mutation and selected export.
+
+Detailed current behavior: `docs/implementation/grid-export.md`.
 
 ---
 
@@ -424,7 +475,7 @@ The implemented request does not carry a selection-lifecycle configuration value
 
 Different row models clear through their own existing controllers; there is no universal clear implementation.
 
-Detailed current behavior: `docs/selected-action-selection-lifecycle.md`.
+Detailed current behavior: `docs/implementation/selected-action-selection-lifecycle.md`.
 
 ---
 
@@ -446,8 +497,8 @@ Current editing includes:
 
 Conflict state and editing behavior are documented in:
 
-- `docs/transaction-editing.md`;
-- `docs/edit-conflict-reconciliation.md`.
+- `docs/implementation/transaction-editing.md`;
+- `docs/implementation/edit-conflict-reconciliation.md`.
 
 ---
 
@@ -502,9 +553,9 @@ A field may be invalid, conflicted, or both.
 
 Do not collapse validation into the tracked conflict state merely because Save/presentation need to coordinate both.
 
-Validation implementation should cover direct edits, current-page programmatic edits, row Save, selected Save, backend field errors, correction/revert, Discard, conflict resolution interaction, presentation and focused Client/Infinite/SSRM integration tests.
+Validation implementation should cover direct edits, current-page programmatic edits, row Save, selected Save, backend field errors, correction/revert, Discard, conflict-resolution interaction, presentation and focused Client/Infinite/SSRM integration tests.
 
-Review `docs/grid-capability-tags.md` before adding/reusing a validation marker.
+Review `docs/implementation/grid-capability-tags.md` before adding/reusing a validation marker.
 
 ---
 
@@ -651,7 +702,27 @@ PR descriptions must stay accurate as scope changes, including:
 
 ---
 
-## Key current implementation entry points
+## Key current implementation documentation
+
+- `docs/implementation/README.md`
+- `docs/implementation/grid-capabilities.md`
+- `docs/implementation/grid-capability-tags.md`
+- `docs/implementation/ag-grid-native-usage.md`
+- `docs/implementation/ag-grid.md`
+- `docs/implementation/api-data-flow.md`
+- `docs/implementation/row-models/client.md`
+- `docs/implementation/row-models/infinite.md`
+- `docs/implementation/row-models/ssrm.md`
+- `docs/implementation/selection-counts.md`
+- `docs/implementation/selected-action-selection-lifecycle.md`
+- `docs/implementation/row-interaction.md`
+- `docs/implementation/transaction-editing.md`
+- `docs/implementation/edit-conflict-reconciliation.md`
+- `docs/implementation/grid-export.md`
+
+---
+
+## Key source entry points
 
 ### Client
 
@@ -706,20 +777,22 @@ PR descriptions must stay accurate as scope changes, including:
 When asked to implement or review something:
 
 1. inspect current GitHub/repository state;
-2. read this file and relevant source-of-truth docs;
-3. locate relevant capability markers;
-4. inspect current implementation/tests and backend contracts;
-5. identify architecture issues before coding;
-6. implement native-first and row-model-specific where appropriate;
-7. preserve useful comments and markers;
-8. add comments for new non-obvious logic;
-9. add/update focused tests;
-10. update current implementation docs only with implemented behavior;
-11. put planned/future material only in backlog/proposal docs;
-12. update backlog/working contract when roadmap rules change;
-13. inspect CI;
-14. keep the open PR accurate;
-15. report manual verification truthfully.
+2. read this file and `docs/implementation/README.md`;
+3. choose the relevant row-model guide(s);
+4. locate relevant capability markers;
+5. inspect current implementation/tests and backend contracts;
+6. identify architecture issues before coding;
+7. implement native-first and row-model-specific where appropriate;
+8. preserve useful comments and markers;
+9. add comments for new non-obvious logic;
+10. add/update focused tests;
+11. update current implementation docs only with implemented behavior;
+12. update the relevant row-model guide when row-model ownership/behavior changes;
+13. put planned/future material only in backlog/proposal docs;
+14. update backlog/working contract when roadmap or durable rules change;
+15. inspect CI;
+16. keep the open PR accurate;
+17. report manual verification truthfully.
 
 Push back when a requested approach weakens architecture or introduces an abstraction without a real responsibility.
 
@@ -733,7 +806,7 @@ Review/update this file when work changes durable:
 
 - architecture/ownership;
 - row-model responsibilities;
-- documentation scope rules;
+- documentation structure/scope rules;
 - capability discoverability;
 - selection/count semantics;
 - request freshness;
