@@ -11,14 +11,21 @@ import { isTransactionRowReadOnly } from './transactionRowInteraction';
 import { validateTransactionField } from './transactionValidation';
 
 /** Transactions chooses WHICH fields are editable; shared/grid owns HOW edits are tracked. */
-export const TRANSACTION_EDITABLE_FIELDS = ['account', 'amount', 'currency', 'status'] as const;
+export const TRANSACTION_EDITABLE_FIELDS = [
+  'account',
+  'amount',
+  'currency',
+  'status',
+  'transactionDate',
+] as const;
 
 export type TransactionEditableField = (typeof TRANSACTION_EDITABLE_FIELDS)[number];
 
 /**
  * LOCAL edit state must be able to represent a deliberately cleared editor value before persistence.
- * The authoritative Transaction/API shape remains strict (`amount: number`, etc.); `null` exists only in
- * the draft layer so direct and programmatic edits can keep an invalid blank visible and correctable.
+ * The authoritative Transaction/API shape remains strict (`amount: number`, date as an ISO string, etc.);
+ * `null` exists only in the draft layer so direct and programmatic edits can keep an invalid blank visible
+ * and correctable instead of silently reverting or omitting it.
  */
 export type TransactionEditableValue = Transaction[TransactionEditableField] | null;
 export type TransactionChanges = TrackedGridChanges<
