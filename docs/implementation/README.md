@@ -60,6 +60,10 @@ When implementation changes:
 5. update repository entry points such as `README.md` / `AGENTS.md` when navigation or durable rules change;
 6. keep unimplemented design out of current implementation documents.
 
+When ownership, call flow, lifecycle, or state transitions are easier to understand visually, add a small diagram to the relevant implementation document. **Portable plain-text/ASCII diagrams are the default** because they remain readable in raw Markdown, GitHub, IDE previews, and local viewers. Do not rely on Mermaid-only diagrams unless the repository explicitly guarantees Mermaid rendering for the intended reader.
+
+Do not add diagrams merely for decoration. Use them where they reduce the effort needed to understand which layer calls which layer, who owns state, or how a lifecycle/state transition works.
+
 Cross-row-model capability docs may describe all three implementations in one document when the user-facing capability is shared, but they must explicitly call out meaningful Client/Infinite/SSRM differences. Do not create three duplicate copies of a shared capability merely for folder symmetry.
 
 When documentation is moved, update live references to the canonical location and remove the obsolete file. Do not keep placeholder "Moved" documents by default; retain an old path only when there is an explicit external compatibility requirement.
