@@ -58,7 +58,11 @@ describe('configurable table metadata boundary', () => {
       cellRendererParams: { compact: true },
       cellEditor: editor,
     });
-    expect(compiled.columnDefs[0]?.valueFormatter?.({ value: 'pending' } as never)).toBe('PENDING');
+
+    const valueFormatter = compiled.columnDefs[0]?.valueFormatter;
+    expect(typeof valueFormatter).toBe('function');
+    if (typeof valueFormatter !== 'function') throw new Error('Expected compiled valueFormatter.');
+    expect(valueFormatter({ value: 'pending' } as never)).toBe('PENDING');
   });
 
   it('rejects unsupported schema versions before compilation', () => {
