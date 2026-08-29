@@ -19,27 +19,27 @@ afterEach(() => {
 });
 
 describe('useTransactionSelectionAction', () => {
-  it('keeps post-success policy on the frontend while sending the unchanged backend request', async () => {
+  it('sends only the business request and runs the success callback after the backend update', async () => {
     transactionApi.updateTransactionsBySelection.mockResolvedValue({ updatedCount: 1 });
     const onApplied = vi.fn();
     const { result } = renderHook(() => useTransactionSelectionAction({ onApplied }));
 
-    act(() => result.current.applySelectionAction(request, 'preserve'));
+    act(() => result.current.updateSelectedTransactions(request));
 
     await waitFor(() => {
       expect(transactionApi.updateTransactionsBySelection).toHaveBeenCalledWith(request);
-      expect(onApplied).toHaveBeenCalledWith('preserve');
+      expect(onApplied).toHaveBeenCalledTimes(1);
     });
   });
 
-  it('does not apply clear/preserve lifecycle when the backend mutation fails', async () => {
+  it('does not run the success callback when the backend mutation fails', async () => {
     transactionApi.updateTransactionsBySelection.mockRejectedValue(new Error('Update failed'));
     const onApplied = vi.fn();
     const { result } = renderHook(() => useTransactionSelectionAction({ onApplied }));
 
-    act(() => result.current.applySelectionAction(request, 'clear'));
+    act(() => result.current.updateSelectedTransactions(request));
 
-    await waitFor(() => expect(result.current.selectionActionError).toBe('Update failed'));
+    await waitFor(() => expect(result.current.selectedTransactionUpdateError).toBe('Update failed'));
     expect(onApplied).not.toHaveBeenCalled();
   });
 });
