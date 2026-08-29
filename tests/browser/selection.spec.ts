@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import {
   SEEDED_ROWS,
@@ -13,6 +14,17 @@ import {
 // fails loudly instead of silently weakening the selection assertion.
 const FIRST_PAGE_ELIGIBLE_COUNT = 21;
 const ALL_CLIENT_ELIGIBLE_COUNT = 624;
+const ACTIVE_INDETERMINATE_COLOR = 'rgb(21, 94, 239)';
+
+async function expectActiveNativeHeaderIndeterminate(page: Page) {
+  const headerCheckbox = page
+    .locator('.ag-header-select-all .ag-checkbox-input-wrapper')
+    .first();
+
+  await expect(headerCheckbox).toHaveClass(/ag-indeterminate/);
+  await expect(headerCheckbox).toHaveCSS('background-color', ACTIVE_INDETERMINATE_COLOR);
+  await expect(headerCheckbox).toHaveCSS('border-color', ACTIVE_INDETERMINATE_COLOR);
+}
 
 for (const route of routes) {
   test(`${route}: selected status failure preserves the current selection`, async ({ page }) => {
@@ -42,6 +54,25 @@ for (const route of routes) {
   });
 }
 
+for (const route of ['/client', '/ssrm'] as const) {
+  test(`${route}: native header partial selection stays active-colored with restricted rows`, async ({
+    page,
+  }) => {
+    const pageErrors = await openGrid(page, route);
+
+    // Restricted rows are present on the first page, but they must not make an active partial-selection
+    // header look disabled. Selecting one eligible row should produce an active blue indeterminate dash.
+    await expect(
+      rowById(page, SEEDED_ROWS.selectionDisabled).getByRole('checkbox').first(),
+    ).toBeDisabled();
+    await rowById(page, SEEDED_ROWS.enabled).getByRole('checkbox').first().click();
+    await expect(page.getByText('1 selected', { exact: true }).first()).toBeVisible();
+    await expectActiveNativeHeaderIndeterminate(page);
+
+    await expectNoPageErrors(pageErrors, `${route} active indeterminate header`);
+  });
+}
+
 test('/client: native header selects the complete eligible Client dataset', async ({ page }) => {
   const pageErrors = await openGrid(page, '/client');
 
@@ -49,13 +80,19 @@ test('/client: native header selects the complete eligible Client dataset', asyn
   await expect(headerSelectAll).toBeVisible();
   await headerSelectAll.click();
 
-  await expect(page.getByText(`${ALL_CLIENT_ELIGIBLE_COUNT} selected`, { exact: true }).first()).toBeVisible();
+  await expect(
+    page.getByText(`${ALL_CLIENT_ELIGIBLE_COUNT} selected`, { exact: true }).first(),
+  ).toBeVisible();
   await expect(rowById(page, SEEDED_ROWS.enabled).getByRole('checkbox').first()).toBeChecked();
-  await expect(rowById(page, SEEDED_ROWS.selectionDisabled).getByRole('checkbox').first()).toBeDisabled();
+  await expect(
+    rowById(page, SEEDED_ROWS.selectionDisabled).getByRole('checkbox').first(),
+  ).toBeDisabled();
   await expect(rowById(page, SEEDED_ROWS.readOnly).getByRole('checkbox').first()).toBeDisabled();
 
   await rowById(page, SEEDED_ROWS.enabled).getByRole('checkbox').first().click();
-  await expect(page.getByText(`${ALL_CLIENT_ELIGIBLE_COUNT - 1} selected`, { exact: true }).first()).toBeVisible();
+  await expect(
+    page.getByText(`${ALL_CLIENT_ELIGIBLE_COUNT - 1} selected`, { exact: true }).first(),
+  ).toBeVisible();
 
   await expectNoPageErrors(pageErrors, '/client native All Records');
 });
@@ -70,14 +107,20 @@ test('/infinite: custom header selects only the fully materialised current page'
   await expect(currentPageHeader).toBeEnabled();
   await currentPageHeader.click();
 
-  await expect(page.getByText(`${FIRST_PAGE_ELIGIBLE_COUNT} selected`, { exact: true }).first()).toBeVisible();
+  await expect(
+    page.getByText(`${FIRST_PAGE_ELIGIBLE_COUNT} selected`, { exact: true }).first(),
+  ).toBeVisible();
   await expect(rowById(page, SEEDED_ROWS.enabled).getByRole('checkbox').first()).toBeChecked();
   await expect(rowById(page, SEEDED_ROWS.secondEnabled).getByRole('checkbox').first()).toBeChecked();
-  await expect(rowById(page, SEEDED_ROWS.selectionDisabled).getByRole('checkbox').first()).toBeDisabled();
+  await expect(
+    rowById(page, SEEDED_ROWS.selectionDisabled).getByRole('checkbox').first(),
+  ).toBeDisabled();
   await expect(rowById(page, SEEDED_ROWS.readOnly).getByRole('checkbox').first()).toBeDisabled();
 
   await rowById(page, SEEDED_ROWS.enabled).getByRole('checkbox').first().click();
-  await expect(page.getByText(`${FIRST_PAGE_ELIGIBLE_COUNT - 1} selected`, { exact: true }).first()).toBeVisible();
+  await expect(
+    page.getByText(`${FIRST_PAGE_ELIGIBLE_COUNT - 1} selected`, { exact: true }).first(),
+  ).toBeVisible();
   // MUI represents indeterminate on the checkbox input with data-indeterminate rather than a
   // Playwright-specific matcher/native checked state.
   await expect(currentPageHeader).toHaveAttribute('data-indeterminate', 'true');
@@ -85,13 +128,19 @@ test('/infinite: custom header selects only the fully materialised current page'
   await expectNoPageErrors(pageErrors, '/infinite Current Page selection');
 });
 
-test('/ssrm: explicit Current Page control selects only eligible materialised page rows', async ({ page }) => {
+test('/ssrm: explicit Current Page control selects only eligible materialised page rows', async ({
+  page,
+}) => {
   const pageErrors = await openGrid(page, '/ssrm');
 
   await page.getByRole('button', { name: 'Select current page', exact: true }).click();
-  await expect(page.getByText(`${FIRST_PAGE_ELIGIBLE_COUNT} selected`, { exact: true }).first()).toBeVisible();
+  await expect(
+    page.getByText(`${FIRST_PAGE_ELIGIBLE_COUNT} selected`, { exact: true }).first(),
+  ).toBeVisible();
   await expect(rowById(page, SEEDED_ROWS.enabled).getByRole('checkbox').first()).toBeChecked();
-  await expect(rowById(page, SEEDED_ROWS.selectionDisabled).getByRole('checkbox').first()).toBeDisabled();
+  await expect(
+    rowById(page, SEEDED_ROWS.selectionDisabled).getByRole('checkbox').first(),
+  ).toBeDisabled();
   await expect(rowById(page, SEEDED_ROWS.readOnly).getByRole('checkbox').first()).toBeDisabled();
 
   await page.getByRole('button', { name: 'Clear selection', exact: true }).click();
@@ -111,7 +160,9 @@ test('/ssrm: native header represents Select All Records across unloaded rows', 
   // rows remain disabled even though the server-wide count is intentionally not eligibility-aware yet.
   await expect(page.getByText('750 selected', { exact: true }).first()).toBeVisible();
   await expect(rowById(page, SEEDED_ROWS.enabled).getByRole('checkbox').first()).toBeChecked();
-  await expect(rowById(page, SEEDED_ROWS.selectionDisabled).getByRole('checkbox').first()).toBeDisabled();
+  await expect(
+    rowById(page, SEEDED_ROWS.selectionDisabled).getByRole('checkbox').first(),
+  ).toBeDisabled();
   await expect(rowById(page, SEEDED_ROWS.readOnly).getByRole('checkbox').first()).toBeDisabled();
 
   await rowById(page, SEEDED_ROWS.enabled).getByRole('checkbox').first().click();
