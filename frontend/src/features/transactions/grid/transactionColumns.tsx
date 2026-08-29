@@ -8,6 +8,8 @@ import {
 import { formatCurrency } from '@/shared/grid/formatters/formatCurrency';
 import { formatDate } from '@/shared/grid/formatters/formatDate';
 import type { Transaction } from '../api/transactions.contracts';
+import { TransactionAccountEditor } from './TransactionAccountEditor';
+import { TransactionDateEditor } from './TransactionDateEditor';
 import { TransactionInteractionCell } from './TransactionInteractionCell';
 import {
   TransactionRowEditActions,
@@ -98,6 +100,11 @@ function createTransactionColumns(filterParams: TransactionColumnFilterParams): 
       filter: 'agTextColumnFilter',
       ...(filterParams.text ? { filterParams: filterParams.text } : {}),
       editable: (params) => isConflictAwareEditable(params, 'account'),
+      // One explicit MUI text-editor example. Popup space lets helper text explain the exact validation
+      // failure without forcing AG Grid row height/column geometry to accommodate form-field chrome.
+      cellEditor: TransactionAccountEditor,
+      cellEditorPopup: true,
+      cellEditorPopupPosition: 'under',
       ...editStatePresentation('account'),
     },
     {
@@ -139,7 +146,12 @@ function createTransactionColumns(filterParams: TransactionColumnFilterParams): 
       minWidth: 180,
       filter: 'agDateColumnFilter',
       ...(filterParams.date ? { filterParams: filterParams.date } : {}),
+      editable: (params) => isConflictAwareEditable(params, 'transactionDate'),
+      cellEditor: TransactionDateEditor,
+      cellEditorPopup: true,
+      cellEditorPopupPosition: 'under',
       valueFormatter: ({ value }) => (typeof value === 'string' ? formatDate(value) : ''),
+      ...editStatePresentation('transactionDate'),
     },
     {
       colId: 'editActions',
