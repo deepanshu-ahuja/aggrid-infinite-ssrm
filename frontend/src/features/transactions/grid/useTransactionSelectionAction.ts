@@ -4,54 +4,45 @@ import { useMutation } from '@tanstack/react-query';
 import { queryClient } from '@/shared/query/queryClient';
 import { updateTransactionsBySelection } from '../api/transactions.api';
 import type { TransactionSelectionActionRequest } from '../api/transactions.contracts';
-import type { SelectionAfterSuccessPolicy } from './transactionSelectionAction';
 
 interface UseTransactionSelectionActionOptions {
-  onApplied: (selectionAfterSuccess: SelectionAfterSuccessPolicy) => void;
-}
-
-interface TransactionSelectionActionMutation {
-  request: TransactionSelectionActionRequest;
-  selectionAfterSuccess: SelectionAfterSuccessPolicy;
+  /** Runs only after the selected Transaction update succeeds. */
+  onApplied: () => void;
 }
 
 /**
- * Network lifecycle for backend actions against the current logical Transaction selection.
+ * Network lifecycle for the current backend update against selected Transactions.
  *
- * Infinite/SSRM may provide compact dataset-wide include/exclude targets. Client-Side supplies exact
- * include IDs because its complete working set is already local. This hook owns only mutation state;
- * each concrete row-model root owns how its selection becomes the request target, how rows refresh,
- * and how its native/custom selection state is cleared when the feature action requests that policy.
+ * This hook owns the request/pending/error lifecycle only. It does not carry a generic selection
+ * behavior key. The current Change Status action family has one known success behavior, so each grid
+ * root directly clears through its own selection controller in `onApplied` and then refreshes rows.
+ * Future business actions with different endpoints should own separate mutations rather than asking
+ * this hook to choose an endpoint from an action key.
  */
 export function useTransactionSelectionAction({ onApplied }: UseTransactionSelectionActionOptions) {
   const { mutate, isPending, error } = useMutation(
     {
       // TanStack supplies mutation context separately. Keep that framework argument away from the
-      // API client's optional AbortSignal parameter by forwarding only the request variable.
-      mutationFn: ({ request }: TransactionSelectionActionMutation) =>
+      // API client's optional AbortSignal parameter by forwarding only the actual business request.
+      mutationFn: (request: TransactionSelectionActionRequest) =>
         updateTransactionsBySelection(request),
-      // Post-success selection policy is frontend-only lifecycle metadata. Never serialize it into the
-      // backend mutation request; the API only needs the logical target + business changes.
-      onSuccess: (_response, mutation) => onApplied(mutation.selectionAfterSuccess),
+      onSuccess: () => onApplied(),
     },
     queryClient,
   );
 
-  const applySelectionAction = useCallback(
-    (
-      request: TransactionSelectionActionRequest,
-      selectionAfterSuccess: SelectionAfterSuccessPolicy,
-    ) => {
+  const updateSelectedTransactions = useCallback(
+    (request: TransactionSelectionActionRequest) => {
       if (isPending) return;
-      mutate({ request, selectionAfterSuccess });
+      mutate(request);
     },
     [isPending, mutate],
   );
 
   return {
-    applySelectionAction,
-    isApplyingSelectionAction: isPending,
-    selectionActionError:
+    updateSelectedTransactions,
+    isUpdatingSelectedTransactions: isPending,
+    selectedTransactionUpdateError:
       error instanceof Error
         ? error.message
         : error
