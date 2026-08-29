@@ -1,7 +1,6 @@
 // GRIDCAP-ACTION-SELECTED
 import { Alert, Button, Stack, Typography } from '@mui/material';
 import type { TransactionStatus } from '../api/transactions.contracts';
-import type { SelectionAfterSuccessPolicy } from './transactionSelectionAction';
 
 interface TransactionSelectionActionsProps {
   hasSelection: boolean;
@@ -11,26 +10,25 @@ interface TransactionSelectionActionsProps {
   /** Status actions may not decide a still-unresolved LOCAL-vs-REMOTE status conflict implicitly. */
   statusActionBlockedByConflict: boolean;
   error?: string;
-  onSetStatus: (status: TransactionStatus, selectionAfterSuccess: SelectionAfterSuccessPolicy) => void;
+  onSetStatus: (status: TransactionStatus) => void;
 }
 
 interface StatusSelectionAction {
   status: TransactionStatus;
   label: string;
-  selectionAfterSuccess: SelectionAfterSuccessPolicy;
 }
 
 /**
- * Business-action policy belongs with the feature action, not in shared grid selection.
+ * These buttons are values of one business action family: Change Status.
  *
- * These status mutations can change the selected/filter universe (for example Pending -> Completed),
- * so they deliberately clear selection after a successful backend mutation. A future non-mutating or
- * workflow-specific action can explicitly choose `preserve` without changing the shared grid default.
+ * The selected-status mutation always clears selection after a successful backend update because the
+ * changed status can move rows into or out of the current filter universe. Do not carry a configurable
+ * clear/preserve value through these button definitions when the behavior is not actually variable.
  */
 const STATUS_SELECTION_ACTIONS: readonly StatusSelectionAction[] = [
-  { status: 'Completed', label: 'Mark Completed', selectionAfterSuccess: 'clear' },
-  { status: 'Pending', label: 'Mark Pending', selectionAfterSuccess: 'clear' },
-  { status: 'Failed', label: 'Mark Failed', selectionAfterSuccess: 'clear' },
+  { status: 'Completed', label: 'Mark Completed' },
+  { status: 'Pending', label: 'Mark Pending' },
+  { status: 'Failed', label: 'Mark Failed' },
 ];
 
 /** Simple feature action bar for backend operations against the current logical grid selection. */
@@ -63,7 +61,7 @@ export function TransactionSelectionActions({
             size="small"
             variant="outlined"
             disabled={disabled}
-            onClick={() => onSetStatus(action.status, action.selectionAfterSuccess)}
+            onClick={() => onSetStatus(action.status)}
           >
             {action.label}
           </Button>

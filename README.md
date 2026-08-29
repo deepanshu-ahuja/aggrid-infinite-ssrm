@@ -52,9 +52,9 @@ source .venv/bin/activate
 python backend/manage.py test apps.transactions
 ```
 
-Pull requests also run these checks in GitHub Actions. See [GitHub Actions CI](docs/github-actions-ci.md) for a developer-oriented explanation of the workflow syntax, commands, and how to diagnose failures.
+Pull requests also run these checks in GitHub Actions. See [GitHub Actions CI](docs/github-actions-ci.md) for the current workflow explanation.
 
-Manual browser verification may be performed later as a consolidated pass. Use [Client-Side Row Model foundation](docs/client-side-grid.md) for Client scenarios and [Pre-Client manual testing](docs/pre-client-manual-testing.md) for the still-pending Infinite + SSRM regression checklist. Do not mark either complete unless the browser scenarios were actually run.
+Manual browser verification may be performed later as a consolidated pass. Use [Client-Side Row Model foundation](docs/client-side-grid.md) for Client scenarios and [Pre-Client manual testing](docs/pre-client-manual-testing.md) for the pending Infinite + SSRM regression checklist. Do not mark either complete unless the browser scenarios were actually run.
 
 ## Databricks Apps
 
@@ -64,40 +64,45 @@ Configure `DJANGO_SECRET_KEY` and the AG Grid license key through Databricks App
 
 ## Continuing in a new chat or coding-agent session
 
-Read [AGENTS.md](AGENTS.md) **first**. It is the repository-owned project handoff and AI/developer working contract: architecture rules, comment-preservation standard, capability-tag discovery, current grid semantics, testing/documentation expectations, Git/PR workflow, key source files, and the bootstrap instruction for a new chat.
+Read [AGENTS.md](AGENTS.md) **first**. It is the repository-owned developer/AI working contract for architecture, documentation scope, capability discovery, testing, Git/PR workflow and current roadmap sequencing.
 
-`AGENTS.md` is intentionally maintained in the repository so continuation does not depend on access to an earlier ChatGPT/Codex conversation. When architecture, capability contracts, workflow rules, discoverability rules, or roadmap sequencing change, review and update that file in the same work.
+When changing or extracting one frontend grid capability, use the [Grid capability tag registry](docs/grid-capability-tags.md): find the relevant `GRIDCAP-*` marker, read its row-model notes, then inspect the exact marker across frontend source and focused frontend tests. Backend contracts remain documented/tested normally and intentionally do not carry `GRIDCAP-*` comments.
 
-When you want to extract or change one grid capability, use the [Grid capability tag registry](docs/grid-capability-tags.md). Find the relevant `GRIDCAP-*` tag there, read its row-model/ownership notes, then search the exact marker across frontend source and focused frontend tests so hidden integration points are not missed. Backend contracts remain documented/tested normally but are intentionally not decorated with `GRIDCAP-*` comments.
+## Documentation scope
 
-## Project documentation
+Current implementation docs describe what the code supports now. They should not be used as a place to record rejected or hypothetical runtime options.
 
-Start with these grid-foundation entry points:
+Planning belongs in [Grid foundation backlog](docs/grid-backlog.md). Configurable-table target architecture is kept in its clearly identified architecture/proposal documents.
 
-- [Project handoff / working contract](AGENTS.md) — read first when starting a new developer or coding-agent session; points to the live sources of truth and records durable project rules.
-- [Grid capability tag registry](docs/grid-capability-tags.md) — authoritative list of searchable frontend `GRIDCAP-*` markers for locating capability footprints across Client, Infinite and SSRM implementations and focused frontend tests.
-- [Grid foundation backlog](docs/grid-backlog.md) — the single living TODO/control list for unfinished capabilities, risks, verification work, and deferred decisions.
-- [Grid capability catalog](docs/grid-capabilities.md) — what the current grid foundation can do logically, independent of one UI flow.
-- [Client-Side Row Model foundation](docs/client-side-grid.md) — Client data ownership, capability matrix, native selection/filtering/export, editing reconciliation, limitations, and manual verification.
-- [AG Grid native usage reference](docs/ag-grid-native-usage.md) — which native AG Grid props, APIs, RowNode methods, events, state and modules the project currently relies on.
-- [Selected-row totals](docs/selection-counts.md) — server-backed exact/manual counts, All Filtered/All Records formulas, API `totalCount` / `filteredCount`, Infinite versus SSRM ownership, stale-response handling, and future eligibility-aware counts.
-- [Edited-row total](docs/edited-row-count.md) — dirty-row semantics and tracked-edit ownership.
-- [Grid export](docs/grid-export.md) — server-backed Current Page versus Selected export ownership and eligibility semantics; the Client guide records its local Selected export difference.
-- [Pre-Client manual testing](docs/pre-client-manual-testing.md) — step-by-step Infinite + SSRM browser verification for selection counts, edited totals, export and existing edit/conflict regression.
-- [GitHub Actions CI](docs/github-actions-ci.md) — what the repository workflow does and how to read a failed run.
+## Current implementation references
 
-Then use the detailed source-of-truth documents for implementation and edge cases:
+Start with:
 
-- [Architecture](docs/architecture.md)
-- [Frontend conventions](docs/frontend-conventions.md)
-- [Theming and design tokens](docs/theming.md)
-- [Reusable server-backed grid guide](docs/server-backed-grid-reuse.md)
-- [Server-backed row interaction policy](docs/row-interaction.md)
-- [Row interaction implementation and manual testing](docs/row-interaction-manual-testing.md)
-- [AG Grid architecture](docs/ag-grid.md)
-- [AG Grid foundation status](docs/ag-grid-foundation-status.md)
-- [Transaction editing](docs/transaction-editing.md)
-- [Unsaved edit conflict reconciliation and manual testing](docs/edit-conflict-reconciliation.md)
-- [API and data flow](docs/api-data-flow.md)
+- [Project handoff / working contract](AGENTS.md) — durable engineering/workflow rules and current sequencing.
+- [Grid capability tag registry](docs/grid-capability-tags.md) — frontend capability-discovery markers.
+- [Grid capability catalog](docs/grid-capabilities.md) — current logical capabilities across Client, Infinite and SSRM.
+- [Architecture](docs/architecture.md) — current repository/application boundaries.
+- [AG Grid architecture](docs/ag-grid.md) — current native/shared/feature ownership.
+- [AG Grid foundation status](docs/ag-grid-foundation-status.md) — current implementation snapshot.
+- [AG Grid native usage reference](docs/ag-grid-native-usage.md) — native AG Grid runtime surface currently used.
+- [API and data flow](docs/api-data-flow.md) — current Client and server-backed API flows.
+- [Client-Side Row Model foundation](docs/client-side-grid.md) — current Client ownership and behavior.
+- [Selected-row totals](docs/selection-counts.md) — current Infinite/SSRM dataset-wide selected-count contract.
+- [Edited-row total](docs/edited-row-count.md) — current dirty-row count shared by all three row models.
+- [Selected action lifecycle](docs/selected-action-selection-lifecycle.md) — current Change Status success/failure and row-model clear behavior.
+- [Row interaction](docs/row-interaction.md) — current enabled/selection-disabled/read-only capability across all three row models.
+- [Transaction editing](docs/transaction-editing.md) — current tracked editing and persistence behavior.
+- [Unsaved edit conflict reconciliation](docs/edit-conflict-reconciliation.md) — current BASE/LOCAL/REMOTE state machine and guards.
+- [Grid export](docs/grid-export.md) — current Current Page and Selected export behavior across all three row models.
+- [Selection/edit/export index](docs/selection-edit-export.md) — navigation to the dedicated implementation references.
+- [Theming and design tokens](docs/theming.md) — current styling/theme boundary.
+- [Frontend conventions](docs/frontend-conventions.md) — frontend engineering conventions.
+- [GitHub Actions CI](docs/github-actions-ci.md) — current CI workflow explanation.
 
-The legacy [combined selection/edit/export index](docs/selection-edit-export.md) remains only as a navigation page to the dedicated guides above.
+## Planning / proposal references
+
+- [Grid foundation backlog](docs/grid-backlog.md) — unfinished work, sequencing, verification and deferred decisions.
+- [Configurable table architecture brief](docs/configurable-table-architecture-brief.md) — standalone target architecture.
+- [Detailed metadata-driven table architecture](docs/metadata-driven-table-architecture.md) — detailed proposal/discussion material.
+
+Manual testing guides remain verification checklists and do not imply that browser verification has already been completed.

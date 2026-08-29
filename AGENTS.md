@@ -1,38 +1,39 @@
 # AGENTS.md — Project Handoff and AI Working Contract
 
-This file is the durable handoff for developers and coding assistants working on this repository.
+This file is the durable working contract for developers and coding assistants working on this repository.
 
-**If a new chat/session starts, read this file first.** Do not rely on memory from an earlier conversation. Reconstruct the current state from the repository and GitHub.
-
-This file must be kept current whenever a meaningful architecture rule, workflow rule, capability contract, discoverability contract, or roadmap decision changes. It is intentionally stored in the repository so a future chat can resume safely even when the previous chat is unavailable.
-
----
-
-## New-chat bootstrap
-
-A user can paste this entire file into a new chat, or give the assistant this short instruction:
-
-> Open `deepanshu-ahuja/aggrid-infinite-ssrm`. Read root `AGENTS.md` first, then inspect the current repository, current `main`, current working branch/open PRs, and the source-of-truth docs referenced below. Do not rely on previous-chat memory. Continue the requested work using the repository's documented architecture, capability-tag, testing, documentation, and PR standards.
-
-Before writing code, the assistant should briefly report:
-
-1. current repository / branch / PR state found on GitHub;
-2. source-of-truth docs read for the task;
-3. the current architecture relevant to the requested change;
-4. any conflict between the request and documented behavior;
-5. the intended change and validation plan.
-
-Do not ask the user questions that can be answered by inspecting the repository.
-
----
-
-## Repository and product intent
+**If a new chat/session starts, read this file first.** Reconstruct current state from the repository and GitHub rather than relying on previous-chat memory.
 
 Repository:
 
 `deepanshu-ahuja/aggrid-infinite-ssrm`
 
-This is a **production-oriented reusable AG Grid foundation/reference implementation**, not a disposable POC.
+Continuous working branch:
+
+`grid-foundation`
+
+This is a production-oriented reusable/reference AG Grid foundation, not a disposable POC.
+
+---
+
+## New-chat bootstrap
+
+Before changing code:
+
+1. inspect current `main`;
+2. inspect `grid-foundation`;
+3. inspect the current open PR and recently merged PRs when relevant;
+4. read this file;
+5. read the relevant current implementation docs and capability tags;
+6. inspect current source/tests rather than assuming an old PR description is still true.
+
+Do not ask the user questions that repository inspection can answer.
+
+GitHub is the source of truth for branch/PR state.
+
+---
+
+## Current stack and deployment boundary
 
 Current stack includes:
 
@@ -43,50 +44,74 @@ Current stack includes:
 - AG Grid Client-Side Row Model;
 - AG Grid Community Infinite Row Model;
 - AG Grid Enterprise Server-Side Row Model (SSRM);
-- Django + Django REST Framework backend;
-- TanStack Query at normal application/API boundaries such as the Client-Side collection flow;
+- TanStack Query at normal application/API boundaries such as the Client collection flow;
+- Django + Django REST Framework;
 - frontend and backend in one repository;
-- Databricks Apps as the deployment target.
+- Databricks Apps as deployment target.
 
-Do not add Docker or unrelated infrastructure unless explicitly required.
+Do not add Docker or unrelated infrastructure unless explicitly requested.
+
+Do not add console logging merely to understand control flow. Prefer clear code, comments, focused tests and isolated dev tooling.
 
 ---
 
-## Source-of-truth reading order
+## Documentation scope contract
 
-Before changing a capability, inspect the current code and current GitHub state. Never assume an old PR is still open or that an old branch is ahead of `main`.
+Documentation must make its scope clear.
 
-Start with:
+### Current implementation documentation
 
-1. `AGENTS.md` — this working contract;
-2. `README.md` — repository entry point and current developer links;
-3. `docs/frontend-conventions.md` — code ownership, abstraction, comment, capability-marker, and testing standards;
-4. `docs/grid-capability-tags.md` — authoritative frontend `GRIDCAP-*` registry for locating frontend capability footprints;
-5. `docs/grid-backlog.md` — living roadmap / verification list;
-6. `docs/grid-capabilities.md` — logical capability catalog;
-7. `docs/ag-grid-native-usage.md` — native AG Grid APIs currently relied upon;
-8. `docs/api-data-flow.md` — frontend/backend data-flow contract.
+Docs whose purpose is to explain the current implementation must describe **implemented truth only**.
 
-Then read the capability-specific docs relevant to the task, including as applicable:
+If a current-state doc says a configuration key, API, behavior, hook, option or capability exists, current code must actually support it.
 
+Do not put these into current implementation docs merely because they were discussed:
+
+- rejected approaches;
+- hypothetical configuration;
+- speculative APIs;
+- possible future registries;
+- conversation history;
+- options that the current code does not expose.
+
+Current limitations are appropriate when they explain what the implementation does or does not support today.
+
+Examples of current implementation references include:
+
+- `docs/grid-capabilities.md`;
+- `docs/ag-grid-native-usage.md`;
+- `docs/ag-grid.md`;
+- `docs/ag-grid-foundation-status.md`;
+- `docs/api-data-flow.md`;
 - `docs/client-side-grid.md`;
 - `docs/selection-counts.md`;
 - `docs/selected-action-selection-lifecycle.md`;
-- `docs/grid-export.md`;
-- `docs/edited-row-count.md`;
-- `docs/pre-client-manual-testing.md`;
+- `docs/row-interaction.md`;
 - `docs/transaction-editing.md`;
 - `docs/edit-conflict-reconciliation.md`;
-- `docs/row-interaction.md`;
-- `docs/row-interaction-manual-testing.md`;
-- `docs/server-backed-grid-reuse.md`;
-- `docs/github-actions-ci.md`;
-- `docs/ag-grid.md`;
-- `docs/ag-grid-foundation-status.md`.
+- `docs/grid-export.md`.
 
-If code and docs disagree, do not silently choose one. Determine which reflects the intended/current behavior, fix the inconsistency as part of the work, and document the resolution.
+### Backlog / planning
 
-GitHub `main` plus the current open PR/working branch is the source of truth for repository state.
+`docs/grid-backlog.md` may describe unfinished work, design questions, sequencing and future capabilities because it is explicitly a planning/control document.
+
+### Architecture proposals
+
+Clearly identified proposal/target-architecture docs may describe a future architecture that is not implemented yet.
+
+Current configurable-table proposal material includes:
+
+- `docs/configurable-table-architecture-brief.md`;
+- `docs/metadata-driven-table-architecture.md`;
+- `docs/metadata-driven-ui-overview.md`.
+
+Do not make proposal text sound like current runtime behavior.
+
+### Working contract
+
+`AGENTS.md` may contain durable engineering/workflow rules and agreed roadmap sequencing. It must not pretend an unsupported runtime capability exists.
+
+When code and a current implementation doc disagree, inspect the source/tests, determine current intended behavior, and fix the inconsistency in the same work.
 
 ---
 
@@ -98,69 +123,48 @@ Expected deliverables normally include:
 
 - production-quality implementation;
 - focused automated tests;
-- useful inline rationale for non-obvious logic;
-- architecture / feature documentation;
-- explicit limitations and future extension points;
-- manual verification guidance where browser / AG Grid lifecycle behavior matters;
-- capability-tag registry/marker review when the frontend capability footprint changes;
-- backlog/status updates;
+- useful comments/JSDoc for non-obvious ownership, state or lifecycle logic;
+- current implementation documentation;
+- explicit current limitations;
+- manual verification guidance when browser/AG Grid lifecycle behavior matters;
+- capability-tag review when the frontend capability footprint changes;
+- backlog/status updates when sequencing/status changes;
 - CI validation;
-- an accurate PR description.
+- accurate PR description.
 
-A developer should be able to understand a feature's behavior from the repository without reconstructing it from chat history or Git archaeology.
+A developer should be able to understand current behavior without reconstructing chat history or Git archaeology.
 
-Feature documentation should explain, where relevant:
-
-- what the user-visible feature does;
-- what is included/excluded;
-- frontend versus backend ownership;
-- native AG Grid APIs being used;
-- custom logic and why it exists;
-- Client-Side versus Infinite versus SSRM differences;
-- selection/edit/eligibility implications;
-- edge cases and race conditions;
-- limitations;
-- future production approach;
-- exact manual verification steps.
-
-Do not leave core behavior merely "inferable" from implementation.
+Never claim manual/browser verification unless it was actually performed.
 
 ---
 
-## Capability-tag discoverability contract
+## Capability-tag discoverability
 
-This repository is also meant to be mined later as a reference implementation. A developer may want to extract one frontend grid feature such as Select All Filtered, Current Page export, tracked conflicts, or safe AG Grid teardown without remembering every frontend file that participates in that capability.
+`docs/grid-capability-tags.md` is the authoritative registry for frontend `GRIDCAP-*` markers.
 
-`docs/grid-capability-tags.md` is the **authoritative registry** of searchable frontend `GRIDCAP-*` markers.
-
-Working rule:
+Working flow:
 
 ```text
-need one frontend grid capability
-→ find its GRIDCAP-* entry in docs/grid-capability-tags.md
-→ read its row-model/ownership notes
-→ search the exact marker across frontend source/tests
-→ review every marked frontend integration point + linked docs
-→ separately inspect any API/backend contract required by that capability
+need a frontend grid capability
+→ find its GRIDCAP-* registry entry
+→ search the exact marker in frontend source/tests
+→ inspect every important marked integration point
+→ inspect linked implementation docs
+→ separately inspect required backend/API contracts
 ```
 
-Important rules:
+Rules:
 
-- every capability marker starts with the exact prefix `GRIDCAP-`;
-- `GRIDCAP-*` comments belong in **frontend source and focused frontend tests only**;
-- do **not** add `GRIDCAP-*` markers to Python/backend source or backend tests;
-- do **not** invent ad-hoc markers in frontend source; define a genuinely new marker in the registry first;
-- use one logical marker across Client-Side, Infinite and SSRM frontend implementations/tests when they implement the same user/business capability differently;
-- a frontend source location may carry multiple markers when it supports multiple capabilities;
-- mark extraction-relevant frontend boundaries such as controllers, roots, shared algorithms, lifecycle/event boundaries, request/response adapters, feature API integration, columns/editors, and focused frontend tests;
-- do not tag every obvious helper/line merely to increase marker count;
-- a marker means "this frontend location participates in the capability", **not** "this code can be copied unchanged to every row model";
-- preserve useful frontend markers during refactors when the capability still exists;
-- when a frontend capability is added, removed, or materially changed, review the registry and existing frontend markers in the same work;
-- avoid casual marker renames because stable searchability across history is part of their value;
-- backend authority, validation, eligibility and persistence remain important architecture and must still be documented/tested normally even though they are deliberately outside the marker system.
+- markers belong in frontend source and focused frontend tests only;
+- do not add markers to Python/backend source or backend tests;
+- define a genuinely new marker in the registry before adding it to source;
+- use one logical marker across row models when the user-facing capability is shared but implementation differs;
+- a marker means a location participates in a capability, not that its implementation can be copied unchanged;
+- preserve accurate markers during refactors;
+- review the registry and occurrences when a frontend capability materially changes;
+- do not tag trivial lines merely to increase coverage.
 
-For a complete row-model frontend extraction, use the row-model tags such as:
+Core row-model markers:
 
 ```text
 GRIDCAP-ROWMODEL-CLIENT
@@ -168,88 +172,55 @@ GRIDCAP-ROWMODEL-INFINITE
 GRIDCAP-ROWMODEL-SSRM
 ```
 
-For one logical frontend feature, use the specific tag such as:
-
-```text
-GRIDCAP-SEL-FILTERED
-GRIDCAP-EXPORT-SELECTED
-GRIDCAP-EDIT-CONFLICT
-GRIDCAP-LIFECYCLE-DESTROY
-```
-
-Do not use capability markers as an excuse to create a universal wrapper. Concrete integration roots are intentionally visible and may legitimately carry several markers.
-
 ---
 
-## Comment and JSDoc preservation rule
+## Comment preservation
 
-**Preserve useful existing explanatory comments by default.**
+Preserve useful explanatory comments by default.
 
-Do not remove or shorten comments just to make a file smaller or "cleaner".
+Keep comments that explain:
 
-An existing explanation should normally remain when it documents:
-
-- architecture or ownership;
+- ownership;
 - lifecycle;
 - state transitions;
-- race conditions;
-- AG Grid behavior that is not obvious;
+- races;
 - native-versus-custom responsibility;
-- selection semantics;
 - backend authority;
-- cache / refresh behavior;
-- why a particular source of truth exists;
-- why an implementation intentionally differs between row models;
-- frontend capability markers that still accurately describe the integration point.
+- cache/refresh behavior;
+- why row models intentionally differ;
+- why a particular source of truth exists.
 
-Remove or rewrite an existing comment only when:
+Rewrite/remove a comment when underlying logic changed, the explanation became obsolete, or it is objectively noise.
 
-- the underlying logic changed and the old comment became wrong;
-- the explanation is genuinely obsolete;
-- it is objectively redundant/noise.
-
-When adding new non-obvious logic, add **logic-level comments near that logic**. Useful comments explain **why**, not TypeScript/Python syntax.
-
-Avoid noise such as:
-
-```ts
-// Set the error.
-setError(message);
-```
-
-The codebase is intended to remain understandable to another developer or coding agent that has never seen the original chat.
+New non-obvious logic should have local rationale comments explaining **why**, not syntax.
 
 ---
 
-## Architecture principles
+## Core architecture principles
 
-For each grid concern, prefer this order:
+For each grid concern prefer:
 
 1. native AG Grid capability;
 2. row-model-specific native AG Grid capability;
 3. custom application logic only for a real semantic gap.
 
-Do not create a universal `AgGridReact` wrapper or giant `useGrid()` hook that hides AG Grid lifecycle behind another abstraction.
+Do not create a universal `AgGridReact` wrapper or giant `useGrid()` hook that hides AG Grid lifecycle.
 
-Concrete grid roots should remain visible and should own their `GridApi`.
+Concrete roots remain visible and own their own `GridApi`.
 
-Reuse semantic helpers when semantics are genuinely shared, but do not force Client-Side, Infinite, and SSRM implementations into one controller when their native capabilities differ.
+Promote code to `shared/grid` only when it is genuinely domain-neutral.
 
-Promote code to `shared/grid` only when it is genuinely domain-neutral. Transaction-specific fields, API mapping, domain actions, business validation, and feature UI remain in the Transactions feature/backend.
+Transaction-specific fields, API mapping, business actions, validation rules/messages and feature UI remain feature/backend-owned.
 
-Do not introduce an abstraction merely because two callers repeat a few lines. A shared abstraction should own a real responsibility such as lifecycle, validation, normalization, algorithmic behavior, third-party adaptation, retry/cancellation, or a meaningful stable boundary.
+Do not create an abstraction merely because a few callers repeat lines. Shared abstractions should own a real stable responsibility such as lifecycle, validation, normalization, algorithmic behavior, third-party adaptation, retry/cancellation or another proven shared boundary.
 
-Use TanStack Query at ordinary application/API boundaries when useful, but do not force it into AG Grid datasource loading merely for consistency. AG Grid datasource lifecycle can own server-grid loading when it is the natural owner.
-
-Do not add console logging just to understand flow. Prefer clear code, comments, capability markers, tests, and isolated dev tooling.
+Use TanStack Query at normal application/API boundaries when useful. Do not force it into Infinite/SSRM datasource loading merely for consistency; AG Grid datasource lifecycle is the natural owner there.
 
 ---
 
-## Current row-model baseline
+## Row-model independence
 
-The application keeps Client-Side, Infinite, and SSRM as separate real implementations and routes so each can be verified independently.
-
-Typical routes:
+The repository demonstrates three row models:
 
 ```text
 /client
@@ -257,356 +228,344 @@ Typical routes:
 /ssrm
 ```
 
+A real application may use all three, only one, or a subset.
+
+**Do not create dependencies that require all three row models to exist together.**
+
+The row models implement similar semantics independently when their native mechanics differ.
+
 ### Client-Side
 
-Client-Side Row Model receives the complete bounded Transaction working set through TanStack Query and passes editable row copies to AG Grid `rowData`.
+Client receives the complete bounded Transaction working set through TanStack Query and passes editable row copies to native `rowData`.
 
-AG Grid then owns local sorting, filtering, pagination, and selection. Client does not use Infinite/SSRM datasource or unloaded-row include/exclude machinery.
+AG Grid owns local sorting, filtering, pagination and selection.
 
-Current Client selection foundation supports native scopes:
+Native Select All scopes:
 
 ```text
-page      → rowSelection.selectAll = 'currentPage'
-filtered  → rowSelection.selectAll = 'filtered'
-all       → rowSelection.selectAll = 'all'
+page      → currentPage
+filtered  → filtered
+all       → all
 ```
 
-The Transactions demo currently defaults to `all`. Because every row is local and native `isRowSelectable` excludes both `selectionDisabled` and `readOnly`, Client selected count is exact for eligibility. With the deterministic current 750-row demo dataset, native Select All selects 624 eligible rows (63 `selectionDisabled` + 63 `readOnly` are outside selection).
+Selected IDs/count are exact because all rows are local and native selectability is evaluated over the complete working set.
 
-Selected Client export is native/local because all selected row objects are available in browser memory. Client selected business actions still send explicit IDs to the backend, which re-checks eligibility.
+Selected export is native/local.
 
 ### Infinite
 
-Infinite Row Model only has concrete RowNodes for loaded rows. Dataset-wide selection therefore needs compact logical include/exclude semantics where unloaded rows must be represented.
+Infinite has concrete RowNodes only for loaded rows.
 
-Native explicit/page selection remains native where possible; custom state fills only the unloaded dataset-wide semantic gap.
+Native loaded/manual/current-page selection remains native where possible.
+
+Filtered/all dataset-wide selection uses compact include/exclude application state because unloaded rows do not have RowNodes.
 
 ### SSRM
 
-SSRM uses native Enterprise server-side selection state where AG Grid already provides the required behavior. Application-owned custom state exists only for missing product semantics, notably the current Select All Filtered behavior.
+SSRM uses native Enterprise server-side selection state where AG Grid supports the required meaning.
 
-Do not move all SSRM selection into React just to make it look like Infinite.
+Application-owned state exists only for the current All Filtered semantic gap.
+
+Do not move all SSRM selection into React merely to resemble Infinite.
+
+### Selection controllers remain separate
+
+```text
+useClientSideSelectionController()
+useInfiniteSelectionController()
+useSsrmSelectionController()
+```
+
+They may expose similarly named semantic operations such as `clearSelection()`, but each owns different mechanics.
+
+Do not replace them with one row-model switch or universal selection controller.
 
 ---
 
 ## Selected-row count contract
 
-### Client-Side
-
-Client selected count is exact:
+### Client
 
 ```text
 selected count
-→ api.getSelectedRows().length
+→ exact native selected rows
 ```
 
-Because the complete working set is local and `isRowSelectable` is native, restricted rows never enter the selected set.
-
-### Infinite + SSRM
-
-For the server-backed baseline, both Infinite and SSRM use the same normal backend query metadata:
+### Infinite / SSRM
 
 ```text
-Explicit / manual / current-page
-→ exact selected IDs
+explicit/manual/current-page
+→ exact include ID count
 
-Select All Records
-→ API totalCount - explicit user deselection exceptions
+All Filtered
+→ API filteredCount - explicit user exceptions
 
-Select All Filtered
-→ API filteredCount - explicit user deselection exceptions
+All Records
+→ API totalCount - explicit user exceptions
 ```
 
-Selection mechanics remain row-model-specific. The dataset-wide count source is intentionally consistent.
+Server `totalCount` / `filteredCount` currently describe query membership rather than exact selected-operation eligibility.
 
-Do not reintroduce a separate Infinite count source such as `isLastRowIndexKnown()` for selected totals unless there is a concrete demonstrated reason and the architecture is deliberately reconsidered and documented.
+Do not subtract only restricted rows currently loaded in the browser; unloaded pages may contain additional restricted rows and that would create false precision.
 
 ---
 
-## Request freshness / out-of-order responses
+## Request freshness
 
-Both server-backed datasources protect renderable count metadata from out-of-order responses.
+For Infinite/SSRM renderable count metadata:
 
-The rule is:
-
-**the latest STARTED request owns the renderable `totalCount` / `filteredCount`.**
-
-Example:
+> the latest **started** request owns `totalCount` / `filteredCount` publication.
 
 ```text
 request A starts
-request B starts after A
-
-B is now the latest request
-
-B resolves
-→ B may publish totalCount / filteredCount
-
-A resolves later
-→ A may finish its AG Grid loading lifecycle
-→ A MUST NOT overwrite B's count metadata
+request B starts later
+B resolves → may publish counts
+A resolves later → may finish AG Grid load lifecycle but must not overwrite B's counts
 ```
 
-This is based on request-start order, **not page number**.
+This rule is based on request-start order, not page number.
 
-Therefore the same rule must work in both directions:
-
-```text
-forward:  page 1 request → page 2 request
-backward: page 3 request → page 2 request
-```
-
-The second request is newer in either case.
-
-Tests should retain explicit coverage for forward and backward request ordering for both Infinite and SSRM. Comments beside the freshness logic should make the A/B behavior obvious to a future developer.
+Retain forward and backward request-order tests.
 
 ---
 
-## Filter-dependent selection reset
+## Filter-dependent selection
 
-Select All Filtered is defined by the current filter universe.
-
-Example:
-
-```text
-Filter = Pending
-Select All Filtered
-→ means all matching Pending rows
-
-Filter changes to Failed
-```
-
-Keeping the old filtered-wide selection would silently redefine the user's existing selection to all Failed rows. Therefore the filter-dependent Select All Filtered selection is cleared/reset when its defining filter changes.
-
-This rule is specific to filter-dependent selection across all three row-model implementations:
+Filtered-wide selection is defined by the active filter universe.
 
 ```text
 Select All Filtered
-→ filter changes
-→ clear/reset filtered-wide selection
+→ defining filter changes
+→ clear/reset that filtered-wide selection
 
 Select All Records
-→ filter changes
-→ still means the complete dataset
+→ visible filter changes
+→ remains All Records
 
-Ordinary explicit/manual IDs
-→ do not silently become a new filtered-wide selection
+explicit/manual IDs
+→ do not become a new filtered-wide selection
 ```
 
 ---
 
-## Row interaction and backend eligibility
+## Row interaction and backend authority
 
-Rows may carry backend-provided interaction modes such as:
+Current generic row modes:
 
-- `enabled`;
-- `selectionDisabled`;
-- `readOnly`.
+```text
+enabled
+selectionDisabled
+readOnly
+```
 
-The frontend prevents invalid interactions where possible, but the backend remains authoritative for business operations.
+The frontend prevents invalid loaded-row interaction where possible. Backend authority remains required for authoritative operations and unloaded rows.
 
-Do not encode every business-disabled row as a logical user deselection exception. These concepts are different:
+Do not confuse:
 
 ```text
 user exception IDs
-→ rows the user explicitly deselected
+→ rows explicitly deselected by the user
 
 backend eligibility
-→ rows business rules allow an operation to act on
+→ rows an operation is allowed to affect
 ```
 
----
-
-## Count eligibility limitation
-
-The limitation below applies to dataset-wide **server-backed** selected counts. Client-Side exact selection does not have this limitation because every row is concrete/local.
-
-Current server `totalCount` / `filteredCount` describe dataset/query membership, not exact selection eligibility.
-
-Therefore this is intentionally possible for Infinite/SSRM:
-
-```text
-totalCount = 750
-25 rows are selectionDisabled/readOnly
-
-Select All Records UI
-→ 750 selected
-
-backend selected action/export
-→ 725 eligible rows actually resolved
-```
-
-Do **not** subtract only restricted rows currently loaded in the browser. Unloaded pages may contain more restricted rows, so that would create false precision.
-
-If a real product later requires exact actionable server-wide counts, the backend can add eligibility-aware metadata such as:
-
-```text
-selectionEligibleTotalCount
-selectionEligibleFilteredCount
-```
-
-Do not add that contract until product requirements justify it.
+Restricted rows are not manufactured as logical exclude IDs.
 
 ---
 
 ## Export contract
 
-Current export has two logical scopes, but Selected ownership differs by row model.
+### Current Page
 
-### Export Current Page
+All three row models use native AG Grid CSV over the exact fully resolved current pagination page.
 
-Current Page is already represented by concrete loaded RowNodes.
+If the expected page is not fully materialised, refuse partial export.
 
-Use native AG Grid CSV export over exactly the current fully resolved pagination page. AG Grid owns CSV escaping/serialization/value processing; application code supplies the exact page boundary.
+Current Page is a page snapshot; displayed restricted rows are included.
 
-If the page is not fully resolved, refuse partial export rather than silently producing an incomplete file.
+### Selected — Client
 
-**Eligibility semantics:** Current Page export is a page snapshot, not a selected-row business operation. If `selectionDisabled` or `readOnly` rows are displayed on that page, they are included in the page export.
+Use native/local selected-row CSV across pagination pages.
 
-### Export Selected — Client-Side
+### Selected — Infinite / SSRM
 
-Client has the complete selected set locally, so Selected export uses native AG Grid CSV with selected rows across pagination pages. It does not call the backend selected-export endpoint.
+Use backend selected export because the logical selected universe can contain unloaded rows.
 
-Since restricted Client rows cannot enter native selection, local Selected export naturally contains selected eligible rows only.
-
-### Export Selected — Infinite / SSRM
-
-Selected export is backend-owned for Infinite and SSRM because a logical selection may include rows that were never loaded in the browser.
-
-Flow:
-
-```text
-row-model-specific selection state
-        ↓
-common logical selection target
-        ↓
-POST /api/transactions/selection/export/
-        ↓
-backend resolves authoritative selected rows
-        ↓
-backend writes CSV
-        ↓
-browser download
-```
-
-**Eligibility semantics:** server-backed Selected export is a backend selection operation. `selectionDisabled` and `readOnly` rows are excluded by authoritative backend eligibility.
-
-This difference must stay explicit in docs and tests.
+The same logical backend resolver semantics are reused for selected mutation and selected export.
 
 ---
 
-## Operation-neutral backend selection resolver
+## Current selected business action
 
-Selected business operations should reuse one backend resolver for logical selection.
-
-Conceptually:
+Transactions currently implements one selected **Change Status** mutation family:
 
 ```text
-include + IDs
-→ resolve exact named rows
-→ apply authoritative eligibility
-
-exclude + filters
-→ all eligible matching rows minus explicit user exception IDs
-
-exclude without filters
-→ all eligible records minus explicit user exception IDs
+Mark Completed
+Mark Pending
+Mark Failed
 ```
 
-Update Selected, Export Selected, and future selected-row operations should not independently reinterpret what "selected" means.
+Those controls differ by status value and use the same selected-update request path.
 
-Selection answers **which rows**. The business operation answers **what to do** with those rows.
-
-Client selected business actions can also reuse the same backend operation by sending exact `include + ids`; Client does not need dataset-wide `exclude` state because it can enumerate the exact native selected IDs.
-
----
-
-## Post-business-action selection lifecycle
-
-Selection state after a successful selected-row business action is an explicit **feature/action policy**, not a hidden shared-grid default.
-
-Current frontend policy shape:
+Current lifecycle:
 
 ```text
-clear
-preserve
+current selection target
+→ Change Status request
+→ backend succeeds
+→ concrete grid root calls its existing row-model clearSelection()
+→ concrete grid root refreshes authoritative data
 ```
 
-Rules:
+If the backend request fails, the success callback does not run and selection remains available.
 
-- the action chooses the policy explicitly;
-- the policy is frontend-only lifecycle metadata and is never serialized to the backend;
-- failed mutations preserve selection so the user can inspect/retry the same target;
-- successful `clear` delegates to the row-model selection owner before/alongside authoritative refresh;
-- successful `preserve` leaves selection intact;
-- current Transaction status mutations choose `clear` because they can change the selected/filter universe;
-- non-mutating Selected export stays separate and preserves selection.
+The implemented request does not carry a selection-lifecycle configuration value.
 
-Row-model clear ownership remains different:
+Different row models clear through their own existing controllers; there is no universal clear implementation.
 
-```text
-Client
-→ native AG Grid deselectAll()
-
-Infinite page/manual
-→ native AG Grid selection clear
-
-Infinite filtered/all
-→ clear compact application dataset selection
-
-SSRM
-→ clear whichever native/custom SSRM selection owner is active
-```
-
-Do not send `clear` / `preserve` in the business API payload and do not create one universal grid wrapper to implement it.
-
-Detailed contract: `docs/selected-action-selection-lifecycle.md`.
+Detailed current behavior: `docs/selected-action-selection-lifecycle.md`.
 
 ---
 
 ## Editing / dirty-row baseline
 
-Tracked editing state lives outside transient RowNodes so dirty work can survive row recreation/cache lifecycle where required.
+Tracked editing state lives outside transient RowNodes and is keyed by stable backend row ID.
 
-Edited count means **dirty rows**, not dirty fields:
+Edited count means dirty rows, not dirty fields.
 
-```text
-3 dirty fields in one row
-→ edited row count = 1
+Current editing includes:
 
-another dirty row
-→ edited row count = 2
-```
+- direct committed cell edits;
+- current-page programmatic edit application;
+- row Save/Discard;
+- Save/Discard selected dirty rows;
+- safe in-flight acknowledgement;
+- BASE/LOCAL/REMOTE conflict reconciliation;
+- local-overlay protection so programmatic values are not mistaken for fresh REMOTE data.
 
-Conflict behavior follows the BASE / LOCAL / REMOTE model documented in:
+Conflict state and editing behavior are documented in:
 
 - `docs/transaction-editing.md`;
 - `docs/edit-conflict-reconciliation.md`.
 
-Read those docs before touching editing/reconciliation. Do not simplify the existing model accidentally.
+---
 
-Client reuses the same tracked-edit/conflict semantics but receives fresh authoritative data through TanStack Query / `rowData` replacement rather than a server cache/store lifecycle.
+## Validation — next implementation
+
+Validation is a first-class capability independent of configurable-table metadata.
+
+Static Transaction configuration must be able to use it directly.
+
+The validation engine should consume resolved rule arrays using stable registered rule keys plus JSON-safe params/messages, conceptually:
+
+```text
+rules: [
+  { key: required },
+  { key: maxLength, params: { max: 100 } },
+  { key: numberRange, params: { min: 0, max: 1000000 } }
+]
+```
+
+Frontend owns executable validator functions through a registry.
+
+Do not accept arbitrary executable JavaScript/expressions from backend/configuration.
+
+A reusable rule-profile key may be considered only when repeated real rule combinations justify it; the validation engine itself should still operate on resolved rules.
+
+### Validation state
+
+Required behavior:
+
+```text
+user commits invalid LOCAL value
+→ keep LOCAL visible
+→ keep row dirty
+→ record field error outside transient RowNodes by row ID + field
+→ block relevant Save
+→ correction/revert revalidates and clears stale errors
+```
+
+Backend structured field errors should map into the same validation state while rejected LOCAL input remains visible.
+
+### Validation and conflict remain separate
+
+```text
+Validation
+→ is LOCAL acceptable?
+
+Conflict
+→ did REMOTE diverge from BASE while LOCAL exists?
+```
+
+A field may be invalid, conflicted, or both.
+
+Do not collapse validation into the tracked conflict state merely because Save/presentation need to coordinate both.
+
+Validation implementation should cover direct edits, current-page programmatic edits, row Save, selected Save, backend field errors, correction/revert, Discard, conflict resolution interaction, presentation and focused Client/Infinite/SSRM integration tests.
+
+Review `docs/grid-capability-tags.md` before adding/reusing a validation marker.
 
 ---
 
-## Current roadmap discipline
+## Import — after validation
 
-Always read `docs/grid-backlog.md` before deciding the next capability because it is the living roadmap.
+Import is a separate workflow, not normal grid editing.
 
-Current high-level state/sequence:
+The implementation/design phase should cover as required:
 
-1. Client-Side, Infinite, and SSRM baseline implementations exist with focused automated coverage;
-2. browser/manual verification for the three row models remains available for a later consolidated pass and must not be falsely marked complete;
-3. frontend capability-tag discoverability is maintained so individual frontend patterns can be extracted safely later;
-4. post-business-action selection lifecycle is explicit per action (`clear` / `preserve`) and current Transaction status mutations clear only after success;
-5. field/backend validation is the next substantial design topic, but its rule-key/metadata schema is intentionally still open for discussion;
-6. application-level draft lifetime and grouped/tree/aggregation/pivot work are on hold until a real product requirement asks for them;
-7. Import/template/sample-upload, concurrency, advanced permissions/state and other advanced capabilities remain deferred to their roadmap points;
-8. future capabilities should be evaluated across Client / Infinite / SSRM together without forcing identical implementations.
+- file/template formats;
+- create/update/upsert semantics;
+- stable identifiers;
+- field mapping;
+- preview/dry-run;
+- validation reuse;
+- duplicate handling;
+- atomic versus partial success;
+- row/field error reporting;
+- downloadable error output when useful;
+- progress/cancellation for large jobs when required;
+- authoritative post-import refresh.
 
-The foundation is intended to support N real business tables through reusable mechanics plus thin feature composition. A second real table should validate whether **additional** extraction is justified; do not invent abstractions or a fake business feature merely to prove reuse.
+---
 
-**When this sequence changes, update this file and `docs/grid-backlog.md` together.**
+## Configurable-table experiment — after Import
+
+Build the configurable-table runtime first as an **isolated fourth SSRM-based grid path**.
+
+Purpose: prove the metadata compiler/resolver/registry composition boundary without risking the three proven Transaction grids.
+
+Rules:
+
+- do not refactor `/client`, `/infinite` or `/ssrm` merely to make the experiment work;
+- do not rewrite proven shared loading, selection, tracked editing, conflict, freshness, lifecycle or Grid State algorithms while the composition boundary is still being proven;
+- temporary feature-level duplication is acceptable when it protects proven behavior;
+- frontend/application chooses which AG Grid row model(s) the product supports;
+- backend metadata does not dynamically choose Client/Infinite/SSRM;
+- backend metadata remains JSON-safe and does not send executable AG Grid definitions/functions;
+- executable renderers/editors/formatters/validators/action behavior remain frontend implementations resolved through supported registries;
+- only after the isolated path proves the architecture should existing Transaction composition be evaluated for migration;
+- migration is not automatic.
+
+---
+
+## Current roadmap sequence
+
+Always read `docs/grid-backlog.md` before deciding the next capability.
+
+Current agreed sequence:
+
+```text
+1. maintain existing Client/Infinite/SSRM baseline verification
+2. implement validation
+3. design/implement Import
+4. build isolated configurable SSRM-based experiment
+5. evaluate reuse/migration only after the experiment proves its boundary
+```
+
+Manual browser verification remains important but can be consolidated later unless a genuine correctness defect requires immediate interruption.
+
+When sequencing changes, update this file and `docs/grid-backlog.md` together.
 
 ---
 
@@ -616,20 +575,21 @@ Meaningful behavior changes should have focused tests at stable boundaries, incl
 
 - request mapping;
 - datasource lifecycle;
-- forward/backward request ordering;
-- stale-filter behavior;
+- request freshness/cancellation;
 - selection transformations;
 - selected counts;
-- post-business-action clear/preserve lifecycle;
-- backend validation;
-- backend selection resolution;
+- row-model-specific clear behavior;
+- selected business-action request/success/failure lifecycle;
+- validation engine/state/Save guards;
+- backend validation error mapping;
+- backend selected-row resolution;
 - export semantics;
-- eligibility;
-- edit/conflict reconciliation;
-- Client-Side native scope mapping and exact local-selection behavior;
-- frontend capability-marker searches when a frontend capability footprint changes.
+- row eligibility;
+- tracked editing/conflict reconciliation;
+- Client native selection scopes;
+- capability-marker coverage.
 
-Test Client-Side, Infinite and SSRM independently where their lifecycle or selection implementation differs. Share tests/helpers only for genuinely shared semantics.
+Test Client, Infinite and SSRM independently where their lifecycle or selection implementation differs.
 
 Typical frontend verification:
 
@@ -647,9 +607,7 @@ python backend/manage.py check
 python backend/manage.py test apps.transactions
 ```
 
-Also inspect the GitHub Actions run after pushing.
-
-Do not claim browser/manual verification was completed unless it was actually performed.
+Inspect GitHub Actions after pushes.
 
 ---
 
@@ -657,78 +615,67 @@ Do not claim browser/manual verification was completed unless it was actually pe
 
 GitHub is the repository-state source of truth.
 
-Before making changes:
+### Continuous branch
 
-- inspect current `main`;
-- inspect `grid-foundation` and the current open PR;
-- inspect recently merged PRs when relevant;
-- inspect CI status.
+`grid-foundation` is the continuous working branch.
 
-### Continuous working branch rule
+Do not create another work/feature branch unless the user explicitly asks for one.
 
-**`grid-foundation` is the project's continuous working branch.**
+After a PR is merged into `main`, inspect actual GitHub state and synchronize `grid-foundation` before continuing when required.
 
-After a PR is merged to `main`, synchronize/fast-forward `grid-foundation` to the new `main` state before continuing work when necessary. Ordinary grid-foundation work should continue on that branch and its meaningful PR rather than creating a new branch per capability.
+Do not write blindly onto a stale branch.
 
-**Do not create a new feature/work branch unless the user explicitly asks for one.**
+### Open PR expectation
 
-Do not blindly write onto a stale `grid-foundation`. Inspect it first; if it is behind `main` with no intended unique divergence, synchronize it before changing files.
+Once `grid-foundation` contains meaningful committed work beyond the last merged state, maintain an open PR by default.
 
-Maintain a meaningful PR for ongoing branch work.
+Do not leave meaningful ongoing branch work without a PR merely because the user did not explicitly ask for one.
+
+Keep the existing open PR updated as more work is added to the same continuous branch.
+
+### Merge rule
 
 **Never merge a PR unless the user explicitly asks for the merge.**
 
-If the user merges while work is in progress, detect that state before further writes. Continue from the new `main`, synchronize `grid-foundation` as needed, and continue there instead of creating another branch automatically.
+If the user says a PR was merged, verify GitHub state first before continuing.
 
-PR descriptions should accurately state:
+PR descriptions must stay accurate as scope changes, including:
 
 - behavior delivered;
 - architecture/ownership decisions;
+- documentation changes;
 - limitations;
 - automated validation;
 - manual verification status;
-- relevant docs;
-- frontend capability-marker/registry changes when applicable.
+- capability-marker changes when relevant.
 
 ---
 
-## Key implementation entry points
+## Key current implementation entry points
 
-These are common entry points for current grid work. Search the relevant frontend `GRIDCAP-*` marker and additional frontend call sites before changing or extracting a shared frontend contract. Then inspect separately documented backend/API contracts when the feature depends on them.
-
-### Client-Side data/selection
+### Client
 
 - `frontend/src/features/transactions/grid/TransactionsClientGrid.tsx`
 - `frontend/src/features/transactions/api/transactions.queries.ts`
-- `frontend/src/shared/grid/config/clientSideGridDefaults.ts`
 - `frontend/src/shared/grid/selection/client-side/useClientSideSelectionController.ts`
+- `frontend/src/shared/grid/config/clientSideGridDefaults.ts`
 - `frontend/src/shared/grid/export/exportSelectedRowsCsv.ts`
-- `backend/apps/transactions/api/client_views.py`
-- `docs/client-side-grid.md`
 
-### Infinite selection/loading
+### Infinite
 
+- `frontend/src/features/transactions/grid/TransactionsInfiniteGrid.tsx`
 - `frontend/src/shared/grid/selection/infinite/useInfiniteSelectionController.tsx`
 - `frontend/src/shared/grid/data/infinite/createInfiniteDatasource.ts`
 - `frontend/src/shared/grid/data/infinite/useInfiniteRowLoading.ts`
 
-### SSRM selection/loading
+### SSRM
 
+- `frontend/src/features/transactions/grid/TransactionsSsrmGrid.tsx`
 - `frontend/src/shared/grid/selection/server-side/useSsrmSelectionController.ts`
 - `frontend/src/shared/grid/data/server-side/createServerSideDatasource.ts`
 - `frontend/src/shared/grid/data/server-side/useServerSideRowLoading.ts`
 
-### Shared datasource/order tests
-
-- `frontend/src/shared/grid/data/datasources.test.ts`
-
-### Transaction grid roots
-
-- `frontend/src/features/transactions/grid/TransactionsClientGrid.tsx`
-- `frontend/src/features/transactions/grid/TransactionsInfiniteGrid.tsx`
-- `frontend/src/features/transactions/grid/TransactionsSsrmGrid.tsx`
-
-### Selection/action/export
+### Selection / selected action / export
 
 - `frontend/src/shared/grid/selection/gridSelectionActionTarget.ts`
 - `frontend/src/features/transactions/grid/TransactionSelectionActions.tsx`
@@ -736,68 +683,66 @@ These are common entry points for current grid work. Search the relevant fronten
 - `frontend/src/features/transactions/grid/useTransactionSelectionAction.ts`
 - `frontend/src/features/transactions/grid/useTransactionExport.ts`
 - `frontend/src/features/transactions/api/transactions.contracts.ts`
-- `docs/selected-action-selection-lifecycle.md`
 
 ### Editing
 
 - `frontend/src/shared/grid/editing/trackedGridEditing.ts`
 - `frontend/src/shared/grid/editing/useTrackedGridEditing.ts`
 - `frontend/src/shared/grid/editing/useCurrentPageEditActions.ts`
+- `frontend/src/features/transactions/grid/transactionEditing.ts`
+- `frontend/src/features/transactions/grid/transactionColumns.tsx`
 - `frontend/src/features/transactions/grid/useTransactionEditPersistence.ts`
 
-### Backend selection/export/eligibility
+### Backend authoritative behavior
 
 - `backend/apps/transactions/services.py`
 - `backend/apps/transactions/api/serializers.py`
 - `backend/apps/transactions/api/views.py`
 
-### Capability discovery
-
-- `docs/grid-capability-tags.md`
-
 ---
 
-## Required working style for future assistants
+## Required working style
 
-When asked to implement/review something:
+When asked to implement or review something:
 
-1. inspect current repository/GitHub state first;
+1. inspect current GitHub/repository state;
 2. read this file and relevant source-of-truth docs;
-3. identify the relevant frontend `GRIDCAP-*` marker(s) in `docs/grid-capability-tags.md` and search their current frontend source/test occurrences;
-4. inspect current frontend implementation and tests, including cross-capability/shared touchpoints revealed by those markers, plus separately documented API/backend contracts where required;
-5. explain any important architectural issue discovered;
-6. implement the change using native-first ownership principles;
-7. preserve useful existing comments/rationale and applicable frontend capability markers;
-8. add local logic-level comments for new non-obvious behavior;
+3. locate relevant capability markers;
+4. inspect current implementation/tests and backend contracts;
+5. identify architecture issues before coding;
+6. implement native-first and row-model-specific where appropriate;
+7. preserve useful comments and markers;
+8. add comments for new non-obvious logic;
 9. add/update focused tests;
-10. update frontend capability markers/registry plus feature docs, manual verification, README/backlog when relevant;
-11. run/inspect validation and CI;
-12. keep the PR description accurate;
-13. report what changed and what still needs manual verification.
+10. update current implementation docs only with implemented behavior;
+11. put planned/future material only in backlog/proposal docs;
+12. update backlog/working contract when roadmap rules change;
+13. inspect CI;
+14. keep the open PR accurate;
+15. report manual verification truthfully.
 
-Push back on a requested approach when it would weaken the architecture or create unnecessary abstraction, but explain the reason and provide the better alternative.
+Push back when a requested approach weakens architecture or introduces an abstraction without a real responsibility.
 
-Do not overengineer. Do not introduce infrastructure/dependencies unrelated to a demonstrated requirement.
+Do not overengineer or add unrelated infrastructure/dependencies.
 
 ---
 
-## Maintenance rule for this file
+## Maintenance rule
 
-`AGENTS.md` is part of the project's Definition of Done.
+Review/update this file when work changes durable:
 
-Whenever work changes any of the following, review and update this file in the same PR if needed:
-
-- architecture/ownership rules;
+- architecture/ownership;
 - row-model responsibilities;
-- frontend capability-tag/discoverability rules;
+- documentation scope rules;
+- capability discoverability;
 - selection/count semantics;
-- request freshness behavior;
-- eligibility behavior;
+- request freshness;
+- eligibility;
 - export/import behavior;
-- editing/conflict semantics;
+- editing/conflict/validation semantics;
 - testing requirements;
 - branch/PR workflow;
 - roadmap sequencing;
-- key source-of-truth documentation paths.
+- key source-of-truth paths.
 
-The goal is simple: **a new developer or a new chat must be able to resume the project safely from the repository alone.**
+Goal: **a new developer or new chat must be able to resume safely from the repository alone.**

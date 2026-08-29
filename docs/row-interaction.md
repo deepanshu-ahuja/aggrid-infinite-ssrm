@@ -1,14 +1,12 @@
-# Server-backed row interaction policy
+# Row Interaction Capability
 
-This document describes the reusable row-interaction capability used by server-backed AG Grid tables.
+This document describes the **current implemented** row-interaction capability shared by Client-Side, Infinite and SSRM Transaction grids.
 
-The goal is to let each feature decide **why** a row is restricted while keeping the grid behavior itself domain-neutral and consistent across Infinite Row Model and SSRM.
+The feature/backend decides why a row is restricted. Shared grid code consumes only the generic interaction result.
 
-For the concrete implementation checklist and browser/network test steps, see [Row interaction capability: what exists and how to test it](./row-interaction-manual-testing.md).
+For browser/network verification details, see `docs/row-interaction-manual-testing.md`.
 
-## Interaction modes
-
-Shared grid code understands only three modes:
+## Current interaction modes
 
 ```ts
 export type GridRowInteractionMode =
@@ -17,244 +15,225 @@ export type GridRowInteractionMode =
   | 'readOnly';
 ```
 
-Their meaning is:
+Current meaning:
 
-| Mode | Selectable | Selection-based bulk actions | Editable | Modifying row actions |
+| Mode | Selectable | Selection-based actions | Editable | Modifying row actions |
 | --- | --- | --- | --- | --- |
 | `enabled` | Yes | Yes | Yes | Yes |
 | `selectionDisabled` | No | No | Yes | Yes |
 | `readOnly` | No | No | No | No |
 
-A feature owns the condition that produces the mode. Shared grid code must not contain domain checks such as transaction status, payable state, permissions, workflow state, or lock reason.
+The mode is capability data. Shared code does not inspect Transaction status/account or other domain conditions to derive it.
 
-A feature may also return an explanatory reason such as `interactionReason`. The reason is presentation metadata only. It tells the user why the backend policy restricted the row; the grid must never parse the text to decide behavior.
+A row may also include `interactionReason` for user-facing explanation. The reason text is presentation only and is never parsed to decide behavior.
 
-## Restricted rows must be visibly understandable
+## Current Transactions backend policy
 
-A disabled checkbox by itself is not enough because a user needs to understand that the row is intentionally restricted and, when possible, why.
-
-The two restricted states should look different because they mean different things:
-
-```text
-selectionDisabled
-→ native checkbox is disabled and rendered with a clear neutral-grey disabled treatment
-→ row gets a light warning/review background and marker
-→ visible "Selection disabled" indicator
-→ reason available in the UI
-→ editing and row-level modifying actions still allowed
-
-readOnly
-→ native checkbox is disabled and rendered with a clear neutral-grey disabled treatment
-→ whole row gets a stronger neutral-grey locked treatment
-→ visible lock + "Read only" indicator
-→ reason available in the UI
-→ editing and modifying row-level actions blocked
-```
-
-Selected rows use the normal AG Grid selection/accent treatment and must remain visually distinct from either restricted state.
-
-Presentation is still not enforcement. Native AG Grid selectability/editability callbacks and backend validation remain authoritative.
-
-## Reusable row-class mapping
-
-The common interaction-to-class mapping lives in:
-
-`frontend/src/shared/grid/rows/gridRowInteractionClass.ts`
-
-A table using the recommended common row contract needs only:
-
-```ts
-const getRowClass = createGridRowInteractionClassGetter<MyRow>();
-```
-
-The helper owns the AG Grid `RowClassParams` callback shape, loading/stub-row handling, default interaction classes, and class merging. A feature should not copy the same `if (readOnly) ... if (selectionDisabled) ...` switch into every grid.
-
-The recommended API property is:
-
-```ts
-interactionMode: GridRowInteractionMode;
-```
-
-This is a convention, not a forced backend shape. If another feature stores the mode elsewhere, adapt it:
-
-```ts
-const getRowClass = createGridRowInteractionClassGetter<MyRow>({
-  getMode: (row) => row.permissions.gridInteractionMode,
-});
-```
-
-The public TypeScript overloads deliberately require `getMode` when the row type does not expose the recommended `interactionMode` property. This prevents a future feature from silently using the helper with the wrong row shape.
-
-A feature may override only the interaction class names:
-
-```ts
-const getRowClass = createGridRowInteractionClassGetter<MyRow>({
-  classNames: {
-    readOnly: 'my-grid--locked',
-    selectionDisabled: 'my-grid--selection-disabled',
-  },
-});
-```
-
-Or append one feature-only class while preserving the common interaction class:
-
-```ts
-const getRowClass = createGridRowInteractionClassGetter<MyRow>({
-  getAdditionalClass: (row) =>
-    row.isHighValue ? 'my-feature-row--high-value' : undefined,
-});
-```
-
-That small extension point must not become the future general conditional-row-style engine. Complex condition arrays / arbitrary style rules remain a separate capability so row-interaction code stays focused.
-
-## Current Transactions demo policy
-
-The reusable grid capability does **not** know Transaction fields. For local/demo data, the Transactions backend derives the generic modes from Transaction business data so developers can understand why a row is restricted by looking at the row itself:
+The demo backend currently derives modes from Transaction business data:
 
 ```text
 status = Pending AND account = Treasury
 → selectionDisabled
-→ reason: Pending Treasury transactions require individual review,
-          so selection-based bulk actions are disabled
+→ Pending Treasury transactions require individual review
 
 status = Completed AND account = Settlement
 → readOnly
-→ reason: Completed Settlement transactions are locked from selection and editing
+→ Completed Settlement transactions are locked
 
 otherwise
 → enabled
 ```
 
-This policy intentionally lives in `backend/apps/transactions/services.py`, not under `shared/grid`. It is only an example Transaction policy; another feature should derive the generic modes from its own fields and business rules.
+This rule lives in the Transactions backend service. Shared grid code sees only the resulting generic mode/reason.
 
-The policy is recomputed after authoritative writes. For example, if an enabled Settlement Transaction is legitimately changed to `Completed`, the returned/refreshed row becomes `readOnly`. A future Payables table could use completely different fields and rules while reusing the same three generic interaction modes.
+The backend recomputes interaction policy after authoritative writes, so a row can change mode when its business data changes.
 
-## Selection-disabled rows are outside the selectable universe
+## Frontend loaded-row ownership
 
-A disabled row is **not** an implicit exclusion.
+Loaded rows use native AG Grid callbacks wherever possible.
 
-If Select All Records produces:
+### Selection
+
+The feature maps the current interaction mode to `rowSelection.isRowSelectable`.
+
+AG Grid evaluates that callback and exposes the result on `RowNode.selectable`.
+
+Shared/custom selection mechanics consume the native `node.selectable` flag rather than re-running Transaction business rules.
+
+### Editing
+
+Editable columns use native `ColDef.editable` callbacks.
+
+Shared programmatic edit helpers also receive the same feature-owned row-editability predicate so `RowNode.setDataValue(...)` cannot bypass the read-only rule.
+
+## Row-model selection behavior
+
+### Client-Side
+
+The complete working set is local. Native AG Grid selection evaluates `isRowSelectable` for the full Client dataset.
+
+Therefore `selectionDisabled` and `readOnly` rows never enter the native selected set, including native Page/Filtered/All Select All.
+
+### Infinite
+
+Loaded/manual/current-page selection skips RowNodes whose native `selectable` flag is false.
+
+For filtered/all dataset-wide logical selection, restricted rows are **not** converted into user exception IDs. The frontend keeps the compact logical selection and backend authority removes ineligible rows when the operation resolves its target.
+
+### SSRM
+
+Native SSRM explicit/All Records selection relies on native selectability for loaded rows and backend eligibility for authoritative selected operations.
+
+Custom Current Page / All Filtered synchronization also skips non-selectable loaded RowNodes.
+
+## Restricted rows are not user deselection exceptions
+
+A row outside the selectable universe is different from a row the user explicitly deselected.
+
+For example:
 
 ```ts
 { mode: 'exclude', ids: [] }
 ```
 
-that compact selection remains unchanged even if some loaded or unloaded rows are disabled.
+still means the complete logical selected universe even if some backend rows are `selectionDisabled` or `readOnly`.
 
-Do not turn disabled rows into:
+Do not rewrite that as:
 
 ```ts
-{ mode: 'exclude', ids: ['disabled-a', 'disabled-b'] }
+{ mode: 'exclude', ids: ['restricted-a', 'restricted-b'] }
 ```
 
-`exclude` IDs represent rows the user explicitly deselected while Select All is active. Disabled rows were never eligible for the selection in the first place.
+The `ids` in exclude mode represent explicit user exceptions, not backend policy exclusions.
 
-The same rule applies to:
+This distinction applies to:
 
-- manual checkbox selection;
-- Select Current Page;
-- Select All Filtered;
-- Select All Records;
-- selection restoration when Infinite blocks or SSRM rows materialise again.
+- manual selection;
+- Current Page;
+- All Filtered;
+- All Records;
+- selection restoration as server-backed rows materialise.
 
-## Frontend ownership
+## Backend authority
 
-For loaded rows, use AG Grid's native row-selectability capability.
+The backend independently enforces row policy because server-wide operations can target rows the browser has never loaded.
 
-The concrete grid maps the feature-provided interaction mode to `rowSelection.isRowSelectable`. AG Grid evaluates that callback and exposes the result on `RowNode.selectable`. Shared selection mechanics consume that native flag instead of re-running feature conditions.
-
-Custom selection mechanics must also avoid touching disabled nodes:
-
-- Infinite current-page header passes only `RowNode`s whose native `selectable` flag is true to `setNodesSelected`;
-- Infinite custom filtered/all selection reconciliation never calls `setSelected(true)` for a disabled node;
-- SSRM current-page selection passes only selectable nodes to the native selection API;
-- SSRM custom Select All Filtered reconciliation skips disabled nodes.
-
-Do not enumerate disabled IDs into application include/exclude state.
-
-## Editing and read-only rows
-
-Selection restriction and editing restriction are separate capabilities.
-
-`selectionDisabled` means only that the row cannot participate in checkbox/logical bulk selection. The row may still be edited and may still expose modifying row-level actions.
-
-`readOnly` is the stronger state. Editable columns use AG Grid's native `editable` callback so a read-only row cannot enter an editor. Programmatic current-page edit propagation and tracked-edit restoration also receive the same row-editability predicate so application code cannot bypass the UI rule through `setDataValue`.
-
-Modifying row-level controls should use the same read-only predicate rather than maintain another feature-specific lock check.
-
-## Backend ownership
-
-The backend is authoritative for rows the browser has never loaded.
-
-The frontend must never load the full dataset merely to discover disabled IDs before a dataset-wide action.
-
-For a logical selection action the backend resolves the target inside the eligible universe:
+For a logical selected operation:
 
 ```text
 include + ids
-→ resolve the requested ids
-→ keep only selection-eligible rows
-→ apply the action
+→ resolve requested rows
+→ keep backend selection-eligible rows
+→ apply operation
 
 exclude + filters
 → apply filters
-→ keep only selection-eligible rows
-→ apply explicit user exclusions
-→ apply the action
+→ keep backend selection-eligible rows
+→ remove explicit user exception ids
+→ apply operation
 
 exclude without filters
-→ all records
-→ keep only selection-eligible rows
-→ apply explicit user exclusions
-→ apply the action
+→ complete dataset
+→ keep backend selection-eligible rows
+→ remove explicit user exception ids
+→ apply operation
 ```
 
-This means a disabled record is skipped whether or not it is currently loaded in AG Grid.
+A restricted row is skipped regardless of whether it was loaded in AG Grid.
 
-Direct edit persistence is different from selection eligibility. A `selectionDisabled` row may still be saved directly. A `readOnly` row must be rejected by the backend even if a stale or crafted request attempts to update it.
+## Direct edit persistence
 
-For explicit multi-row edit persistence, validate every requested row before mutating any row so a read-only target does not leave a partially applied batch.
+Selection eligibility and edit eligibility remain distinct.
 
-## Infinite and SSRM remain separate
+```text
+selectionDisabled
+→ direct editing/persistence allowed
 
-The semantic rule is shared, but row-model implementation remains native to each model.
+readOnly
+→ direct editing/persistence rejected
+```
 
-Do not create a universal selection controller merely because both models consume the same row interaction mode.
+The backend detail-update path rejects read-only rows.
 
-Infinite keeps its custom dataset-wide logical selection because it cannot represent selection across unloaded rows natively. SSRM keeps native explicit/All Records selection and only customises the unsupported Select All Filtered path.
+The explicit bulk edit path validates all requested rows before mutation so a read-only target does not leave a partially applied batch.
 
-## Adding another server-backed table
+## Presentation
 
-A future table such as Payables should:
+Restricted rows are visibly distinguishable from ordinary selected rows.
 
-1. expose its own backend-provided interaction mode or map its backend data to the shared three-mode contract;
-2. preferably expose the common `interactionMode` field, or provide a small `getMode(row)` adapter;
-3. optionally expose a feature-owned human-readable restriction reason;
-4. reuse `createGridRowInteractionClassGetter` instead of copying AG Grid row-class logic;
-5. pass its feature-owned selectability callback into native AG Grid row selection;
-6. use row-editability for editable columns and programmatic edit helpers;
-7. enforce equivalent eligibility/read-only rules in its own backend service/repository;
-8. keep disabled rows out of include/exclude bookkeeping;
-9. provide presentation that makes restricted states distinguishable without making styling the enforcement mechanism.
+Current shared/feature presentation includes:
 
-The future table may have completely different reasons for restriction. Those reasons remain feature/domain-specific; only the resulting grid capability is shared.
+```text
+selectionDisabled
+→ disabled native checkbox
+→ review/warning row treatment
+→ visible "Selection disabled" indicator/reason
 
-## Tests that matter
+readOnly
+→ disabled native checkbox
+→ stronger locked row treatment
+→ visible lock + "Read only" indicator/reason
+```
 
-At minimum, cover:
+Presentation is not enforcement. Native callbacks and backend validation remain authoritative.
 
-- generic interaction-mode capability mapping;
-- shared default row classes;
-- custom `getMode` adapter;
-- interaction class-name overrides;
-- appended feature-only row class;
+## Reusable row-class helper
+
+`frontend/src/shared/grid/rows/gridRowInteractionClass.ts` maps the generic interaction mode to common AG Grid row classes.
+
+A row exposing the recommended `interactionMode` property can use:
+
+```ts
+const getRowClass = createGridRowInteractionClassGetter<MyRow>();
+```
+
+A feature with a different row shape can provide `getMode(row)`.
+
+The helper also supports the implemented class-name override and feature-only additional-class hooks while preserving the common interaction mapping.
+
+## Editing/conflict relationship
+
+A fresh authoritative row can change interaction mode while LOCAL work already exists.
+
+The current tracked-edit engine may keep existing LOCAL values visible long enough to reconcile/review them, but the latest read-only policy still blocks new editing and authoritative persistence.
+
+Row interaction does not override conflict semantics, and conflict state does not override backend row policy.
+
+## Implementation map
+
+```text
+frontend/src/shared/grid/rows/gridRowInteraction.ts
+→ generic interaction-mode predicates
+
+frontend/src/shared/grid/rows/gridRowInteractionClass.ts
+→ shared row-class mapping
+
+frontend/src/features/transactions/grid/transactionRowInteraction.ts
+→ Transaction adapters/presentation inputs
+
+frontend/src/features/transactions/grid/TransactionsClientGrid.tsx
+frontend/src/features/transactions/grid/TransactionsInfiniteGrid.tsx
+frontend/src/features/transactions/grid/TransactionsSsrmGrid.tsx
+→ native selectability/editability integration
+
+backend/apps/transactions/services.py
+→ Transaction business policy + authoritative selection/edit eligibility
+```
+
+## Verification
+
+Current tests/manual scenarios should cover:
+
+- mode predicate/class mapping;
 - native checkbox selectability for all three modes;
-- Select Current Page skips disabled rows;
-- Select All Filtered does not programmatically select disabled loaded rows;
-- newly loaded/reloaded disabled rows are not selected during reconciliation;
-- Select All Records / Filtered wire payloads do not enumerate disabled IDs;
-- backend selection actions skip disabled unloaded rows;
-- `selectionDisabled` direct edit is allowed;
-- `readOnly` direct edit is rejected;
-- explicit bulk edit containing a read-only row is rejected atomically;
-- restricted rows expose a clear state/reason in the UI without using presentation as enforcement.
+- Client native Page/Filtered/All selection excluding restricted rows;
+- Infinite Current Page and dataset synchronization skipping restricted loaded rows;
+- SSRM Current Page/custom filtered synchronization skipping restricted loaded rows;
+- server logical payloads not enumerating restricted IDs as user exceptions;
+- backend selected operations skipping restricted unloaded rows;
+- `selectionDisabled` direct edit allowed;
+- `readOnly` direct edit rejected;
+- explicit bulk edit containing a read-only row rejected before mutation;
+- visible reason/presentation without using CSS as enforcement.
+
+Manual browser verification remains separately tracked and is not claimed complete here.

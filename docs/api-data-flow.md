@@ -1,21 +1,51 @@
 # API and Data Flow
 
-Both row-model paths use the same flat row-loading flow while keeping their AG Grid adapters separate:
+This document describes the **current implemented** frontend/backend data flow for Client-Side, Infinite and SSRM Transaction grids.
+
+It does not describe planned APIs or configurable-table metadata.
+
+## Client-Side collection flow
+
+Client-Side loads the complete bounded Transaction working set through TanStack Query:
+
+```text
+GET /api/transactions/
+        ↓
+TanStack Query authoritative cache
+        ↓
+fresh editable row copies
+        ↓
+AG Grid rowData
+        ↓
+native local sort/filter/pagination/selection
+```
+
+AG Grid does not receive the exact authoritative cache object references. Editable copies keep LOCAL cell mutation separate from REMOTE authoritative values used by conflict reconciliation.
+
+Explicit Save responses return authoritative rows that are merged into the Client Query cache. The selected Change Status endpoint currently returns an update count, so the Client collection is refetched after that successful operation.
+
+## Infinite / SSRM row-loading flow
+
+Both server-backed row models load blocks while keeping their AG Grid adapters separate:
 
 ```text
 AG Grid block request
-  -> Infinite or SSRM datasource adapter
-  -> feature request mapper
-  -> typed frontend API client
-  -> DRF serializer validation
-  -> transaction query service
-  -> { rows, totalCount, filteredCount }
-  -> row-model success callback
+  → Infinite or SSRM datasource adapter
+  → Transaction request mapper
+  → typed frontend API client
+  → DRF validation
+  → Transaction query service
+  → { rows, totalCount, filteredCount }
+  → row-model success callback
 ```
 
-Each returned Transaction row also carries its backend-provided `interactionMode` (`enabled`, `selectionDisabled`, or `readOnly`). That is feature/domain data describing row capability; it is not AG Grid selection state.
+Each row also contains backend-provided interaction capability data such as `interactionMode` and `interactionReason`.
 
-The datasource factories handle AG Grid callback and cancellation lifecycles. `transactionRequest.mapper.ts` is the deliberate boundary where column IDs, filter models and sort items become the backend contract:
+Raw AG Grid request objects do not cross the HTTP boundary.
+
+`transactionRequest.mapper.ts` translates native AG Grid sort/filter models into the allow-listed backend query contract.
+
+Example:
 
 ```json
 {
@@ -26,81 +56,107 @@ The datasource factories handle AG Grid callback and cancellation lifecycles. `t
 }
 ```
 
-Raw AG Grid request objects never cross the HTTP boundary. Both frontend mapping and DRF serializers allow-list fields and operators. Unsupported combined filters fail explicitly instead of silently producing incorrect results.
+Unsupported server filter shapes fail explicitly instead of silently changing meaning.
 
-The response contains the current block, the complete dataset count, and the current filtered count. That flat contract works for Infinite Row Model and the current flat SSRM path. Group routes, aggregation results and pivot metadata are intentionally absent; design those only when a real SSRM feature needs them.
+## Query counts
+
+Server-backed row responses currently include:
+
+```text
+totalCount
+→ complete dataset size before current grid filters
+
+filteredCount
+→ number of rows matching the current translated filters
+```
+
+The latest-started server request owns renderable count metadata. A late older response may finish its AG Grid loading callback but must not overwrite counts published for a newer request.
 
 ## Row interaction flow
 
-For loaded rows, the feature maps backend `interactionMode` to the shared row-interaction predicates and then to native AG Grid behavior:
+For loaded rows, feature adapters map backend interaction capability into native AG Grid behavior:
 
 ```text
-backend row.interactionMode
-  -> feature row-policy adapter
-  -> native rowSelection.isRowSelectable
-  -> native column editable callbacks
-  -> shared programmatic-edit row predicate
+backend interactionMode
+  → Transaction row-policy adapter
+  → rowSelection.isRowSelectable
+  → column editable callbacks
+  → shared programmatic-edit row predicate
 ```
 
-The generic meaning is:
+Current generic meaning:
 
 ```text
 enabled
--> selectable and editable
+→ selectable and editable
 
 selectionDisabled
--> not selectable / not part of selection-based bulk actions
--> still editable
+→ not selectable / not part of selected business operations
+→ directly editable
 
 readOnly
--> not selectable / not part of selection-based bulk actions
--> not editable / no modifying row actions
+→ not selectable / not part of selected business operations
+→ not editable
 ```
 
-Frontend selection code does not collect disabled IDs. A disabled row is outside the selectable universe rather than an automatic `exclude` exception.
+Restricted rows are not inserted into logical selection exception IDs. Backend services independently enforce authoritative eligibility.
 
-The backend independently enforces the same business eligibility because Select All can target rows that the browser never loaded.
-
-## Editing persistence flow
-
-Tracked local edits and logical selection actions are different backend operations.
-
-Single-row Save persists one concrete dirty-row patch:
+## Single-row Save
 
 ```text
 tracked row changes
-  -> PATCH /api/transactions/{id}/
-  -> backend resolves the explicit row
-  -> backend rejects it if row is readOnly
-  -> backend applies the explicit patch
-  -> row-model-specific native refresh
+  → PATCH /api/transactions/{id}/
+  → backend resolves explicit row
+  → backend validates row policy + writable fields
+  → backend applies patch
+  → authoritative row response
+  → acknowledge submitted tracked values
+  → update/refresh authoritative grid data
 ```
 
-A `selectionDisabled` row remains eligible for direct editing; only the stronger `readOnly` state blocks direct persistence.
+A `selectionDisabled` row may be saved directly. A `readOnly` row is rejected.
 
-Aggregate Save persists concrete accumulated dirty rows selected by the user:
+## Explicit bulk Save
+
+Save Selected Edits persists already-existing LOCAL drafts:
 
 ```text
 changesById
   ∩
 current logical selection
-  -> explicit [{ id, changes }, ...] payload
-  -> PATCH /api/transactions/bulk/
-  -> backend resolves every row and validates editability first
-  -> if any target is readOnly, reject before mutating any row
-  -> otherwise apply those concrete row patches
-  -> row-model-specific native refresh
+  → explicit [{ id, changes }, ...]
+  → PATCH /api/transactions/bulk/
+  → backend validates every requested row first
+  → apply explicit row patches
+  → authoritative row responses
+  → acknowledge submitted tracked values
 ```
 
-The `/bulk/` endpoint is deliberately ID-based. It does not use the logical `include/exclude` selection contract to manufacture edits for unloaded or untouched rows.
+The bulk endpoint is ID-based. It does not use logical exclude-mode selection to manufacture edits for unloaded rows.
 
-This is separate from `/selection/`, which applies one business change to the logical server-backed selection and can therefore target unloaded rows.
+## Selected Change Status flow
 
-## Selection-action flow
+Selected Change Status is a separate business operation from dirty-edit persistence.
 
-Selection actions do not enumerate loaded RowNodes to decide backend membership. They use the logical selection owned by the appropriate row-model selection controller.
+### Client-Side
 
-The reusable logical selection is:
+Client can enumerate every selected row exactly:
+
+```text
+native selected rows
+  → include + exact selected IDs
+  → PATCH /api/transactions/selection/
+  → backend eligibility + status update
+  → success
+  → Client clearSelection()
+  → refetch authoritative collection
+```
+
+Exact Client include selection does not require backend filter context.
+
+### Infinite / SSRM
+
+Server-backed selected operations use the row model's logical selection intent:
 
 ```json
 {
@@ -109,72 +165,108 @@ The reusable logical selection is:
 }
 ```
 
-The action wire contract intentionally has no separate `scope` field and no disabled-row ID list:
+Current server resolution:
 
 ```text
 include + ids
--> resolve those exact ids
--> keep only backend selection-eligible rows
+→ requested backend-eligible rows
 
 exclude + translated filters
--> rows matching the filters
--> keep only backend selection-eligible rows
--> remove user exception ids
+→ matching backend-eligible rows minus explicit user exceptions
 
 exclude without filters
--> all records
--> keep only backend selection-eligible rows
--> remove user exception ids
+→ all backend-eligible rows minus explicit user exceptions
 ```
 
-Manual selection, current-page selection and accumulated cross-page selection all become `include + ids`. Loaded disabled rows cannot enter that selection through native AG Grid selection.
+All Filtered uses the same Transaction filter mapper as normal server row loading.
 
-Select All Filtered becomes `exclude + ids` plus the same feature-translated filters used by normal row loading. Select All Records becomes `exclude + ids` without filter context. In both cases disabled rows are **not** added to `ids`; Python removes them from the action target whether loaded or unloaded.
+All Records sends exclude-mode selection without filters.
 
-The frontend still knows internally whether an exclude selection came from filtered or all-record Select All because Infinite and SSRM have different native/custom selection capabilities. That row-model context is used only while constructing the request; it is not duplicated into the serialized selection.
-
-Example filtered action:
-
-```json
-{
-  "selection": {
-    "mode": "exclude",
-    "ids": ["txn-00010"]
-  },
-  "filters": [
-    { "field": "status", "operator": "equals", "value": "Pending" }
-  ],
-  "changes": {
-    "status": "Failed"
-  }
-}
-```
-
-Here `txn-00010` is a **user deselection exception**. Backend-disabled rows are not represented in that array.
-
-After a successful backend write, each row model refreshes through its own native API:
+After successful Change Status:
 
 ```text
-Infinite -> refreshInfiniteCache()
-SSRM     -> refreshServerSide()
+Infinite
+→ controller clearSelection()
+→ refreshInfiniteCache()
+
+SSRM
+→ controller clearSelection()
+→ refreshServerSide()
 ```
 
-For Infinite, that refreshes only blocks currently resident in its bounded browser cache. Evicted or never-loaded blocks are not fetched just because a dataset-wide action changed them; when the user later visits those rows, the backend-authoritative values and interaction mode are fetched normally.
+The backend request contains only the business target and changes. It does not contain a frontend selection-lifecycle setting.
 
-## Current transaction write endpoints
+## Selected export flow
+
+### Client-Side
 
 ```text
+native Client selected rows
+→ native AG Grid CSV across pagination pages
+```
+
+No selected-export backend request is made.
+
+### Infinite / SSRM
+
+```text
+row-model logical selection
+  → common server selection target
+  → POST /api/transactions/selection/export/
+  → backend resolves authoritative eligible rows
+  → backend CSV response
+```
+
+The same backend resolver semantics are used for selected mutation and selected export.
+
+## Conflict reconciliation flow
+
+Fresh authoritative values are reconciled against LOCAL drafts before remaining LOCAL values are overlaid back into grid rows.
+
+Authoritative arrival differs by row model:
+
+```text
+Client
+→ TanStack Query rowData replacement
+
+Infinite
+→ cache block load/refresh/recreation
+
+SSRM
+→ server-side store load/refresh/recreation
+```
+
+The shared editing state handles BASE/LOCAL/REMOTE comparison; each concrete root owns its native authoritative-data lifecycle.
+
+## Current Transaction endpoints
+
+```text
+GET   /api/transactions/
 POST  /api/transactions/query/
 PATCH /api/transactions/{id}/
 PATCH /api/transactions/bulk/
 PATCH /api/transactions/selection/
+POST  /api/transactions/selection/export/
 ```
 
-Their responsibilities stay intentionally distinct:
+Current responsibilities:
 
-- `query/` loads server-backed rows plus their interaction policy;
-- `{id}/` saves one explicit dirty row and rejects read-only rows;
-- `bulk/` saves explicit dirty-row patches and validates row editability atomically;
-- `selection/` applies a feature action to the logical include/exclude target after backend row-eligibility filtering.
+```text
+GET collection
+→ bounded Client working set
 
-See `docs/row-interaction.md` for the reusable row-policy contract.
+query
+→ Infinite/SSRM block loading + counts
+
+{id}
+→ one explicit dirty-row Save
+
+bulk
+→ explicit dirty-row batch Save
+
+selection
+→ selected Change Status business operation
+
+selection/export
+→ server-backed Selected CSV
+```

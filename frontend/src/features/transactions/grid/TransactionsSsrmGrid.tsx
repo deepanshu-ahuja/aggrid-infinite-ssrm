@@ -52,7 +52,6 @@ import {
   buildTransactionSelectionActionRequest,
   buildTransactionSelectionTarget,
   hasTransactionSelection,
-  type SelectionAfterSuccessPolicy,
 } from './transactionSelectionAction';
 import { useTransactionEditPersistence } from './useTransactionEditPersistence';
 import { useTransactionExport } from './useTransactionExport';
@@ -144,16 +143,13 @@ export function TransactionsSsrmGrid({
     gridApi.current?.refreshServerSide();
   }, []);
 
-  const handleSelectionActionApplied = useCallback(
-    (selectionAfterSuccess: SelectionAfterSuccessPolicy) => {
-      // GRIDCAP-ACTION-SELECTED | GRIDCAP-LIFECYCLE-REFRESH
-      // SSRM selection can be native or custom filtered-wide state. The controller knows which owner
-      // is active, so the feature action only chooses the clear/preserve policy after backend success.
-      if (selectionAfterSuccess === 'clear') clearSelection();
-      handlePersistedRows();
-    },
-    [clearSelection, handlePersistedRows],
-  );
+  const handleSelectedTransactionUpdateApplied = useCallback(() => {
+    // GRIDCAP-ACTION-SELECTED | GRIDCAP-LIFECYCLE-REFRESH
+    // Change Status always clears its successful target. SSRM selection can be native or custom
+    // filtered-wide state, so delegate the concrete clear operation to the SSRM selection controller.
+    clearSelection();
+    handlePersistedRows();
+  }, [clearSelection, handlePersistedRows]);
 
   const { saveRow, saveBulk, isSaving, saveError } = useTransactionEditPersistence({
     updates: payload.updates,
@@ -162,10 +158,10 @@ export function TransactionsSsrmGrid({
   });
 
   const {
-    applySelectionAction,
-    isApplyingSelectionAction,
-    selectionActionError,
-  } = useTransactionSelectionAction({ onApplied: handleSelectionActionApplied });
+    updateSelectedTransactions,
+    isUpdatingSelectedTransactions,
+    selectedTransactionUpdateError,
+  } = useTransactionSelectionAction({ onApplied: handleSelectedTransactionUpdateApplied });
 
   const {
     error: exportError,
@@ -224,7 +220,7 @@ export function TransactionsSsrmGrid({
   }, [conflictTarget, discardRows, readSelectionIntent, state]);
 
   const handleSetSelectedStatus = useCallback(
-    (status: TransactionStatus, selectionAfterSuccess: SelectionAfterSuccessPolicy) => {
+    (status: TransactionStatus) => {
       const api = gridApi.current;
       if (!api) return;
       const currentSelection = readSelectionIntent();
@@ -235,17 +231,16 @@ export function TransactionsSsrmGrid({
         return;
       }
 
-      applySelectionAction(
+      updateSelectedTransactions(
         buildTransactionSelectionActionRequest(
           currentSelection,
           isFilteredSelectAllActive ? 'filtered' : 'all',
           api.getFilterModel(),
           { status },
         ),
-        selectionAfterSuccess,
       );
     },
-    [applySelectionAction, isFilteredSelectAllActive, readSelectionIntent, state],
+    [isFilteredSelectAllActive, readSelectionIntent, state, updateSelectedTransactions],
   );
 
   const handleExportCurrentPage = useCallback(() => {
@@ -350,9 +345,9 @@ export function TransactionsSsrmGrid({
       <TransactionSelectionActions
         hasSelection={hasSelection}
         selectedRowCount={selectedRowCount}
-        isApplying={isApplyingSelectionAction}
+        isApplying={isUpdatingSelectedTransactions}
         statusActionBlockedByConflict={statusActionBlockedByConflict}
-        error={selectionActionError}
+        error={selectedTransactionUpdateError}
         onSetStatus={handleSetSelectedStatus}
       />
 

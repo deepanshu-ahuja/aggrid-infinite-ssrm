@@ -1,55 +1,23 @@
-# Grid export
+# Grid Export
 
-This document records the current export capability for the server-backed Infinite and SSRM grids, why the capability exists, and which side owns each export scope.
+This document describes the **current implemented** export behavior across Client-Side, Infinite and SSRM grids.
 
-## Why grid applications need export
-
-Export lets users take grid data outside the application for workflows the grid itself is not meant to replace, for example:
-
-- spreadsheet analysis, pivots and reconciliation;
-- reporting and sharing with another team;
-- offline review;
-- audit/evidence snapshots;
-- downstream processing in another system.
-
-A production product may eventually need many scopes such as Current Page, Selected, All Filtered or All Records. This foundation intentionally starts with only the two scopes already justified by the current server-backed grids.
+It is an implementation reference. Planned export variants belong in the backlog, not here.
 
 ## Current capability
+
+The foundation currently supports two export actions:
 
 ```text
 Export Current Page
 Export Selected
 ```
 
-The two operations have different ownership because their data availability and business meaning are different.
-
-## Scope and eligibility behavior
-
-| Export action | Data source | Can include unloaded rows? | `selectionDisabled` / `readOnly` rows | Why |
-| --- | --- | --- | --- | --- |
-| Export Current Page | Loaded AG Grid RowNodes on the current pagination page | No | **Included** when present on that page | This is a page snapshot, not a selection-based business action. It exports the page as represented by the grid. |
-| Export Selected — explicit/current-page selection | Backend resolver from explicit selected IDs | Selected IDs may refer only to rows represented by the logical selection | **Excluded** | Selected export follows backend selection eligibility. |
-| Export Selected — All Filtered | Backend resolver from filtered exclude-mode selection + filters | Yes | **Excluded** | Backend resolves the entire filtered selection and applies authoritative eligibility. |
-| Export Selected — All Records | Backend resolver from all-record exclude-mode selection | Yes | **Excluded** | Backend resolves the entire dataset selection and applies authoritative eligibility. |
-
-This distinction is intentional:
-
-```text
-Current Page export
--> "export this page snapshot"
--> restricted rows remain part of the page and are exported
-
-Selected export
--> "export the rows represented by the logical selection"
--> backend selection eligibility applies
--> selectionDisabled/readOnly rows are not exported
-```
-
-Do not make Current Page silently apply selected-row eligibility rules unless the product explicitly changes the meaning of that action. Likewise, do not make Selected export trust only loaded RowNodes because dataset-wide selection can include unloaded rows.
+Their ownership differs because Current Page is always a concrete visible page, while Selected can represent unloaded rows in the server-backed row models.
 
 ## Export Current Page
 
-Current Page is already represented by concrete loaded RowNodes in the browser.
+All three row models use the shared `exportCurrentPageCsv(...)` helper.
 
 Flow:
 
@@ -58,30 +26,58 @@ current AG Grid pagination page
         ↓
 resolve exact current-page RowNodes
         ↓
-native api.exportDataAsCsv(...)
+api.exportDataAsCsv(...)
         ↓
-browser download
+CSV download
 ```
 
-The shared helper `shared/grid/export/exportCurrentPageCsv.ts` does **not** serialize CSV itself. AG Grid remains responsible for CSV escaping, grid column behavior and value export semantics.
+The helper does not serialize CSV itself. AG Grid owns CSV escaping, column export behavior and value processing.
 
-Our helper only supplies the product scope: exactly which concrete RowNodes belong to the current page.
+The application helper owns only the page boundary.
 
-If the current page is not fully resolved yet, export is refused rather than silently producing a partial page.
+If the expected pagination page is not fully materialised, the operation is refused instead of exporting a partial page.
 
-This same current-page helper is used by both Infinite and SSRM because the meaning and mechanics are genuinely identical once concrete page RowNodes exist.
+### Restricted rows on Current Page
 
-### Current Page and restricted rows
+Current Page is a page snapshot, not a selected-row business operation.
 
-`selectionDisabled` and `readOnly` control whether a row may participate in selection/edit/business operations. They do **not** remove the row from the visible page.
+Therefore displayed rows remain part of the export even when their interaction mode is:
 
-Therefore Current Page export intentionally includes those rows when they are present on the page. This is different from Export Selected and is not an eligibility bug.
+```text
+selectionDisabled
+readOnly
+```
 
-## Export Selected
+Those modes restrict selection/editing/business operations; they do not remove a row from the visible page.
 
-Selected export is backend-owned for both server-backed row models.
+## Export Selected — Client-Side
 
-Reason: dataset-wide selection may include rows that have never been loaded in the browser. Loading every selected server row into AG Grid merely to build a file would defeat the purpose of Infinite/SSRM.
+Client has the complete bounded working set in browser memory and native AG Grid owns the exact selected set.
+
+Flow:
+
+```text
+native Client selection
+        ↓
+api.exportDataAsCsv({
+  onlySelected: true,
+  onlySelectedAllPages: true
+})
+        ↓
+CSV download
+```
+
+`onlySelectedAllPages` is required because selected Client rows can exist on several pagination pages.
+
+Client does not call the backend selected-export endpoint.
+
+Rows whose interaction mode prevents native selection never enter the selected set, so Client Selected export naturally contains only selected selectable rows.
+
+## Export Selected — Infinite and SSRM
+
+Infinite and SSRM selected universes may include backend rows that have never been loaded into the browser.
+
+Therefore Selected export is backend-owned for those two row models.
 
 Flow:
 
@@ -98,67 +94,14 @@ backend applies selection eligibility
         ↓
 backend writes CSV
         ↓
-browser downloads transactions-selected.csv
+CSV download
 ```
 
-### Selected export and restricted rows
+The browser does not load every selected server row merely to build a file.
 
-Selected export follows the same backend eligibility contract as other selection-based operations:
+## Server-backed logical selection target
 
-```text
-enabled
--> eligible for selected export
-
-selectionDisabled
--> excluded from selected export
-
-readOnly
--> excluded from selected export
-```
-
-The frontend prevents restricted loaded rows from entering ordinary checkbox selection, but that is not enough for dataset-wide selection because some rows may never be loaded. The backend resolver therefore re-applies eligibility authoritatively before creating the CSV.
-
-## Infinite and SSRM still select differently
-
-The export endpoint is shared, but the grids do **not** share one selection controller.
-
-### Infinite
-
-Infinite may produce:
-
-```text
-Manual / Current Page
--> include explicit IDs
-
-All Filtered / All Records
--> exclude-mode logical selection with user exceptions
-```
-
-Dataset-wide Infinite selection is application-owned because unloaded Infinite rows do not have selectable RowNodes.
-
-### SSRM
-
-SSRM may produce:
-
-```text
-Manual
--> native explicit SSRM state translated to IDs
-
-All Records
--> native SSRM server-side selection state
-
-Current Page
--> explicit page rows
-
-All Filtered
--> custom filtered-wide state
-```
-
-The internal mechanics differ, but before the backend operation both roots build the same business-level target.
-
-## Common logical selection target
-
-Conceptually:
+The server-backed export path uses the same logical target semantics as selected business operations.
 
 ### Explicit rows
 
@@ -167,24 +110,22 @@ Conceptually:
   "selection": {
     "mode": "include",
     "ids": ["txn-1", "txn-9"]
-  },
-  "filters": []
+  }
 }
 ```
 
-### All Records except explicit user exclusions
+### All Records except user exceptions
 
 ```json
 {
   "selection": {
     "mode": "exclude",
     "ids": ["txn-5", "txn-10"]
-  },
-  "filters": []
+  }
 }
 ```
 
-### All Filtered except explicit user exclusions
+### All Filtered except user exceptions
 
 ```json
 {
@@ -202,70 +143,79 @@ Conceptually:
 }
 ```
 
-The same target builder is used by selection-based business mutations and Export Selected so the two operations cannot silently interpret "selected" differently.
+The feature mapper translates the current AG Grid filter model for filtered-wide server selection.
 
-## Backend selection resolver
+## Backend resolver ownership
 
-The backend function `resolve_transactions_by_selection(...)` answers one operation-neutral question:
+`resolve_transactions_by_selection(...)` resolves the authoritative backend rows represented by the server logical selection.
 
-> Which authoritative backend rows does this logical selection represent?
-
-It handles:
+Current meaning:
 
 ```text
 include + ids
--> those exact rows, subject to backend selection eligibility
+→ requested backend-eligible rows
 
 exclude + filters
--> all matching eligible rows minus user exception IDs
+→ all matching backend-eligible rows minus explicit user exceptions
 
-exclude + no filters
--> all eligible records minus user exception IDs
+exclude without filters
+→ all backend-eligible records minus explicit user exceptions
 ```
 
-Then different operations can reuse that resolved set:
+The same resolver is used by selected mutation and selected export paths so those operations do not reinterpret the word "selected" differently.
+
+## Row-model selection ownership remains separate
+
+The common backend target does not create one common selection controller.
+
+### Infinite
+
+Infinite currently produces:
 
 ```text
-Update Selected Status ─┐
-                        ├─> resolve_transactions_by_selection(...)
-Export Selected ────────┘
+Manual / Current Page
+→ explicit include IDs
+
+All Filtered / All Records
+→ compact exclude-mode application selection with user exceptions
 ```
 
-This prevents separate export/update implementations from drifting apart.
+### SSRM
 
-## Backend eligibility remains authoritative
-
-`selectionDisabled` and `readOnly` rows are removed by the backend resolver even if a dataset-wide UI count currently includes them under the documented count limitation.
-
-That means:
+SSRM currently produces:
 
 ```text
-visible selected total
-may be approximate for eligibility
+Manual
+→ native explicit SSRM state translated to IDs
 
-actual selected export
-is backend-authoritative
+All Records
+→ native SSRM server-side selection state
+
+Current Page
+→ explicit page IDs
+
+All Filtered
+→ custom filtered-wide application state
 ```
 
-Example:
+Each controller owns its own native/custom mechanics; only the final business-level target is shared.
+
+## Eligibility and displayed selected count
+
+For Infinite/SSRM, backend-selected export always applies backend eligibility even when the current dataset-wide selected count is based on `totalCount` / `filteredCount` and can therefore include backend-ineligible unloaded rows.
+
+So this can legitimately occur:
 
 ```text
-totalCount = 750
-25 rows are selectionDisabled/readOnly
-
-UI Select All Records count
--> 750 selected under the current count contract
-
-Export Selected
--> backend resolves only 725 eligible rows
--> restricted rows are not written to the CSV
+UI dataset-wide selected count
+> number of rows written to Selected CSV
 ```
 
-This apparent difference is deliberate until the backend exposes eligibility-aware count metadata. See [Selected-row totals](selection-counts.md) for that limitation and future option.
+The count limitation is documented in `docs/selection-counts.md`.
 
-## Current CSV fields
+## Current Selected CSV fields
 
-Selected export currently writes:
+The backend Selected export currently writes:
 
 ```text
 id
@@ -277,67 +227,48 @@ status
 transactionDate
 ```
 
-Grid interaction metadata such as `interactionMode` / `interactionReason` is not included because it controls application behavior rather than representing normal transaction business data.
-
-## What is deliberately not built yet
-
-Decide these only when a real product needs them:
-
-- Excel export versus CSV;
-- Export All Filtered independent of selection;
-- Export All Records independent of selection;
-- visible columns versus fixed business export schema;
-- raw versus formatted values;
-- permissions/audit controls;
-- very large asynchronous export jobs with progress/history/download links.
-
-Client-Side Row Model should later expose the same user-facing export concepts using native/local ownership where all rows are already available in browser memory. It should not inherit server-only selected-export resolution unnecessarily.
-
-Import/template/sample-upload workflows are intentionally separate from export and remain deferred until after the Client-Side foundation unless product priority changes.
+Grid interaction metadata is not included in the Transaction business CSV.
 
 ## Implementation map
 
 ```text
-shared/grid/export/exportCurrentPageCsv.ts
--> native current-page CSV boundary
+frontend/src/shared/grid/export/exportCurrentPageCsv.ts
+→ shared native Current Page export boundary
 
-features/transactions/grid/useTransactionExport.ts
--> shared export operation lifecycle
+frontend/src/shared/grid/export/exportSelectedRowsCsv.ts
+→ Client native/local Selected export
 
-features/transactions/grid/TransactionsInfiniteGrid.tsx
-features/transactions/grid/TransactionsSsrmGrid.tsx
--> row-model-specific selection target creation
+frontend/src/features/transactions/grid/useTransactionExport.ts
+→ server-backed selected-export request lifecycle
 
-features/transactions/grid/transactionSelectionAction.ts
--> common logical selection target/request mapping
+frontend/src/features/transactions/grid/TransactionsClientGrid.tsx
+→ Client Current Page + local Selected wiring
+
+frontend/src/features/transactions/grid/TransactionsInfiniteGrid.tsx
+frontend/src/features/transactions/grid/TransactionsSsrmGrid.tsx
+→ server-backed Current Page + logical Selected wiring
+
+frontend/src/features/transactions/grid/transactionSelectionAction.ts
+→ server logical selection target mapping
 
 backend/apps/transactions/services.py
--> resolve_transactions_by_selection(...)
+→ authoritative selected-row resolver
 
 backend/apps/transactions/api/views.py
--> POST selected-export endpoint and CSV response
+→ selected-export endpoint and CSV response
 ```
 
 ## Verification expectations
 
-For both `/infinite` and `/ssrm`, verify at minimum:
+Current automated/manual verification should cover:
 
-```text
-Export Current Page
--> exact fully loaded page only
--> includes selectionDisabled/readOnly rows if they are present on the page
--> refuses partial/unresolved page export
+- Client Current Page exports exactly the current page;
+- Infinite/SSRM Current Page exports exactly the fully resolved current page;
+- Current Page includes displayed restricted rows;
+- Client Selected exports selected rows across pagination pages without a backend selected-export request;
+- Infinite/SSRM explicit Selected exports only backend-eligible selected IDs;
+- Infinite/SSRM All Filtered export uses current translated filters and user exceptions;
+- Infinite/SSRM All Records export uses the complete logical target minus user exceptions;
+- server-backed Selected export excludes backend-ineligible rows.
 
-Export Selected explicit
--> only selected backend-eligible rows
-
-Export Selected All Filtered
--> current filtered universe minus user exceptions
--> excludes selectionDisabled/readOnly rows
-
-Export Selected All Records
--> complete logical selection minus user exceptions
--> excludes selectionDisabled/readOnly rows
-```
-
-See [Pre-Client manual testing](pre-client-manual-testing.md) for step-by-step verification.
+Manual browser verification remains separately tracked and is not claimed complete here.

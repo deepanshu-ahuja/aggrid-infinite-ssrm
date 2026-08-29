@@ -54,7 +54,6 @@ import {
   buildTransactionSelectionActionRequest,
   buildTransactionSelectionTarget,
   hasTransactionSelection,
-  type SelectionAfterSuccessPolicy,
 } from './transactionSelectionAction';
 import { useTransactionEditPersistence } from './useTransactionEditPersistence';
 import { useTransactionExport } from './useTransactionExport';
@@ -150,16 +149,13 @@ export function TransactionsInfiniteGrid({
     gridApi.current?.refreshInfiniteCache();
   }, []);
 
-  const handleSelectionActionApplied = useCallback(
-    (selectionAfterSuccess: SelectionAfterSuccessPolicy) => {
-      // GRIDCAP-ACTION-SELECTED | GRIDCAP-LIFECYCLE-REFRESH
-      // Clear through the Infinite controller so page/native and dataset-wide compact selection each
-      // use their proper owner. Do this only after backend success; failed mutations keep selection.
-      if (selectionAfterSuccess === 'clear') clearSelection();
-      handlePersistedRows();
-    },
-    [clearSelection, handlePersistedRows],
-  );
+  const handleSelectedTransactionUpdateApplied = useCallback(() => {
+    // GRIDCAP-ACTION-SELECTED | GRIDCAP-LIFECYCLE-REFRESH
+    // Change Status always clears its successful target. Delegate that concrete operation to the
+    // Infinite controller so page/native and dataset-wide compact selection each use their owner.
+    clearSelection();
+    handlePersistedRows();
+  }, [clearSelection, handlePersistedRows]);
 
   const { saveRow, saveBulk, isSaving, saveError } = useTransactionEditPersistence({
     updates: payload.updates,
@@ -168,10 +164,10 @@ export function TransactionsInfiniteGrid({
   });
 
   const {
-    applySelectionAction,
-    isApplyingSelectionAction,
-    selectionActionError,
-  } = useTransactionSelectionAction({ onApplied: handleSelectionActionApplied });
+    updateSelectedTransactions,
+    isUpdatingSelectedTransactions,
+    selectedTransactionUpdateError,
+  } = useTransactionSelectionAction({ onApplied: handleSelectedTransactionUpdateApplied });
 
   const {
     error: exportError,
@@ -218,7 +214,7 @@ export function TransactionsInfiniteGrid({
   }, [conflictTarget, discardRows, readSelectionIntent, state]);
 
   const handleSetSelectedStatus = useCallback(
-    (status: TransactionStatus, selectionAfterSuccess: SelectionAfterSuccessPolicy) => {
+    (status: TransactionStatus) => {
       const api = gridApi.current;
       if (!api) return;
 
@@ -230,17 +226,16 @@ export function TransactionsInfiniteGrid({
         return;
       }
 
-      applySelectionAction(
+      updateSelectedTransactions(
         buildTransactionSelectionActionRequest(
           currentSelection,
           selectionScope === 'filtered' ? 'filtered' : 'all',
           api.getFilterModel(),
           { status },
         ),
-        selectionAfterSuccess,
       );
     },
-    [applySelectionAction, readSelectionIntent, selectionScope, state],
+    [readSelectionIntent, selectionScope, state, updateSelectedTransactions],
   );
 
   const handleExportCurrentPage = useCallback(() => {
@@ -359,9 +354,9 @@ export function TransactionsInfiniteGrid({
       <TransactionSelectionActions
         hasSelection={hasSelection}
         selectedRowCount={selectedRowCount}
-        isApplying={isApplyingSelectionAction}
+        isApplying={isUpdatingSelectedTransactions}
         statusActionBlockedByConflict={statusActionBlockedByConflict}
-        error={selectionActionError}
+        error={selectedTransactionUpdateError}
         onSetStatus={handleSetSelectedStatus}
       />
 
