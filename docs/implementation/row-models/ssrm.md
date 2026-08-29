@@ -125,6 +125,27 @@ backend succeeds
 
 On failure, the success callback does not run and selection remains available.
 
+## Import
+
+Transaction Import is separate from tracked cell editing.
+
+The feature-owned Import dialog sends CSV text to backend Preview/Apply endpoints. A successful Apply does not create LOCAL drafts and does not deliberately clear native/custom SSRM selection.
+
+The concrete SSRM root owns the post-Import authoritative refresh:
+
+```text
+backend Import Apply succeeds
+→ TransactionImportAction onImported callback
+→ refreshServerSide()
+→ fresh store rows arrive
+→ reconcile existing BASE / LOCAL / REMOTE state
+→ restore remaining LOCAL overlays
+```
+
+If an imported value differs from both an existing dirty field's BASE and LOCAL values, normal conflict reconciliation keeps LOCAL visible and records the imported value as REMOTE.
+
+See `../grid-import.md` for the complete file/template, validation, atomicity and error-reporting contract. Search `GRIDCAP-IMPORT` for the frontend footprint.
+
 ## Export
 
 ### Current Page
@@ -166,8 +187,9 @@ Grouping/tree selection requires separate semantics before hierarchical selectio
 - `frontend/src/shared/grid/selection/server-side/useSsrmSelectionController.ts`
 - `frontend/src/shared/grid/gridModules.ts`
 - `frontend/src/features/transactions/grid/transactionRequest.mapper.ts`
+- `frontend/src/features/transactions/grid/TransactionImportAction.tsx`
 
-Search `GRIDCAP-ROWMODEL-SSRM` across frontend source/tests to locate the SSRM row-model footprint.
+Search `GRIDCAP-ROWMODEL-SSRM` across frontend source/tests to locate the SSRM row-model footprint. Search `GRIDCAP-IMPORT` for the Import integration.
 
 ## Verification
 
@@ -184,9 +206,10 @@ Verify at least:
 9. BASE / LOCAL / REMOTE reconciliation preserves or conflicts drafts correctly;
 10. successful Change Status clears selection and refreshes SSRM;
 11. failed Change Status keeps selection;
-12. failed datasource loads retry through `retryServerSideLoads()`;
-13. Current Page export refuses a partially materialised page;
-14. Selected export uses the backend target rather than loaded RowNodes;
-15. datasource teardown cancels obsolete work and does not use a destroyed GridApi.
+12. successful Import refreshes through `refreshServerSide()` without manufacturing LOCAL drafts;
+13. failed datasource loads retry through `retryServerSideLoads()`;
+14. Current Page export refuses a partially materialised page;
+15. Selected export uses the backend target rather than loaded RowNodes;
+16. datasource teardown cancels obsolete work and does not use a destroyed GridApi.
 
 Do not mark manual verification complete unless the SSRM browser scenarios were actually run.

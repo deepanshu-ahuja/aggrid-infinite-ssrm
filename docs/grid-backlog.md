@@ -9,6 +9,7 @@ Useful current references:
 - `docs/implementation/README.md` — current implementation documentation entry point;
 - `docs/implementation/grid-capabilities.md` — implemented capability catalog;
 - `docs/implementation/grid-capability-tags.md` — searchable frontend capability registry;
+- `docs/implementation/grid-import.md` — current Transaction Import contract;
 - `docs/implementation/row-models/client.md` — Client-Side implementation guide;
 - `docs/implementation/row-models/infinite.md` — Infinite implementation guide;
 - `docs/implementation/row-models/ssrm.md` — SSRM implementation guide;
@@ -22,10 +23,12 @@ Statuses used here: **VERIFY**, **DESIGN**, **TODO**, **PLANNED**, **DEFERRED**.
 
 The existing-capability regression-hardening implementation is complete. The implementation browser run passed 80/80 TypeScript Playwright scenarios across Client, Infinite and SSRM, alongside passing frontend and backend checks. The later Playwright local-workflow/coverage-view cleanup was merged through PR #35 and its exact head passed Frontend, Backend and Browser regression CI.
 
+Transaction Import is now implemented on `grid-foundation` and is in verification/PR review. PR #37 was merged while the workflow was still being built; the remaining frontend, tests and implementation documentation continue in PR #38 after synchronizing `grid-foundation` with that new `main` history.
+
 Current handoff sequence:
 
 ```text
-1. Design and implement Import as the next product capability
+1. Finish Import CI/verification and merge only when explicitly requested
 2. Build an isolated fourth configurable SSRM-based grid experiment
 3. Evaluate reuse/migration only after that experiment proves its boundary
 ```
@@ -46,6 +49,7 @@ Current guides include:
 - `docs/implementation/testing/server-backed-manual-testing.md`
 - `docs/implementation/testing/row-interaction-manual-testing.md`
 - `docs/implementation/testing/validation-manual-testing.md`
+- `docs/implementation/testing/import-manual-testing.md`
 - Client-specific scenarios in `docs/implementation/row-models/client.md`
 
 Do not mark manual verification complete unless those scenarios were actually run.
@@ -172,24 +176,36 @@ Current SSRM implementation is flat. Do not introduce advanced semantics without
 ## D. Import
 
 ### D1. Import workflow
-**Status:** TODO / NEXT
+**Status:** VERIFY
 
-Import is separate from ordinary tracked editing.
+Current implemented contract:
 
-Design/implementation should cover as required:
+- CSV only;
+- update existing Transactions only;
+- stable `id` target;
+- editable fields `account`, `amount`, `currency`, `status`, `transactionDate`;
+- mutation-free Preview;
+- Apply revalidates and is all-or-nothing;
+- backend persisted-field validation reuse;
+- duplicate, unknown and read-only target errors;
+- structured row/field error presentation;
+- concrete Client/Infinite/SSRM authoritative refresh after Apply;
+- existing LOCAL drafts remain separate and reconcile against imported REMOTE values normally.
 
-- accepted file/template formats;
-- stable identifiers;
-- create/update/upsert semantics;
-- field mapping;
-- preview/dry-run;
-- validation reuse where appropriate;
-- duplicate handling;
-- atomic versus partial-success behavior;
-- row/field error reporting;
-- downloadable error output when useful;
-- progress/cancellation for large jobs when required;
-- authoritative post-import refresh.
+Current deliberate non-goals:
+
+- create/upsert;
+- XLSX;
+- configurable field mapping;
+- partial success;
+- downloadable error file;
+- async progress/cancellation;
+- backend optimistic concurrency/versioning.
+
+References:
+
+- `docs/implementation/grid-import.md`
+- `docs/implementation/testing/import-manual-testing.md`
 
 Do not hide Import inside ordinary cell-edit persistence.
 

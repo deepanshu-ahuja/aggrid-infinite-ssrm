@@ -120,6 +120,27 @@ backend succeeds
 
 On failure, the success callback does not run and selection remains available.
 
+## Import
+
+Transaction Import is separate from tracked cell editing.
+
+The feature-owned Import dialog sends CSV text to backend Preview/Apply endpoints. A successful Apply does not create LOCAL drafts and does not deliberately clear Infinite selection.
+
+The concrete Infinite root owns the post-Import authoritative refresh:
+
+```text
+backend Import Apply succeeds
+→ TransactionImportAction onImported callback
+→ refreshInfiniteCache()
+→ fresh datasource rows arrive
+→ reconcile existing BASE / LOCAL / REMOTE state
+→ restore remaining LOCAL overlays
+```
+
+If an imported value differs from both an existing dirty field's BASE and LOCAL values, normal conflict reconciliation keeps LOCAL visible and records the imported value as REMOTE.
+
+See `../grid-import.md` for the complete file/template, validation, atomicity and error-reporting contract. Search `GRIDCAP-IMPORT` for the frontend footprint.
+
 ## Export
 
 ### Current Page
@@ -154,8 +175,9 @@ Datasource destroy/replacement cancels obsolete in-flight requests. The root cle
 - `frontend/src/shared/grid/data/infinite/useInfiniteRowLoading.ts`
 - `frontend/src/shared/grid/selection/infinite/useInfiniteSelectionController.tsx`
 - `frontend/src/features/transactions/grid/transactionRequest.mapper.ts`
+- `frontend/src/features/transactions/grid/TransactionImportAction.tsx`
 
-Search `GRIDCAP-ROWMODEL-INFINITE` across frontend source/tests to locate the Infinite row-model footprint.
+Search `GRIDCAP-ROWMODEL-INFINITE` across frontend source/tests to locate the Infinite row-model footprint. Search `GRIDCAP-IMPORT` for the Import integration.
 
 ## Verification
 
@@ -171,8 +193,9 @@ Verify at least:
 8. BASE / LOCAL / REMOTE reconciliation preserves or conflicts drafts correctly;
 9. successful Change Status clears selection and refreshes the Infinite cache;
 10. failed Change Status keeps selection;
-11. Current Page export refuses a partially materialised page;
-12. Selected export uses the backend target rather than loaded RowNodes;
-13. datasource teardown cancels obsolete work and does not use a destroyed GridApi.
+11. successful Import refreshes through `refreshInfiniteCache()` without manufacturing LOCAL drafts;
+12. Current Page export refuses a partially materialised page;
+13. Selected export uses the backend target rather than loaded RowNodes;
+14. datasource teardown cancels obsolete work and does not use a destroyed GridApi.
 
 Do not mark manual verification complete unless the Infinite browser scenarios were actually run.
