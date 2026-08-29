@@ -5,8 +5,10 @@
   "scripts": {
     "test": "playwright test",
     "test:headed": "playwright test --headed --workers=1",
+    "test:watch": "PLAYWRIGHT_SLOW_MO=700 playwright test --headed --workers=1",
     "test:ui": "playwright test --ui",
     "test:debug": "playwright test --debug",
+    "record": "playwright codegen --target=playwright-test http://127.0.0.1:5174",
     "install:chromium": "playwright install --with-deps chromium"
   },
   "devDependencies": {
