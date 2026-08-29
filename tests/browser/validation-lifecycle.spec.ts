@@ -24,25 +24,22 @@ for (const route of routes) {
     page,
   }) => {
     const pageErrors = await openGrid(page, route);
+    const row = rowById(page, SEEDED_ROWS.enabled);
     const cell = await editAccount(page, '');
 
     await expect(cell).toHaveClass(/grid-cell--validation-error/);
-    await expect(
-      rowById(page, SEEDED_ROWS.enabled).getByRole('button', { name: 'Save', exact: true }),
-    ).toBeDisabled();
+    await expect(row.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 
     await editAccount(page, `Corrected ${route.slice(1)}`);
     await expect(cell).not.toHaveClass(/grid-cell--validation-error/);
-    await expect(
-      rowById(page, SEEDED_ROWS.enabled).getByRole('button', { name: 'Save', exact: true }),
-    ).toBeEnabled();
+    await expect(row.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
 
-    // Returning exactly to BASE removes the LOCAL draft instead of leaving a clean-but-dirty copy.
+    // Returning exactly to BASE removes the LOCAL draft. Clean rows intentionally render no row
+    // Save/Discard controls rather than keeping disabled action buttons in the grid.
     await editAccount(page, 'Operating');
     await expect(cell).not.toHaveClass(/grid-cell--validation-error/);
-    await expect(
-      rowById(page, SEEDED_ROWS.enabled).getByRole('button', { name: 'Save', exact: true }),
-    ).toBeDisabled();
+    await expect(row.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+    await expect(row.getByRole('button', { name: 'Discard', exact: true })).toHaveCount(0);
     await expect(page.getByText(/0 rows edited total; 0 selected/)).toBeVisible();
 
     await expectNoPageErrors(pageErrors, `${route} validation correction and BASE revert`);
@@ -53,6 +50,7 @@ for (const route of routes) {
   }) => {
     const pageErrors = await openGrid(page, route);
     const localValue = `Rejected ${route.slice(1)}`;
+    const row = rowById(page, SEEDED_ROWS.enabled);
     const cell = await editAccount(page, localValue);
 
     await page.route(`**/api/transactions/${SEEDED_ROWS.enabled}/`, async (routeHandler) => {
@@ -67,14 +65,12 @@ for (const route of routes) {
       });
     });
 
-    await rowById(page, SEEDED_ROWS.enabled).getByRole('button', { name: 'Save', exact: true }).click();
+    await row.getByRole('button', { name: 'Save', exact: true }).click();
 
     await expect(cell).toHaveText(localValue);
     await expect(cell).toHaveClass(/grid-cell--validation-error/);
-    await expect(page.getByText(/1 validation error needs correction/)).toBeVisible();
-    await expect(
-      rowById(page, SEEDED_ROWS.enabled).getByRole('button', { name: 'Save', exact: true }),
-    ).toBeDisabled();
+    await expect(page.getByText(/1 validation error need correction/)).toBeVisible();
+    await expect(row.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 
     // The committed cell owns the backend message through the same AG Grid tooltip presentation used
     // for client validation errors; this proves the reason is not reduced to a red border only.
