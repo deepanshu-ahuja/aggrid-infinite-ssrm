@@ -371,19 +371,18 @@ export function useTrackedGridEditing<TData, TField extends string, TValue>({
 
   const payload = useMemo(() => buildTrackedGridUpdatePayload(state), [state]);
   const conflictCount = useMemo(() => getTrackedGridConflictCount(state), [state]);
-  const validationErrorCount = useMemo(
-    () =>
-      Object.values(validationState).reduce(
-        (rowTotal, rowErrors) =>
-          rowTotal +
-          Object.values(rowErrors).reduce(
-            (fieldTotal, fieldErrors) => fieldTotal + (fieldErrors?.length ?? 0),
-            0,
-          ),
-        0,
-      ),
-    [validationState],
-  );
+  const validationErrorCount = useMemo(() => {
+    let count = 0;
+    const rows = Object.values(validationState) as Array<
+      Record<string, GridFieldValidationErrors | undefined>
+    >;
+    for (const rowErrors of rows) {
+      for (const fieldErrors of Object.values(rowErrors)) {
+        count += fieldErrors?.length ?? 0;
+      }
+    }
+    return count;
+  }, [validationState]);
 
   return {
     state,
