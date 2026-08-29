@@ -84,6 +84,11 @@ for (const route of routes) {
       3,
     );
 
+    // MUI keeps the page behind an open modal out of the accessibility tree. Close the Import dialog
+    // before role-based checkbox assertions so this test exercises AG Grid selection, not modal ARIA.
+    await page.getByRole('button', { name: 'Close' }).click();
+    await expect(page.getByRole('dialog', { name: 'Import transactions' })).toHaveCount(0);
+
     // selectionDisabled -> enabled: every visible/native signal must move together. This is the exact
     // regression that previously left cream/grey restricted styling on a now-selectable RowNode.
     await expect(formerlySelectionDisabled).not.toHaveClass(/grid-row--selection-disabled/);
