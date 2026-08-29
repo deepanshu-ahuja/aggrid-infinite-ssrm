@@ -1,11 +1,5 @@
 # Transaction Editing
 
-This document describes the **current implemented** Transactions editing architecture across Client-Side, Infinite and SSRM.
-
-It is an implementation reference, not a roadmap.
-
-For the full BASE/LOCAL/REMOTE conflict state machine, see `docs/edit-conflict-reconciliation.md`.
-
 ## Native-first ownership
 
 Each concrete grid root owns its rendered `<AgGridReact>` and authoritative `GridApi`:
@@ -78,7 +72,7 @@ Programmatic writes performed by the editing engine are marked/guarded so AG Gri
 
 ## Current-page programmatic edit actions
 
-The current editing controls can apply changes to concrete rows on the current pagination page.
+The editing controls can apply changes to concrete rows on the current pagination page.
 
 Implemented flows include:
 
@@ -128,7 +122,7 @@ The count comes from the tracked update payload rather than visible RowNodes.
 
 A dirty row can be saved independently of checkbox selection.
 
-Current flow:
+Flow:
 
 ```text
 tracked row changes
@@ -230,17 +224,13 @@ server-side store rows load/refresh/recreate
 
 ## Conflict relationship
 
-Validation is not part of this implemented editing capability yet. Current edit correctness around fresh server data is handled by BASE/LOCAL/REMOTE conflict reconciliation.
-
-For an implemented conflict:
+For an unresolved conflict:
 
 - LOCAL remains visible;
 - conflict metadata records REMOTE;
 - the conflicted field's normal editor is blocked;
 - Transactions shows `Use server` / `Keep my edit` resolution UI;
 - relevant Save/business mutations are guarded until resolution.
-
-See `docs/edit-conflict-reconciliation.md`.
 
 ## Selection relationship
 
@@ -256,7 +246,7 @@ Selection and editing remain separate concerns:
 
 ## Backend contracts
 
-The implemented write endpoints have distinct responsibilities:
+The write endpoints have distinct responsibilities:
 
 ```text
 PATCH /api/transactions/{id}/
@@ -290,8 +280,6 @@ frontend/src/features/transactions/grid/useTransactionEditPersistence.ts
 → Transaction Save request lifecycle
 ```
 
-## Verification
+## Verification expectations
 
-Focused tests cover pure tracked state, programmatic-write guarding, Discard behavior, persistence acknowledgement and concrete-grid integration.
-
-Manual browser verification for Client/Infinite/SSRM remains separately tracked and is not claimed complete here.
+Tests should cover pure tracked state, programmatic-write guarding, Discard behavior, persistence acknowledgement and concrete-grid integration.
