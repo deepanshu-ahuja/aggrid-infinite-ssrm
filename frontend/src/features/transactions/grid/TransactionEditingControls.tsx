@@ -18,6 +18,7 @@ import type {
   TransactionEditTarget,
   TransactionLastEdit,
 } from './transactionEditing';
+import { validateTransactionField } from './transactionValidation';
 
 interface TransactionEditingControlsProps {
   editedRowCount: number;
@@ -36,6 +37,15 @@ interface TransactionEditingControlsProps {
 }
 
 const STATUSES: readonly TransactionStatus[] = ['Completed', 'Pending', 'Failed'];
+
+function firstValidationMessage(
+  enabled: boolean,
+  field: 'account' | 'amount' | 'currency',
+  value: string | number | null,
+) {
+  if (!enabled) return undefined;
+  return validateTransactionField(field, value)[0]?.message;
+}
 
 /** Transactions editing presentation for current-page edit helpers and explicit draft persistence. */
 export function TransactionEditingControls({
@@ -63,10 +73,17 @@ export function TransactionEditingControls({
   const [useStatus, setUseStatus] = useState(false);
   const [status, setStatus] = useState<TransactionStatus>('Pending');
 
+  const amountDraft = amount === '' ? null : Number(amount);
+  const accountError = firstValidationMessage(useAccount, 'account', account);
+  const amountError = firstValidationMessage(useAmount, 'amount', amountDraft);
+  const currencyError = firstValidationMessage(useCurrency, 'currency', currency);
+
   const bulkChanges = useMemo<TransactionChanges>(() => {
     const changes: TransactionChanges = {};
     if (useAccount) changes.account = account;
-    if (useAmount && amount !== '') changes.amount = Number(amount);
+    // Checked + blank is an intentional invalid LOCAL draft, not "field omitted". This keeps Flow 2
+    // semantically aligned with clearing the same numeric field through direct cell editing.
+    if (useAmount) changes.amount = amount === '' ? null : Number(amount);
     if (useCurrency) changes.currency = currency;
     if (useStatus) changes.status = status;
     return changes;
@@ -138,15 +155,37 @@ export function TransactionEditingControls({
             as local drafts and highlighted so they can be corrected before Save.
           </Typography>
 
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} useFlexGap flexWrap="wrap">
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} useFlexGap flexWrap="wrap" alignItems="flex-start">
             <FormControlLabel control={<Checkbox checked={useAccount} onChange={(event) => setUseAccount(event.target.checked)} />} label="Account" />
-            <TextField size="small" value={account} onChange={(event) => setAccount(event.target.value)} disabled={!useAccount || isSaving} />
+            <TextField
+              size="small"
+              value={account}
+              onChange={(event) => setAccount(event.target.value)}
+              disabled={!useAccount || isSaving}
+              error={Boolean(accountError)}
+              helperText={accountError ?? ' '}
+            />
 
             <FormControlLabel control={<Checkbox checked={useAmount} onChange={(event) => setUseAmount(event.target.checked)} />} label="Amount" />
-            <TextField size="small" type="number" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={!useAmount || isSaving} />
+            <TextField
+              size="small"
+              type="number"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              disabled={!useAmount || isSaving}
+              error={Boolean(amountError)}
+              helperText={amountError ?? ' '}
+            />
 
             <FormControlLabel control={<Checkbox checked={useCurrency} onChange={(event) => setUseCurrency(event.target.checked)} />} label="Currency" />
-            <TextField size="small" value={currency} onChange={(event) => setCurrency(event.target.value)} disabled={!useCurrency || isSaving} />
+            <TextField
+              size="small"
+              value={currency}
+              onChange={(event) => setCurrency(event.target.value)}
+              disabled={!useCurrency || isSaving}
+              error={Boolean(currencyError)}
+              helperText={currencyError ?? ' '}
+            />
 
             <FormControlLabel control={<Checkbox checked={useStatus} onChange={(event) => setUseStatus(event.target.checked)} />} label="Status" />
             <Select<TransactionStatus> size="small" value={status} onChange={(event) => setStatus(event.target.value as TransactionStatus)} disabled={!useStatus || isSaving} sx={{ minWidth: 140 }}>
