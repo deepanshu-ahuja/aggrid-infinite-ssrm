@@ -20,12 +20,11 @@ body {
 
 .grid-row--selection-disabled .ag-selection-checkbox .ag-checkbox-input-wrapper,
 .grid-row--read-only .ag-selection-checkbox .ag-checkbox-input-wrapper {
-  /* TEMP DIAGNOSTIC: deliberately loud red to prove whether header grey comes from these row-only rules. */
-  background-color: #ffb3b3;
-  border-color: #ff0000;
-  color: #ff0000;
-  filter: none;
-  opacity: 1;
+  background-color: #e4e7ec;
+  border-color: #98a2b3;
+  color: #98a2b3;
+  filter: grayscale(1);
+  opacity: 0.78;
 }
 
 .grid-row--selection-disabled {
@@ -37,12 +36,12 @@ body {
 }
 
 .grid-row--read-only {
-  box-shadow: inset 3px 0 0 #ff0000;
+  box-shadow: inset 3px 0 0 #667085;
 }
 
 .grid-row--read-only .ag-cell {
-  background-color: #ffe5e5;
-  color: #ff0000;
+  background-color: #f2f4f7;
+  color: #98a2b3;
   cursor: not-allowed;
 }
 
@@ -64,7 +63,6 @@ body {
  */
 .grid-cell--edit-conflict {
   outline: 2px solid #f79009;
-  outline-offset: -2px;
   background-color: #fffaeb !important;
   cursor: pointer;
 }
