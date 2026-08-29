@@ -1,47 +1,44 @@
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures';
+import {
+  SEEDED_ROWS,
+  accountEditorInput,
+  expectNoPageErrors,
+  openGrid,
+  rowById,
+  routes,
+} from './gridTestSupport';
 
-const routes = ['/client', '/infinite', '/ssrm'] as const;
-
-type Route = (typeof routes)[number];
-
-async function openGrid(page: Page, route: Route) {
-  const pageErrors: Error[] = [];
-  page.on('pageerror', (error) => pageErrors.push(error));
-  await page.goto(route);
-  await expect(page.locator('.ag-root')).toBeVisible();
-  await expect(page.locator('.ag-row').first()).toBeVisible();
-  return pageErrors;
-}
-
-function enabledRow(page: Page) {
-  return page.locator('.ag-row:not(.grid-row--read-only):not(.grid-row--selection-disabled)').first();
-}
-
-async function expectNoPageErrors(errors: Error[], scenario: string) {
-  expect(errors.map((error) => error.message), `${scenario} produced page errors`).toEqual([]);
+async function expectDownloadFromAction(page: Page, buttonName: string) {
+  // Infinite/SSRM intentionally refuse a partial Current Page export while AG Grid is still
+  // materialising the page. Poll the actual user action until the all-or-nothing page contract is
+  // ready rather than sleeping for an arbitrary duration.
+  await expect(async () => {
+    const downloadPromise = page.waitForEvent('download', { timeout: 1_500 });
+    await page.getByRole('button', { name: buttonName, exact: true }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toContain('transactions-');
+  }).toPass({ timeout: 10_000, intervals: [250, 500, 1_000] });
 }
 
 for (const route of routes) {
   test(`${route}: grid loads and row interaction policy is visible/enforced`, async ({ page }) => {
     const pageErrors = await openGrid(page, route);
 
-    const readOnlyRow = page.locator('.grid-row--read-only').first();
-    await expect(readOnlyRow).toBeVisible();
+    const readOnlyRow = rowById(page, SEEDED_ROWS.readOnly);
     const readOnlyCheckbox = readOnlyRow.getByRole('checkbox').first();
-    // AG Grid uses the native disabled attribute for an unselectable row rather than aria-disabled.
     await expect(readOnlyCheckbox).toBeDisabled();
 
     await readOnlyRow.locator('.ag-cell[col-id="account"]').dblclick();
-    await expect(page.getByLabel('Account', { exact: true }).last()).not.toBeVisible();
+    await expect(accountEditorInput(page)).toHaveCount(0);
 
-    const selectionDisabledRow = page.locator('.grid-row--selection-disabled').first();
-    await expect(selectionDisabledRow).toBeVisible();
+    const selectionDisabledRow = rowById(page, SEEDED_ROWS.selectionDisabled);
     await expect(selectionDisabledRow.getByRole('checkbox').first()).toBeDisabled();
 
     // selectionDisabled is still individually editable. The MUI editor proves the weaker policy is not
     // accidentally treated like readOnly by the browser integration.
     await selectionDisabledRow.locator('.ag-cell[col-id="account"]').dblclick();
-    await expect(page.getByLabel('Account', { exact: true }).last()).toBeVisible();
+    await expect(accountEditorInput(page)).toBeVisible();
     await page.keyboard.press('Escape');
 
     await expectNoPageErrors(pageErrors, `${route} row interaction`);
@@ -49,37 +46,42 @@ for (const route of routes) {
 
   test(`${route}: direct edit can be discarded without mutating authoritative value`, async ({ page }) => {
     const pageErrors = await openGrid(page, route);
-    const row = enabledRow(page);
+    const row = rowById(page, SEEDED_ROWS.enabled);
     const accountCell = row.locator('.ag-cell[col-id="account"]');
-    const original = (await accountCell.innerText()).trim();
+    await expect(accountCell).toHaveText('Operating');
 
     await accountCell.dblclick();
-    const accountInput = page.getByLabel('Account', { exact: true }).last();
+    const accountInput = accountEditorInput(page);
+    await expect(accountInput).toBeVisible();
     await accountInput.fill(`Discard ${route.slice(1)}`);
     await accountInput.press('Enter');
 
     await expect(row.getByRole('button', { name: 'Discard', exact: true })).toBeEnabled();
     await row.getByRole('button', { name: 'Discard', exact: true }).click();
-    await expect(accountCell).toHaveText(original);
+    await expect(accountCell).toHaveText('Operating');
 
     await expectNoPageErrors(pageErrors, `${route} discard`);
   });
 
   test(`${route}: valid direct edit persists through Row Save`, async ({ page }) => {
     const pageErrors = await openGrid(page, route);
-    const row = enabledRow(page);
+    const row = rowById(page, SEEDED_ROWS.enabled);
     const accountCell = row.locator('.ag-cell[col-id="account"]');
     const nextValue = `E2E ${route.slice(1)}`;
+    await expect(accountCell).toHaveText('Operating');
 
     await accountCell.dblclick();
-    const accountInput = page.getByLabel('Account', { exact: true }).last();
+    const accountInput = accountEditorInput(page);
+    await expect(accountInput).toBeVisible();
     await accountInput.fill(nextValue);
     await accountInput.press('Enter');
 
     const saveButton = row.getByRole('button', { name: 'Save', exact: true });
     await expect(saveButton).toBeEnabled();
     const responsePromise = page.waitForResponse(
-      (response) => response.request().method() === 'PATCH' && /\/api\/transactions\//.test(response.url()),
+      (response) =>
+        response.request().method() === 'PATCH' &&
+        response.url().endsWith(`/api/transactions/${SEEDED_ROWS.enabled}/`),
     );
     await saveButton.click();
     const response = await responsePromise;
@@ -91,7 +93,7 @@ for (const route of routes) {
 
   test(`${route}: explicit selection enables selected actions and success clears selection`, async ({ page }) => {
     const pageErrors = await openGrid(page, route);
-    const row = enabledRow(page);
+    const row = rowById(page, SEEDED_ROWS.enabled);
     await row.getByRole('checkbox').first().click();
 
     await expect(page.getByText('1 selected', { exact: true }).first()).toBeVisible();
@@ -100,8 +102,8 @@ for (const route of routes) {
 
     const responsePromise = page.waitForResponse(
       (response) =>
-        ['POST', 'PATCH'].includes(response.request().method()) &&
-        response.url().includes('/api/transactions/') &&
+        response.request().method() === 'PATCH' &&
+        response.url().endsWith('/api/transactions/selection/') &&
         response.ok(),
     );
     await action.click();
@@ -114,15 +116,11 @@ for (const route of routes) {
   test(`${route}: current-page and selected export both produce downloads`, async ({ page }) => {
     const pageErrors = await openGrid(page, route);
 
-    const currentPageDownload = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Export current page', exact: true }).click();
-    expect((await currentPageDownload).suggestedFilename()).toContain('transactions-');
+    await expectDownloadFromAction(page, 'Export current page');
 
-    const row = enabledRow(page);
+    const row = rowById(page, SEEDED_ROWS.enabled);
     await row.getByRole('checkbox').first().click();
-    const selectedDownload = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Export selected', exact: true }).click();
-    expect((await selectedDownload).suggestedFilename()).toContain('transactions-');
+    await expectDownloadFromAction(page, 'Export selected');
 
     await expectNoPageErrors(pageErrors, `${route} export`);
   });
