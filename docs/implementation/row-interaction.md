@@ -62,6 +62,28 @@ Editable columns use native `ColDef.editable` callbacks.
 
 Shared programmatic edit helpers also receive the same feature-owned row-editability predicate so `RowNode.setDataValue(...)` cannot bypass the read-only rule.
 
+### Mutable row presentation
+
+Interaction presentation is dynamic because authoritative writes can change `interactionMode` while AG Grid keeps the same RowNode alive.
+
+The common interaction classes therefore use native `rowClassRules`:
+
+```text
+selectionDisabled
+→ grid-row--selection-disabled while the rule is true
+
+enabled
+→ the selection-disabled/read-only rules become false
+→ AG Grid removes those rule-owned classes
+
+readOnly
+→ grid-row--read-only while the rule is true
+```
+
+Do not use additive `getRowClass` for mutable interaction modes. AG Grid can re-run `getRowClass` after data refresh but does not remove a class that an earlier callback result added. That can leave a now-enabled row with stale restricted-row colour/checkbox treatment even though the Access cell already shows the new authoritative mode.
+
+The concrete Transaction roots keep `getTransactionRowClass` only as the feature boundary for unrelated additive/static Transaction classes; it currently returns no class. Interaction-mode presentation belongs to `transactionRowClassRules`.
+
 ## Row-model selection behavior
 
 ### Client-Side
@@ -81,6 +103,33 @@ For filtered/all dataset-wide logical selection, restricted rows are **not** con
 Native SSRM explicit/All Records selection relies on native selectability for loaded rows and backend eligibility for authoritative selected operations.
 
 Custom Current Page / All Filtered synchronization also skips non-selectable loaded RowNodes.
+
+## Authoritative interaction-mode transitions
+
+A refresh after Save, selected action or Import can change a row's mode. The next rendered/native state must move together rather than mixing old and new policy.
+
+For example:
+
+```text
+selectionDisabled → enabled
+→ Access restriction disappears
+→ selection-disabled row class is removed
+→ checkbox becomes selectable
+→ clicking it creates normal selected state/header indeterminate state
+
+enabled → selectionDisabled
+→ warning presentation appears
+→ selection-disabled row class is added
+→ checkbox becomes non-selectable
+
+enabled → readOnly
+→ locked presentation appears
+→ read-only row class is added
+→ checkbox becomes non-selectable
+→ editing is blocked
+```
+
+This transition contract is exercised in the real-grid Playwright suite for Client, Infinite and SSRM through the Import authoritative-refresh path.
 
 ## Restricted rows are not user deselection exceptions
 
@@ -173,19 +222,19 @@ readOnly
 
 Presentation is not enforcement. Native callbacks and backend validation remain authoritative.
 
-## Reusable row-class helper
+## Reusable row-class helpers
 
-`frontend/src/shared/grid/rows/gridRowInteractionClass.ts` maps the generic interaction mode to common AG Grid row classes.
+`frontend/src/shared/grid/rows/gridRowInteractionClass.ts` owns generic AG Grid class mechanics.
 
-A row exposing the recommended `interactionMode` property can use:
+Mutable interaction state should use:
 
 ```ts
-const getRowClass = createGridRowInteractionClassGetter<MyRow>();
+const rowClassRules = createGridRowInteractionClassRules<MyRow>();
 ```
 
-A feature with a different row shape can provide `getMode(row)`.
+A feature with a different row shape can provide `getMode(row)` and can override the common class names.
 
-The helper also supports the implemented class-name override and feature-only additional-class hooks while preserving the common interaction mapping.
+The older `createGridRowInteractionClassGetter(...)` remains available only for genuinely additive/static class usage. It must not own a mutable restriction class because old `getRowClass` results can accumulate on a surviving RowNode.
 
 ## Editing/conflict relationship
 
@@ -202,10 +251,13 @@ frontend/src/shared/grid/rows/gridRowInteraction.ts
 → generic interaction-mode predicates
 
 frontend/src/shared/grid/rows/gridRowInteractionClass.ts
-→ shared row-class mapping
+→ dynamic rowClassRules + additive/static row-class helper
 
 frontend/src/features/transactions/grid/transactionRowInteraction.ts
-→ Transaction adapters/presentation inputs
+→ Transaction adapters + transactionRowClassRules
+
+frontend/src/features/transactions/transactionsGrid.config.ts
+→ supplies Transaction interaction rowClassRules to all three row-model defaults
 
 frontend/src/features/transactions/grid/TransactionsClientGrid.tsx
 frontend/src/features/transactions/grid/TransactionsInfiniteGrid.tsx
@@ -220,8 +272,11 @@ backend/apps/transactions/services.py
 
 Verification should cover:
 
-- mode predicate/class mapping;
+- mode predicate/class-rule mapping;
 - native checkbox selectability for all three modes;
+- `selectionDisabled → enabled`, `enabled → selectionDisabled` and `enabled → readOnly` authoritative transitions;
+- stale restricted row classes are removed when the latest mode becomes enabled;
+- a newly enabled checkbox can be checked and produces normal selected/header state;
 - Client native Page/Filtered/All selection excluding restricted rows;
 - Infinite Current Page and dataset synchronization skipping restricted loaded rows;
 - SSRM Current Page/custom filtered synchronization skipping restricted loaded rows;
