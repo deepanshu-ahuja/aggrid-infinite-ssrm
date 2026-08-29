@@ -9,6 +9,10 @@ export const SEEDED_ROWS = {
   selectionDisabled: 'txn-00002',
   secondEnabled: 'txn-00003',
   readOnly: 'txn-00004',
+  // These first-page rows start enabled but can become restricted by changing status alone.
+  // They are stable policy fixtures for authoritative mutation-path regression coverage.
+  treasuryEnabled: 'txn-00006',
+  settlementEnabled: 'txn-00008',
 } as const;
 
 export function rowById(page: Page, rowId: string) {
@@ -55,6 +59,8 @@ export async function openGrid(page: Page, route: Route) {
   await expect(rowById(page, SEEDED_ROWS.selectionDisabled)).toBeVisible();
   await expect(rowById(page, SEEDED_ROWS.secondEnabled)).toBeVisible();
   await expect(rowById(page, SEEDED_ROWS.readOnly)).toBeVisible();
+  await expect(rowById(page, SEEDED_ROWS.treasuryEnabled)).toBeVisible();
+  await expect(rowById(page, SEEDED_ROWS.settlementEnabled)).toBeVisible();
 
   return pageErrors;
 }
