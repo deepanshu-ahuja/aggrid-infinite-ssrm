@@ -1,239 +1,234 @@
-# Row Interaction Capability
+# Grid Export
 
-This document describes the **current implemented** row-interaction capability shared by Client-Side, Infinite and SSRM Transaction grids.
+## Current capability
 
-The feature/backend decides why a row is restricted. Shared grid code consumes only the generic interaction result.
+The foundation supports two export actions:
 
-For browser/network verification details, see `docs/row-interaction-manual-testing.md`.
-
-## Current interaction modes
-
-```ts
-export type GridRowInteractionMode =
-  | 'enabled'
-  | 'selectionDisabled'
-  | 'readOnly';
+```text
+Export Current Page
+Export Selected
 ```
+
+Their ownership differs because Current Page is always a concrete pagination page, while Selected can represent unloaded rows in server-backed row models.
+
+## Export Current Page
+
+All three row models use the shared `exportCurrentPageCsv(...)` helper.
+
+Flow:
+
+```text
+current AG Grid pagination page
+        ↓
+resolve exact current-page RowNodes
+        ↓
+api.exportDataAsCsv(...)
+        ↓
+CSV download
+```
+
+The helper does not serialize CSV itself. AG Grid owns CSV escaping, column export behavior and value processing.
+
+The application helper owns only the page boundary.
+
+If the expected pagination page is not fully materialised, the operation is refused instead of exporting a partial page.
+
+### Restricted rows on Current Page
+
+Current Page is a page snapshot, not a selected-row business operation.
+
+Therefore displayed rows remain part of the export even when their interaction mode is:
+
+```text
+selectionDisabled
+readOnly
+```
+
+Those modes restrict selection/editing/business operations; they do not remove a row from the visible page.
+
+## Export Selected — Client-Side
+
+Client has the complete bounded working set in browser memory and native AG Grid owns the exact selected set.
+
+Flow:
+
+```text
+native Client selection
+        ↓
+api.exportDataAsCsv({
+  onlySelected: true,
+  onlySelectedAllPages: true
+})
+        ↓
+CSV download
+```
+
+`onlySelectedAllPages` is required because selected Client rows can exist on several pagination pages.
+
+Client does not call the backend selected-export endpoint.
+
+Rows whose interaction mode prevents native selection never enter the selected set, so Client Selected export contains only selected selectable rows.
+
+## Export Selected — Infinite and SSRM
+
+Infinite and SSRM selected universes may include backend rows that have never been loaded into the browser.
+
+Selected export is therefore backend-owned for those row models.
+
+Flow:
+
+```text
+row-model-specific selection state
+        ↓
+common logical selection target
+        ↓
+POST /api/transactions/selection/export/
+        ↓
+backend resolves authoritative selected rows
+        ↓
+backend applies selection eligibility
+        ↓
+backend writes CSV
+        ↓
+CSV download
+```
+
+The browser does not load every selected server row merely to build a file.
+
+## Server-backed logical selection target
+
+The server-backed export path uses the same logical target semantics as selected business operations.
+
+### Explicit rows
+
+```json
+{
+  "selection": {
+    "mode": "include",
+    "ids": ["txn-1", "txn-9"]
+  }
+}
+```
+
+### All Records except user exceptions
+
+```json
+{
+  "selection": {
+    "mode": "exclude",
+    "ids": ["txn-5", "txn-10"]
+  }
+}
+```
+
+### All Filtered except user exceptions
+
+```json
+{
+  "selection": {
+    "mode": "exclude",
+    "ids": ["txn-5", "txn-10"]
+  },
+  "filters": [
+    {
+      "field": "status",
+      "operator": "equals",
+      "value": "Pending"
+    }
+  ]
+}
+```
+
+The feature mapper translates the current AG Grid filter model for filtered-wide server selection.
+
+## Backend resolver ownership
+
+`resolve_transactions_by_selection(...)` resolves the authoritative backend rows represented by the server logical selection.
 
 Current meaning:
 
-| Mode | Selectable | Selection-based actions | Editable | Modifying row actions |
-| --- | --- | --- | --- | --- |
-| `enabled` | Yes | Yes | Yes | Yes |
-| `selectionDisabled` | No | No | Yes | Yes |
-| `readOnly` | No | No | No | No |
-
-The mode is capability data. Shared code does not inspect Transaction status/account or other domain conditions to derive it.
-
-A row may also include `interactionReason` for user-facing explanation. The reason text is presentation only and is never parsed to decide behavior.
-
-## Current Transactions backend policy
-
-The demo backend currently derives modes from Transaction business data:
-
-```text
-status = Pending AND account = Treasury
-→ selectionDisabled
-→ Pending Treasury transactions require individual review
-
-status = Completed AND account = Settlement
-→ readOnly
-→ Completed Settlement transactions are locked
-
-otherwise
-→ enabled
-```
-
-This rule lives in the Transactions backend service. Shared grid code sees only the resulting generic mode/reason.
-
-The backend recomputes interaction policy after authoritative writes, so a row can change mode when its business data changes.
-
-## Frontend loaded-row ownership
-
-Loaded rows use native AG Grid callbacks wherever possible.
-
-### Selection
-
-The feature maps the current interaction mode to `rowSelection.isRowSelectable`.
-
-AG Grid evaluates that callback and exposes the result on `RowNode.selectable`.
-
-Shared/custom selection mechanics consume the native `node.selectable` flag rather than re-running Transaction business rules.
-
-### Editing
-
-Editable columns use native `ColDef.editable` callbacks.
-
-Shared programmatic edit helpers also receive the same feature-owned row-editability predicate so `RowNode.setDataValue(...)` cannot bypass the read-only rule.
-
-## Row-model selection behavior
-
-### Client-Side
-
-The complete working set is local. Native AG Grid selection evaluates `isRowSelectable` for the full Client dataset.
-
-Therefore `selectionDisabled` and `readOnly` rows never enter the native selected set, including native Page/Filtered/All Select All.
-
-### Infinite
-
-Loaded/manual/current-page selection skips RowNodes whose native `selectable` flag is false.
-
-For filtered/all dataset-wide logical selection, restricted rows are **not** converted into user exception IDs. The frontend keeps the compact logical selection and backend authority removes ineligible rows when the operation resolves its target.
-
-### SSRM
-
-Native SSRM explicit/All Records selection relies on native selectability for loaded rows and backend eligibility for authoritative selected operations.
-
-Custom Current Page / All Filtered synchronization also skips non-selectable loaded RowNodes.
-
-## Restricted rows are not user deselection exceptions
-
-A row outside the selectable universe is different from a row the user explicitly deselected.
-
-For example:
-
-```ts
-{ mode: 'exclude', ids: [] }
-```
-
-still means the complete logical selected universe even if some backend rows are `selectionDisabled` or `readOnly`.
-
-Do not rewrite that as:
-
-```ts
-{ mode: 'exclude', ids: ['restricted-a', 'restricted-b'] }
-```
-
-The `ids` in exclude mode represent explicit user exceptions, not backend policy exclusions.
-
-This distinction applies to:
-
-- manual selection;
-- Current Page;
-- All Filtered;
-- All Records;
-- selection restoration as server-backed rows materialise.
-
-## Backend authority
-
-The backend independently enforces row policy because server-wide operations can target rows the browser has never loaded.
-
-For a logical selected operation:
-
 ```text
 include + ids
-→ resolve requested rows
-→ keep backend selection-eligible rows
-→ apply operation
+→ requested backend-eligible rows
 
 exclude + filters
-→ apply filters
-→ keep backend selection-eligible rows
-→ remove explicit user exception ids
-→ apply operation
+→ all matching backend-eligible rows minus explicit user exceptions
 
 exclude without filters
-→ complete dataset
-→ keep backend selection-eligible rows
-→ remove explicit user exception ids
-→ apply operation
+→ all backend-eligible records minus explicit user exceptions
 ```
 
-A restricted row is skipped regardless of whether it was loaded in AG Grid.
+The same resolver is used by selected mutation and selected export paths so those operations do not reinterpret the word "selected" differently.
 
-## Direct edit persistence
+## Eligibility and displayed selected count
 
-Selection eligibility and edit eligibility remain distinct.
+Backend-selected export always applies backend eligibility.
+
+For dataset-wide Infinite/SSRM selection, the displayed selected count can be based on `totalCount` / `filteredCount`, which describe query membership rather than exact eligibility for unloaded rows.
+
+Therefore this can legitimately occur:
 
 ```text
-selectionDisabled
-→ direct editing/persistence allowed
-
-readOnly
-→ direct editing/persistence rejected
+UI dataset-wide selected count
+> number of rows written to Selected CSV
 ```
 
-The backend detail-update path rejects read-only rows.
+The export remains authoritative because the backend applies eligibility when resolving the target.
 
-The explicit bulk edit path validates all requested rows before mutation so a read-only target does not leave a partially applied batch.
+## Current Selected CSV fields
 
-## Presentation
-
-Restricted rows are visibly distinguishable from ordinary selected rows.
-
-Current shared/feature presentation includes:
+The backend Selected export writes:
 
 ```text
-selectionDisabled
-→ disabled native checkbox
-→ review/warning row treatment
-→ visible "Selection disabled" indicator/reason
-
-readOnly
-→ disabled native checkbox
-→ stronger locked row treatment
-→ visible lock + "Read only" indicator/reason
+id
+reference
+account
+amount
+currency
+status
+transactionDate
 ```
 
-Presentation is not enforcement. Native callbacks and backend validation remain authoritative.
-
-## Reusable row-class helper
-
-`frontend/src/shared/grid/rows/gridRowInteractionClass.ts` maps the generic interaction mode to common AG Grid row classes.
-
-A row exposing the recommended `interactionMode` property can use:
-
-```ts
-const getRowClass = createGridRowInteractionClassGetter<MyRow>();
-```
-
-A feature with a different row shape can provide `getMode(row)`.
-
-The helper also supports the implemented class-name override and feature-only additional-class hooks while preserving the common interaction mapping.
-
-## Editing/conflict relationship
-
-A fresh authoritative row can change interaction mode while LOCAL work already exists.
-
-The current tracked-edit engine may keep existing LOCAL values visible long enough to reconcile/review them, but the latest read-only policy still blocks new editing and authoritative persistence.
-
-Row interaction does not override conflict semantics, and conflict state does not override backend row policy.
+Grid interaction metadata is not included in the Transaction business CSV.
 
 ## Implementation map
 
 ```text
-frontend/src/shared/grid/rows/gridRowInteraction.ts
-→ generic interaction-mode predicates
+frontend/src/shared/grid/export/exportCurrentPageCsv.ts
+→ shared native Current Page export boundary
 
-frontend/src/shared/grid/rows/gridRowInteractionClass.ts
-→ shared row-class mapping
+frontend/src/shared/grid/export/exportSelectedRowsCsv.ts
+→ Client native/local Selected export
 
-frontend/src/features/transactions/grid/transactionRowInteraction.ts
-→ Transaction adapters/presentation inputs
+frontend/src/features/transactions/grid/useTransactionExport.ts
+→ server-backed selected-export request lifecycle
 
 frontend/src/features/transactions/grid/TransactionsClientGrid.tsx
+→ Client Current Page + local Selected wiring
+
 frontend/src/features/transactions/grid/TransactionsInfiniteGrid.tsx
 frontend/src/features/transactions/grid/TransactionsSsrmGrid.tsx
-→ native selectability/editability integration
+→ server-backed Current Page + logical Selected wiring
+
+frontend/src/features/transactions/grid/transactionSelectionAction.ts
+→ server logical selection target mapping
 
 backend/apps/transactions/services.py
-→ Transaction business policy + authoritative selection/edit eligibility
+→ authoritative selected-row resolver
+
+backend/apps/transactions/api/views.py
+→ selected-export endpoint and CSV response
 ```
 
-## Verification
+## Verification expectations
 
-Current tests/manual scenarios should cover:
+Verification should cover:
 
-- mode predicate/class mapping;
-- native checkbox selectability for all three modes;
-- Client native Page/Filtered/All selection excluding restricted rows;
-- Infinite Current Page and dataset synchronization skipping restricted loaded rows;
-- SSRM Current Page/custom filtered synchronization skipping restricted loaded rows;
-- server logical payloads not enumerating restricted IDs as user exceptions;
-- backend selected operations skipping restricted unloaded rows;
-- `selectionDisabled` direct edit allowed;
-- `readOnly` direct edit rejected;
-- explicit bulk edit containing a read-only row rejected before mutation;
-- visible reason/presentation without using CSS as enforcement.
-
-Manual browser verification remains separately tracked and is not claimed complete here.
+- Client Current Page exports exactly the current page;
+- Infinite/SSRM Current Page exports exactly the fully resolved current page;
+- Current Page includes displayed restricted rows;
+- Client Selected exports selected rows across pagination pages without a backend selected-export request;
+- Infinite/SSRM explicit Selected exports only backend-eligible selected IDs;
+- Infinite/SSRM All Filtered export uses current translated filters and user exceptions;
+- Infinite/SSRM All Records export uses the complete logical target minus user exceptions;
+- server-backed Selected export excludes backend-ineligible rows.
