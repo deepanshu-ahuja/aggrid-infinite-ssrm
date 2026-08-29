@@ -64,6 +64,7 @@ body {
  */
 .grid-cell--edit-conflict {
   outline: 2px solid #f79009;
+  outline-offset: -2px;
   background-color: #fffaeb !important;
   cursor: pointer;
 }
