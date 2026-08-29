@@ -6,9 +6,12 @@ import {
 } from './transactionValidation';
 
 describe('transaction validation', () => {
-  it('requires non-blank account and currency values', () => {
+  it('requires non-blank account, currency and date values', () => {
     expect(validateTransactionField('account', '')[0]?.message).toBe('Account is required.');
     expect(validateTransactionField('currency', '   ')[0]?.message).toBe('Currency is required.');
+    expect(validateTransactionField('transactionDate', null)[0]?.message).toBe(
+      'Transaction date is required.',
+    );
   });
 
   it('enforces configured string lengths', () => {
@@ -23,6 +26,10 @@ describe('transaction validation', () => {
     expect(validateTransactionField('amount', 1_000_000.01)[0]?.message).toContain(
       'between 0 and 1,000,000',
     );
+  });
+
+  it('accepts a populated transaction date draft', () => {
+    expect(validateTransactionField('transactionDate', '2026-08-29')).toEqual([]);
   });
 
   it('maps single-row DRF field errors back to the submitted row id', () => {
