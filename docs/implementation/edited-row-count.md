@@ -1,10 +1,6 @@
 # Edited-Row Total
 
-This document defines the current user-visible **Edited** count shared by Client-Side, Infinite and SSRM Transaction grids.
-
-## Meaning
-
-`Edited` means the number of rows that currently have unsaved tracked changes.
+`Edited` is the number of rows that currently have unsaved tracked changes.
 
 It is a dirty-row count, not a dirty-cell count.
 
@@ -79,9 +75,3 @@ Those are distinct concepts and should not be collapsed into one count.
 `useTrackedGridEditing(...)` builds the current tracked update payload. `editedRowCount` is the number of dirty row updates in that payload.
 
 The count is therefore independent of current pagination position, cache residency and selection.
-
-See:
-
-- `docs/transaction-editing.md`;
-- `docs/edit-conflict-reconciliation.md`;
-- `docs/client-side-grid.md` for Client lifecycle details.
