@@ -1,4 +1,4 @@
-// GRIDCAP-ROWMODEL-INFINITE | GRIDCAP-DATA-LOAD | GRIDCAP-ROW-ID | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-COUNT-SELECTED | GRIDCAP-SEL-TARGET | GRIDCAP-ACTION-SELECTED | GRIDCAP-EDIT-TRACKED | GRIDCAP-EDIT-SAVE-ROW | GRIDCAP-EDIT-SAVE-SELECTED | GRIDCAP-EDIT-DISCARD | GRIDCAP-EDIT-CONFLICT | GRIDCAP-COUNT-EDITED | GRIDCAP-EXPORT-PAGE | GRIDCAP-EXPORT-SELECTED | GRIDCAP-STATE-PERSISTENCE | GRIDCAP-ERROR-RETRY | GRIDCAP-LIFECYCLE-REFRESH | GRIDCAP-LIFECYCLE-DESTROY | GRIDCAP-ROW-ELIGIBILITY | GRIDCAP-COLUMNS
+// GRIDCAP-ROWMODEL-INFINITE | GRIDCAP-DATA-LOAD | GRIDCAP-ROW-ID | GRIDCAP-SEL-MANUAL | GRIDCAP-SEL-PAGE | GRIDCAP-SEL-FILTERED | GRIDCAP-SEL-ALL | GRIDCAP-COUNT-SELECTED | GRIDCAP-SEL-TARGET | GRIDCAP-ACTION-SELECTED | GRIDCAP-EDIT-TRACKED | GRIDCAP-EDIT-SAVE-ROW | GRIDCAP-EDIT-SAVE-SELECTED | GRIDCAP-EDIT-DISCARD | GRIDCAP-EDIT-CONFLICT | GRIDCAP-EDIT-VALIDATION | GRIDCAP-COUNT-EDITED | GRIDCAP-EXPORT-PAGE | GRIDCAP-EXPORT-SELECTED | GRIDCAP-STATE-PERSISTENCE | GRIDCAP-ERROR-RETRY | GRIDCAP-LIFECYCLE-REFRESH | GRIDCAP-LIFECYCLE-DESTROY | GRIDCAP-ROW-ELIGIBILITY | GRIDCAP-COLUMNS
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 import type {
@@ -27,6 +27,11 @@ import type {
   ServerSelectionIntent,
 } from '@/shared/grid/selection/serverSelection';
 import { useGridStatePersistence } from '@/shared/grid/state/useGridStatePersistence';
+import {
+  hasGridFieldValidationError,
+  hasGridRowValidationError,
+  hasGridUpdateValidationError,
+} from '@/shared/grid/validation/gridValidation';
 import { listTransactions } from '../api/transactions.api';
 import type { Transaction, TransactionStatus } from '../api/transactions.contracts';
 import {
@@ -78,12 +83,7 @@ export interface TransactionsInfiniteGridProps {
   onSelectionChange?: (selection: ServerSelectionIntent<string>) => void;
 }
 
-/**
- * Concrete Transactions Infinite Row Model root.
- *
- * This is intentionally a multi-capability integration boundary. The GRIDCAP markers at the top make
- * the complete Infinite feature footprint discoverable without hiding AG Grid's datasource lifecycle.
- */
+/** Concrete Transactions Infinite Row Model root. */
 export function TransactionsInfiniteGrid({
   selectionScope: selectionScopeOverride,
   gridOptions: gridOptionsOverride,
@@ -124,9 +124,11 @@ export function TransactionsInfiniteGrid({
 
   const {
     state,
+    validationState,
     payload,
     editedRowCount,
     conflictCount,
+    validationErrorCount,
     lastEdit,
     applyChangesToNodes,
     restoreTrackedEdits,
@@ -136,6 +138,7 @@ export function TransactionsInfiniteGrid({
     discardRows,
     resolveConflictWithRemote,
     resolveConflictWithLocal,
+    setServerValidationErrors,
   } = useTrackedGridEditing(transactionEditingConfig);
 
   const {
@@ -145,14 +148,10 @@ export function TransactionsInfiniteGrid({
   } = useCurrentPageEditActions({ lastEdit, applyChangesToNodes }, gridApi);
 
   const handlePersistedRows = useCallback(() => {
-    // GRIDCAP-LIFECYCLE-REFRESH
     gridApi.current?.refreshInfiniteCache();
   }, []);
 
   const handleSelectedTransactionUpdateApplied = useCallback(() => {
-    // GRIDCAP-ACTION-SELECTED | GRIDCAP-LIFECYCLE-REFRESH
-    // Change Status always clears its successful target. Delegate that concrete operation to the
-    // Infinite controller so page/native and dataset-wide compact selection each use their owner.
     clearSelection();
     handlePersistedRows();
   }, [clearSelection, handlePersistedRows]);
@@ -161,6 +160,9 @@ export function TransactionsInfiniteGrid({
     updates: payload.updates,
     acknowledgeChanges,
     onPersistedRows: handlePersistedRows,
+    onServerValidationErrors: (rowErrors) => {
+      for (const error of rowErrors) setServerValidationErrors(error.rowId, error.fields);
+    },
   });
 
   const {
@@ -190,6 +192,10 @@ export function TransactionsInfiniteGrid({
   const hasSelection = hasTransactionSelection(selectionIntent);
   const selectedDirtyUpdates = buildSelectedTrackedGridUpdatePayload(state, selectionIntent).updates;
   const selectedEditsHaveConflict = hasTrackedGridUpdateConflict(state, selectedDirtyUpdates);
+  const selectedEditsHaveValidationError = hasGridUpdateValidationError(
+    validationState,
+    selectedDirtyUpdates,
+  );
   const statusActionBlockedByConflict = hasSelectedTrackedGridFieldConflict(
     state,
     selectionIntent,
@@ -198,14 +204,18 @@ export function TransactionsInfiniteGrid({
 
   const handleSaveSelected = useCallback(() => {
     const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
-    if (hasTrackedGridUpdateConflict(state, updates)) return;
+    if (
+      hasTrackedGridUpdateConflict(state, updates) ||
+      hasGridUpdateValidationError(validationState, updates)
+    ) {
+      return;
+    }
     saveBulk(updates);
-  }, [readSelectionIntent, saveBulk, state]);
+  }, [readSelectionIntent, saveBulk, state, validationState]);
 
   const handleDiscardSelected = useCallback(() => {
     const api = gridApi.current;
     if (!api) return;
-
     const updates = buildSelectedTrackedGridUpdatePayload(state, readSelectionIntent()).updates;
     discardRows(api, updates.map((update) => update.id));
     if (conflictTarget && updates.some((update) => update.id === conflictTarget.rowId)) {
@@ -246,12 +256,8 @@ export function TransactionsInfiniteGrid({
   const handleExportSelected = useCallback(() => {
     const api = gridApi.current;
     if (!api) return;
-
     const currentSelection = readSelectionIntent();
     if (!hasTransactionSelection(currentSelection)) return;
-
-    // Reuse the exact target builder used by selection mutations. Export must not reinterpret what
-    // filtered/all Select All means merely because the operation returns a file instead of changing data.
     void exportSelected(
       buildTransactionSelectionTarget(
         currentSelection,
@@ -265,7 +271,11 @@ export function TransactionsInfiniteGrid({
     () => ({
       isRowDirty: (rowId) => Boolean(state.changesById[rowId]),
       isRowConflicted: (rowId) => hasTrackedGridRowConflict(state, rowId),
+      isRowInvalid: (rowId) => hasGridRowValidationError(validationState, rowId),
       isCellConflicted: (rowId, field) => hasTrackedGridFieldConflict(state, rowId, field),
+      isCellInvalid: (rowId, field) => hasGridFieldValidationError(validationState, rowId, field),
+      getCellValidationMessages: (rowId, field) =>
+        validationState[rowId]?.[field]?.map((error) => error.message) ?? [],
       getCellConflict: (rowId, field) => {
         const conflict = state.conflictsById[rowId]?.[field];
         const localValue = state.changesById[rowId]?.[field];
@@ -275,17 +285,21 @@ export function TransactionsInfiniteGrid({
       },
       isSaving,
       onSaveRow: (rowId) => {
-        if (!hasTrackedGridRowConflict(state, rowId)) saveRow(rowId);
+        if (
+          !hasTrackedGridRowConflict(state, rowId) &&
+          !hasGridRowValidationError(validationState, rowId)
+        ) {
+          saveRow(rowId);
+        }
       },
       onDiscardRow: handleDiscardRow,
     }),
-    [handleDiscardRow, isSaving, saveRow, state],
+    [handleDiscardRow, isSaving, saveRow, state, validationState],
   );
 
   useEffect(() => {
     const api = gridApi.current;
     if (!api) return;
-
     api.setGridOption('context', rowEditActionsContext);
     api.refreshCells({ columns: [...TRANSACTION_EDITABLE_FIELDS, 'editActions'], force: true });
   }, [rowEditActionsContext]);
@@ -327,19 +341,14 @@ export function TransactionsInfiniteGrid({
       const candidateField = event.colDef.field as string | undefined;
       if (!isTransactionEditableField(candidateField)) return;
       if (!hasTrackedGridFieldConflict(state, event.data.id, candidateField)) return;
-
       const target = event.event?.target;
       const anchorEl = target instanceof Element ? target.closest('.ag-cell') : null;
       if (!(anchorEl instanceof HTMLElement)) return;
-
       setConflictTarget({ rowId: event.data.id, field: candidateField, anchorEl });
     },
     [state],
   );
 
-  // The popover is React presentation, so derive it directly from React editing state. Do not route
-  // render-time reads through AG Grid context callbacks: that context also contains ref-backed actions
-  // intended for grid events/cell renderers and React's refs lint correctly rejects such render access.
   const activeConflict = useMemo(() => {
     if (!conflictTarget) return undefined;
     const conflict = state.conflictsById[conflictTarget.rowId]?.[conflictTarget.field];
@@ -371,8 +380,10 @@ export function TransactionsInfiniteGrid({
       <TransactionEditingControls
         editedRowCount={editedRowCount}
         conflictCount={conflictCount}
+        validationErrorCount={validationErrorCount}
         selectedEditedRowCount={selectedDirtyUpdates.length}
         selectedEditsHaveConflict={selectedEditsHaveConflict}
+        selectedEditsHaveValidationError={selectedEditsHaveValidationError}
         lastEdit={lastEdit}
         isSaving={isSaving}
         saveError={saveError}
@@ -408,9 +419,6 @@ export function TransactionsInfiniteGrid({
           activeOverlay={loadError ? GridErrorOverlay : undefined}
           activeOverlayParams={loadError ? { message: loadError, onRetry: retryLoad } : undefined}
           onGridReady={handleGridReady}
-          // GRIDCAP-LIFECYCLE-DESTROY
-          // The root owns this API ref. Clear it before AG Grid destroys the instance so asynchronous
-          // callbacks/effects cannot retain a stale API and accidentally call it during React teardown.
           onGridPreDestroyed={() => {
             gridApi.current = null;
           }}
