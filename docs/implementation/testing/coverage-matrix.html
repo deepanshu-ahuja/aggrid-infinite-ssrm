@@ -86,7 +86,7 @@
     <p class="subtitle">Quick visual inventory of automated protection across Frontend, Backend, Client, Infinite and SSRM.</p>
 
     <div class="summary" aria-label="Coverage summary">
-      <div class="summary-card"><strong>97</strong><span>Playwright browser scenarios including mutation-path interaction refresh and active indeterminate-header coverage</span></div>
+      <div class="summary-card"><strong>98</strong><span>Playwright browser scenarios including row-interaction coverage and the isolated configurable SSRM metadata proof</span></div>
       <div class="summary-card"><strong>3</strong><span>independently exercised grid row models</span></div>
       <div class="summary-card"><strong>4</strong><span>coverage groups below</span></div>
     </div>
@@ -109,6 +109,7 @@
           <tr><td>Initial grid load + real API</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
           <tr><td>Pagination / 25-row page boundary</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
           <tr><td>Server sort + filter request mapping</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
+          <tr><td>Configurable metadata compiler → real SSRM query</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td></tr>
           <tr><td>Request freshness / stale-response guard</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge focused">Focused</span></td><td><span class="badge focused">Focused</span></td><td><span class="badge focused">Focused</span></td></tr>
           <tr><td>Datasource cancellation / destroyed-grid guards</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge focused">Focused</span></td><td><span class="badge focused">Focused</span></td><td><span class="badge focused">Focused</span></td></tr>
           <tr><td>Server load error + Retry</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td></tr>
@@ -186,6 +187,7 @@
         <li>The browser routes are tested as configured today. We do not create fake E2E-only routes just to turn every cell green.</li>
         <li>Import has focused backend validation/atomicity tests, focused frontend workflow tests, one real Preview/Apply/data-refresh scenario per row model, and one real interaction-mode transition scenario per row model.</li>
         <li>Mutation-path browser coverage exercises Row Save, Save Selected and selected Change Status interaction-mode transitions across all three row models; Client and SSRM also verify an active indeterminate native header remains primary-colored when restricted rows are present.</li>
+        <li>The isolated configurable SSRM experiment has one real-grid scenario proving validated local metadata compiles into columns and drives a real SSRM sort/query. It is not counted as full feature parity with the three proven routes.</li>
         <li>Backend stale-write/version concurrency remains a separate deferred contract and is not represented as implemented coverage here.</li>
       </ul>
     </section>
