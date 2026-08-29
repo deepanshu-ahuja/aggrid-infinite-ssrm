@@ -1,12 +1,17 @@
-# Selection, editing totals, export, and verification
+# Selection, Editing Totals, Export, and Verification
 
-The original combined guide has been split into capability-specific documents so developers can find the behavior they need without scanning one large file.
+This file is a navigation index for the current implementation references that cover selection counts, dirty-row totals and export.
 
-Use these source-of-truth guides:
+Use:
 
-- [Selected-row totals](selection-counts.md) — manual/current-page counts, All Filtered/All Records formulas, Infinite versus SSRM selection ownership, API `totalCount` / `filteredCount`, out-of-order response protection, current eligibility limitation, and future eligibility-aware counts.
-- [Edited-row total](edited-row-count.md) — dirty-row semantics, tracked-edit ownership, selected-dirty subset, and when the count increases/decreases.
-- [Grid export](grid-export.md) — why export exists, native Current Page CSV, backend Selected export, common logical selection target, shared backend resolver, and future export decisions.
-- [Pre-Client manual testing](pre-client-manual-testing.md) — browser verification for Infinite and SSRM, including selection counts, edited totals, exports, eligibility, response ordering, and existing edit/conflict regression.
+- `docs/selection-counts.md` — current Infinite/SSRM dataset-wide selected-count contract and eligibility limitation;
+- `docs/client-side-grid.md` — current exact Client selection/count behavior;
+- `docs/edited-row-count.md` — current dirty-row count semantics shared by Client/Infinite/SSRM;
+- `docs/selected-action-selection-lifecycle.md` — current selected Change Status success/failure and row-model clear behavior;
+- `docs/grid-export.md` — current Current Page and Selected export behavior across all three row models;
+- `docs/transaction-editing.md` — current tracked editing, Save/Discard and selected-dirty persistence;
+- `docs/edit-conflict-reconciliation.md` — current BASE/LOCAL/REMOTE conflict behavior;
+- `docs/pre-client-manual-testing.md` — server-backed browser regression scenarios retained from the pre-Client baseline;
+- `docs/client-side-grid.md` — Client browser verification scenarios.
 
-The split is intentional: this repository is meant to be a reusable implementation reference, so feature behavior, design rationale, future options, and manual verification should be discoverable by name rather than remembered from chat history.
+Planning and future capability work belong in `docs/grid-backlog.md`, not in this implementation index.
