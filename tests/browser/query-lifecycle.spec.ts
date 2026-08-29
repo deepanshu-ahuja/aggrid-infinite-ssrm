@@ -1,6 +1,18 @@
+import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { expectNoPageErrors, openGrid, rowById } from './gridTestSupport';
 import { applyStatusFilter, readQueryBody } from './serverQueryTestSupport';
+
+/**
+ * SSRM can keep the previous rendered RowNode in the DOM briefly while the refreshed store is being
+ * animated in. AG Grid marks those transition remnants with `ag-opacity-zero`; they are not part of the
+ * currently displayed result set. Filter lifecycle assertions therefore target only the active row so
+ * Playwright strict mode does not confuse a stale transition node with the replacement row sharing the
+ * same stable backend row ID.
+ */
+function activeRowById(page: Page, rowId: string) {
+  return page.locator(`.ag-row[row-id="${rowId}"]:not(.ag-opacity-zero)`);
+}
 
 for (const route of ['/infinite', '/ssrm'] as const) {
   test(`${route}: Reference sort maps through the real query API and reorders rows`, async ({ page }) => {
@@ -62,9 +74,9 @@ for (const route of ['/infinite', '/ssrm'] as const) {
     await applyStatusFilter(page, 'Pending');
     await filteredResponse;
 
-    await expect(rowById(page, 'txn-00002')).toBeVisible();
-    await expect(rowById(page, 'txn-00005')).toBeVisible();
-    await expect(rowById(page, 'txn-00001')).not.toBeVisible();
+    await expect(activeRowById(page, 'txn-00002')).toBeVisible();
+    await expect(activeRowById(page, 'txn-00005')).toBeVisible();
+    await expect(activeRowById(page, 'txn-00001')).not.toBeVisible();
 
     await expectNoPageErrors(pageErrors, `${route} server filter lifecycle`);
   });
