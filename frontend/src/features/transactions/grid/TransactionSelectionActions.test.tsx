@@ -8,7 +8,7 @@ describe('TransactionSelectionActions', () => {
     ['Mark Completed', 'Completed'],
     ['Mark Pending', 'Pending'],
     ['Mark Failed', 'Failed'],
-  ] as const)('%s explicitly requests selection clear after success', (label, status) => {
+  ] as const)('%s emits only the selected status value', (label, status) => {
     const onSetStatus = vi.fn();
 
     render(
@@ -23,6 +23,6 @@ describe('TransactionSelectionActions', () => {
 
     fireEvent.click(screen.getByRole('button', { name: label }));
 
-    expect(onSetStatus).toHaveBeenCalledWith(status, 'clear');
+    expect(onSetStatus).toHaveBeenCalledWith(status);
   });
 });
