@@ -60,9 +60,11 @@ class TransactionQuerySerializer(serializers.Serializer):
 class TransactionChangesSerializer(serializers.Serializer):
     """Validated patch for one Transaction; identity/reference/date are intentionally not writable."""
 
-    account = serializers.CharField(required=False, allow_blank=True)
-    amount = serializers.FloatField(required=False)
-    currency = serializers.CharField(required=False, allow_blank=True)
+    # Keep these authoritative constraints aligned with the static frontend Transaction validation rules.
+    # Frontend validation improves editing UX; this serializer remains the security/data-integrity boundary.
+    account = serializers.CharField(required=False, allow_blank=False, max_length=100)
+    amount = serializers.FloatField(required=False, min_value=0, max_value=1_000_000)
+    currency = serializers.CharField(required=False, allow_blank=False, max_length=3)
     status = serializers.ChoiceField(
         choices=("Completed", "Pending", "Failed"),
         required=False,
