@@ -32,7 +32,10 @@ export function TransactionDateEditor({
         value={currentValue}
         error={Boolean(message)}
         helperText={message ?? ' '}
-        slotProps={{ inputLabel: { shrink: true } }}
+        slotProps={{
+          inputLabel: { shrink: true },
+          htmlInput: { 'data-testid': 'transaction-date-editor-input' },
+        }}
         onChange={(event) => onValueChange(event.target.value === '' ? null : event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Enter') stopEditing();
