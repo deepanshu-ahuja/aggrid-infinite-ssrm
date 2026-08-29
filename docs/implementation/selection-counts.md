@@ -1,17 +1,42 @@
 # Selected-row totals
 
-This document is the source of truth for the **user-visible selected-row total** in the server-backed Infinite Row Model and Server-Side Row Model (SSRM).
+The user-visible selected-row total follows the selection representation owned by each row model.
 
-It deliberately separates two questions:
+## Client-Side Row Model
 
-1. **How does this row model represent the user's selection?**
-2. **What number should the UI display as selected?**
+The complete working set is local and AG Grid evaluates native row selectability for every row.
 
-The selection representation is row-model-specific. The dataset-wide count source is intentionally the same for both row models.
+The selected count is therefore exact:
 
-## API count contract
+```text
+selected count
+= api.getSelectedRows().length
+```
 
-Every normal Transactions row request returns:
+This remains exact for native Client Select All scopes:
+
+```text
+currentPage
+filtered
+all
+```
+
+Rows whose interaction mode makes them non-selectable never enter the native selected set.
+
+For the current deterministic Transactions demo:
+
+```text
+750 total rows
+- 63 selectionDisabled rows
+- 63 readOnly rows
+= 624 selectable rows
+```
+
+With the current Client default `all` scope, header Select All therefore displays 624 selected.
+
+## Server-backed API count contract
+
+Normal Infinite/SSRM row requests return:
 
 ```json
 {
@@ -25,15 +50,15 @@ Meaning:
 
 ```text
 totalCount
--> complete dataset size before the current grid filters
+→ complete dataset size before the current grid filters
 
 filteredCount
--> number of rows matching the current grid filters
+→ number of rows matching the current grid filters
 ```
 
 No extra count-only request is made when the user clicks Select All.
 
-## Current selected-count rules
+## Infinite and SSRM selected-count rules
 
 | User selection | Displayed count |
 | --- | --- |
@@ -49,108 +74,119 @@ API totalCount = 750
 API filteredCount = 120
 
 Select All Records
--> 750 selected
+→ 750 selected
 
 Deselect 2 rows
--> 748 selected
+→ 748 selected
 
 Select All Filtered
--> 120 selected
+→ 120 selected
 
 Deselect 2 rows
--> 118 selected
+→ 118 selected
 ```
 
-The common pure helper `shared/grid/selection/selectionCount.ts` performs the include/exclude count math. It does not know about Infinite, SSRM, Transactions, filters, or HTTP.
+The pure helper `frontend/src/shared/grid/selection/selectionCount.ts` performs include/exclude count math. It does not own row-model selection state, filters, HTTP, or Transaction business rules.
 
 ## Infinite Row Model
 
-Infinite keeps its existing row-model-specific selection behavior:
+Infinite selection representation is:
 
 ```text
 Manual / Current Page
--> native AG Grid explicit selected IDs
+→ native AG Grid explicit selected IDs
 
 All Filtered / All Records
--> compact application-owned include/exclude state
--> required because unloaded Infinite rows do not have RowNodes that AG Grid can select natively
+→ compact application-owned include/exclude state
 ```
 
-For **counting**, Infinite now uses the normal API response consistently:
+For dataset-wide counting:
 
 ```text
-All Filtered -> API filteredCount
-All Records  -> API totalCount
+All Filtered
+→ API filteredCount - user exceptions
+
+All Records
+→ API totalCount - user exceptions
 ```
 
-The selected count therefore does not depend on how many Infinite rows happen to be loaded in the browser.
+The selected count does not depend on how many Infinite rows happen to be loaded in the browser.
 
-`api.isLastRowIndexKnown()` is useful row-model information, but it is **not** the source of the selected total in the current design. The backend already supplies the required total/query counts directly.
+`api.isLastRowIndexKnown()` is not the selected-total source because the backend response already provides the required query counts.
 
 ## Server-Side Row Model (SSRM)
 
-SSRM keeps its own selection behavior:
+SSRM selection representation is:
 
 ```text
 Manual selection
--> native SSRM selection state
+→ native SSRM selection state
 
 All Records
--> native SSRM server-side Select All state
+→ native SSRM server-side Select All state
 
 Current Page
--> explicit loaded-row selection helper
+→ explicit current-page RowNodes
 
 All Filtered
--> custom filtered-wide product semantic because SSRM's native Select All modes do not provide this exact flat behavior for our current contract
+→ application-owned filtered-wide state
 ```
 
-For **counting**, SSRM uses the same normal API values as Infinite:
+For dataset-wide counting:
 
 ```text
-All Filtered -> API filteredCount
-All Records  -> API totalCount
+All Filtered
+→ API filteredCount - user exceptions
+
+All Records
+→ API totalCount - user exceptions
 ```
 
-So the two server-backed row models share the business count contract without being forced through the same selection implementation.
+SSRM keeps its own selection mechanics while consuming the same server query-count contract for dataset-wide totals.
 
-## Out-of-order API responses
+## Out-of-order server responses
 
-Page direction must not affect which API response owns the displayed count.
+Page direction must not affect which API response owns the displayed server-backed count metadata.
 
-Both datasource adapters use the same rule:
+The rule is:
 
-> **The most recently started row request is the only completed request allowed to publish `totalCount` / `filteredCount` into renderable count state.**
+> The most recently started row request is the only completed request allowed to publish `totalCount` / `filteredCount` into renderable count state.
 
-Example when paging forward:
+Forward example:
 
 ```text
 request page 1 starts
 request page 2 starts
-request page 2 returns first -> publish its count metadata
-request page 1 returns late  -> do not overwrite the metadata
+request page 2 returns first
+→ publish page 2 count metadata
+
+request page 1 returns later
+→ do not overwrite the metadata
 ```
 
-The same rule works when paging backward:
+Backward example:
 
 ```text
 request page 3 starts
 request page 2 starts
-request page 2 returns first -> publish its count metadata
-request page 3 returns late  -> do not overwrite the metadata
+request page 2 returns first
+→ publish page 2 count metadata
+
+request page 3 returns later
+→ do not overwrite the metadata
 ```
 
-The rule is about **request start order**, not higher/lower page number.
+The rule is based on request start order, not page number.
 
-A filter change also follows the same rule. When a new filter request starts, the old `filteredCount` is cleared until the newest request publishes the count for the new filtered universe.
+A filter change follows the same rule. When a new filter request starts, the previous `filteredCount` is cleared until the newest request publishes the count for the new filtered universe.
 
-AG Grid may still complete an older request for its own row-model lifecycle; the stale guard described here is specifically for React/UI count metadata.
+An older request may still complete its AG Grid datasource callback; the stale guard applies to renderable count metadata.
 
-## `selectionDisabled` / `readOnly` limitation
+## Server-wide eligibility limitation
 
-The current API counts describe dataset/query membership, not selection eligibility.
+`totalCount` and `filteredCount` describe dataset/query membership, not exact selection eligibility.
 
-Therefore this can happen:
+Therefore this can occur:
 
 ```text
 totalCount = 750
@@ -159,54 +195,48 @@ Select All Records UI = 750 selected
 backend business action/export resolves 725 eligible rows
 ```
 
-That limitation is intentional for the current foundation.
+The frontend does not subtract only disabled rows currently loaded in the browser. Unloaded pages may contain additional restricted rows, so doing that would create false precision.
 
-We do **not** subtract only disabled rows currently loaded in the browser. For a server-backed dataset, unloaded pages may contain additional disabled rows, so that would create a number that looks exact but is not.
-
-The backend remains authoritative for business operations and selected export and excludes ineligible rows.
-
-## Future production option
-
-If a real product requires an exact **actionable** selected total, extend the normal row API with eligibility-aware counts such as:
-
-```text
-selectionEligibleTotalCount
-selectionEligibleFilteredCount
-```
-
-Then the count formulas become:
-
-```text
-All Records
-= selectionEligibleTotalCount - user exceptions
-
-All Filtered
-= selectionEligibleFilteredCount - user exceptions
-```
-
-The Infinite/SSRM selection representations and include/exclude count helper do not need to be redesigned.
+The backend remains authoritative for selected business operations and selected export and excludes ineligible rows when resolving the logical target.
 
 ## Implementation map
 
 ```text
 backend/apps/transactions/services.py
--> produces totalCount / filteredCount
+→ produces totalCount / filteredCount
 
-shared/grid/data/infinite/*
-shared/grid/data/server-side/*
--> accept newest API count metadata and reject stale metadata
+frontend/src/shared/grid/data/infinite/*
+frontend/src/shared/grid/data/server-side/*
+→ publish newest server count metadata and reject stale metadata
 
-shared/grid/selection/selectionCount.ts
--> include/exclude count math
+frontend/src/shared/grid/selection/selectionCount.ts
+→ include/exclude count math
 
-shared/grid/selection/infinite/useInfiniteSelectionController.tsx
--> Infinite selection representation + count input
+frontend/src/shared/grid/selection/client-side/useClientSideSelectionController.ts
+→ exact native Client selected count
 
-features/transactions/grid/TransactionsSsrmGrid.tsx
--> SSRM selection representation + count input
+frontend/src/shared/grid/selection/infinite/useInfiniteSelectionController.tsx
+→ Infinite selection representation + server count inputs
 
-features/transactions/grid/TransactionSelectionActions.tsx
--> presentation only: renders "N selected"
+frontend/src/shared/grid/selection/server-side/useSsrmSelectionController.ts
+→ SSRM selection representation
+
+frontend/src/features/transactions/grid/TransactionsSsrmGrid.tsx
+→ SSRM server count inputs
+
+frontend/src/features/transactions/grid/TransactionSelectionActions.tsx
+→ renders the selected total
 ```
 
-See [Pre-Client manual testing](pre-client-manual-testing.md) for verification scenarios.
+## Verification expectations
+
+Verification should cover:
+
+- Client exact native selected count for page, filtered and all scopes;
+- restricted Client rows excluded from native selected count;
+- Infinite/SSRM explicit and Current Page counts from exact IDs;
+- Infinite/SSRM All Filtered count from `filteredCount - exceptions`;
+- Infinite/SSRM All Records count from `totalCount - exceptions`;
+- forward and backward out-of-order requests preserving latest-started count ownership;
+- filter changes clearing stale `filteredCount` until the newest request publishes;
+- server-wide displayed counts not pretending to be exact backend eligibility counts.
