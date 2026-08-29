@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .client_views import TransactionCollectionView
+from .e2e_views import TransactionE2EResetView
 from .views import (
     TransactionBulkUpdateView,
     TransactionDetailView,
@@ -26,7 +27,10 @@ urlpatterns = [
         TransactionSelectionUpdateView.as_view(),
         name="transaction-selection-update",
     ),
-    # Keep the catch-all transaction id route after concrete collection/selection routes so fixed API
-    # paths can never be interpreted as transaction identifiers as this API grows.
+    # Browser regression runs one Django process for the suite and resets its in-memory authoritative
+    # data before every test. The view returns 404 unless settings.E2E_TESTING was explicitly enabled.
+    path("__e2e__/reset/", TransactionE2EResetView.as_view(), name="transaction-e2e-reset"),
+    # Keep the catch-all transaction id route after concrete collection/selection/test routes so fixed
+    # API paths can never be interpreted as transaction identifiers as this API grows.
     path("<str:transaction_id>/", TransactionDetailView.as_view(), name="transaction-detail"),
 ]
