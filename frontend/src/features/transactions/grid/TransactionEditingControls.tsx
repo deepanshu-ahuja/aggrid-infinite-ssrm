@@ -164,6 +164,7 @@ export function TransactionEditingControls({
               disabled={!useAccount || isSaving}
               error={Boolean(accountError)}
               helperText={accountError ?? ' '}
+              slotProps={{ htmlInput: { 'data-testid': 'flow2-account-input' } }}
             />
 
             <FormControlLabel control={<Checkbox checked={useAmount} onChange={(event) => setUseAmount(event.target.checked)} />} label="Amount" />
@@ -175,6 +176,7 @@ export function TransactionEditingControls({
               disabled={!useAmount || isSaving}
               error={Boolean(amountError)}
               helperText={amountError ?? ' '}
+              slotProps={{ htmlInput: { 'data-testid': 'flow2-amount-input' } }}
             />
 
             <FormControlLabel control={<Checkbox checked={useCurrency} onChange={(event) => setUseCurrency(event.target.checked)} />} label="Currency" />
@@ -185,6 +187,7 @@ export function TransactionEditingControls({
               disabled={!useCurrency || isSaving}
               error={Boolean(currencyError)}
               helperText={currencyError ?? ' '}
+              slotProps={{ htmlInput: { 'data-testid': 'flow2-currency-input' } }}
             />
 
             <FormControlLabel control={<Checkbox checked={useStatus} onChange={(event) => setUseStatus(event.target.checked)} />} label="Status" />
