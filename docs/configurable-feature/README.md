@@ -6,17 +6,17 @@ It is written so developers, reviewers, architects, and readers without the Type
 
 ## Start here
 
-- [`concepts.md`](concepts.md) — plain-language meanings, normalization boundary and AG Grid alignment rules.
-- [`configuration-reference.md`](configuration-reference.md) — current public interfaces, property semantics, constraints and compiler expectations.
+- [`concepts.md`](concepts.md) — plain-language meanings, normalization boundary and AG Grid native-first rules.
+- [`configuration-reference.md`](configuration-reference.md) — current public interfaces, native GridOptions/ColDef surface, constraints and compiler expectations.
 - [`type-hierarchy.md`](type-hierarchy.md) — portable text relationship map, supplemental Mermaid view, AG Grid mappings and compiler/runtime boundaries.
 - [`documentation-standard.md`](documentation-standard.md) — required quality standard for JSDoc/IDE hover, curated docs and generated API/type documentation.
-- [`Generated TypeDoc API`](generated/README.md) — source-generated interface/type documentation after the latest `npm run docs:configurable` regeneration.
+- [`Generated TypeDoc API`](generated/README.md) — source-generated interface/type documentation. **Regenerate after the current public-contract changes before treating these generated pages as current.**
 
 ## New-chat continuation
 
 For ongoing design work, read these after repository root `AGENTS.md` and current GitHub state:
 
-- `../configurable-feature-handoff.md` — current consolidated architecture handoff;
+- `../configurable-feature-handoff.md` — current consolidated architecture handoff, including the merged PR #42 native-first editing reference;
 - `../configurable-feature-config-design-progress.md` — latest decisions, current branch checkpoint and exact resume point.
 
 Repository/source/docs are authoritative. Do not depend on chat memory when repository inspection can provide current truth.
