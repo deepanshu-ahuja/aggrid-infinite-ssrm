@@ -90,6 +90,95 @@ export interface FieldFilterDefinition<TOperator extends string = FilterOperator
   operators: readonly [TOperator, ...TOperator[]];
 }
 
+/** Initial pin position available to a configurable field. */
+export type FieldPinnedPosition = 'left' | 'right';
+
+/**
+ * Sizing constraints that continue to apply after the column is created.
+ *
+ * These are not user-state defaults: the configurable compiler maps them to normal AG Grid column
+ * constraints so they remain authoritative while the column exists.
+ */
+export interface FieldSizingConstraintsDefinition {
+  /**
+   * Minimum column width in pixels.
+   *
+   * When omitted, the configurable grid inherits the shared grid minimum-width behavior.
+   */
+  minWidth?: number;
+
+  /** Maximum column width in pixels. Omit when no field-specific maximum is required. */
+  maxWidth?: number;
+
+  /**
+   * Whether the user can manually resize the column.
+   *
+   * When omitted, resizing remains enabled by the shared grid default.
+   */
+  resizable?: boolean;
+}
+
+/**
+ * Initial sizing for one field plus the constraints that continue to apply afterwards.
+ *
+ * A field can start with either a fixed width or a flex weight, never both. Frontend-authored
+ * definitions get that rule from this union; backend JSON must enforce the same rule during runtime
+ * configuration validation.
+ */
+export type FieldSizingDefinition =
+  | (FieldSizingConstraintsDefinition & {
+      /**
+       * Initial fixed width in pixels.
+       *
+       * The compiler maps this to AG Grid `initialWidth` so later user-resized/Grid-State width is
+       * not overwritten merely because column definitions are rebuilt.
+       */
+      defaultWidth?: number;
+
+      /** A fixed-width field cannot also declare an initial flex weight. */
+      defaultFlex?: never;
+    })
+  | (FieldSizingConstraintsDefinition & {
+      /** A flex-sized field cannot also declare an initial fixed width. */
+      defaultWidth?: never;
+
+      /**
+       * Initial flex weight used to share remaining grid width with other flex columns.
+       *
+       * The compiler maps this to AG Grid `initialFlex`; `minWidth` and `maxWidth` can still bound
+       * the flex result.
+       */
+      defaultFlex?: number;
+    });
+
+/**
+ * Initial layout/default-state configuration for one field.
+ *
+ * These values establish the starting column state. They are intentionally separate from hard
+ * sizing constraints so later persisted Grid State can restore user choices such as visibility,
+ * pinning, width, and flex without column-definition refreshes resetting those choices.
+ */
+export interface FieldLayoutDefinition {
+  /**
+   * Whether the column is visible when first created.
+   *
+   * Omit for the normal visible default. The compiler maps this to AG Grid `initialHide` rather than
+   * the stateful `hide` property so persisted user visibility can be restored later.
+   */
+  defaultVisible?: boolean;
+
+  /**
+   * Side on which the column is pinned when first created.
+   *
+   * Omit for an initially unpinned column. The compiler maps this to AG Grid `initialPinned` so a
+   * user's later pin/unpin state is not reset when column definitions are updated.
+   */
+  defaultPinned?: FieldPinnedPosition;
+
+  /** Optional initial sizing and persistent width/resizing constraints for this field. */
+  sizing?: FieldSizingDefinition;
+}
+
 /**
  * Reusable configuration for one field/column exposed by an entity.
  *
@@ -165,6 +254,15 @@ export interface FieldDefinition<
   filter?: FieldFilterDefinition<
     FilterOperatorForDataType<TDataType> | TAdditionalFilterOperator
   >;
+
+  /**
+   * Optional initial layout and sizing configuration for the field.
+   *
+   * Layout values are defaults, not authorization rules. Persisted user Grid State may later
+   * override them, while hard current constraints such as access/masking will be resolved
+   * separately when that contract is designed.
+   */
+  layout?: FieldLayoutDefinition;
 }
 
 type ConfigurableFieldDefinition<TTranslationKey extends string = string> = FieldDefinition<
