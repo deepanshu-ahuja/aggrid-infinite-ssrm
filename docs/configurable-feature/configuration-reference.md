@@ -4,6 +4,8 @@ Public reference for contracts in `frontend/src/shared/grid/configurable/configu
 
 The configurable runtime/compiler is not wired yet. Compiler mappings described here are requirements for that runtime. Backend configuration is runtime JSON and must be validated before use; executable functions/components remain frontend-owned.
 
+Quick visual reference: `type-hierarchy.md`.
+
 ## Configuration flow
 
 ```text
@@ -15,6 +17,23 @@ entity.fields[] → compiled AG Grid columnDefs[]
 ```
 
 Native AG Grid `ColDef` precedence handles normal field-over-default overrides.
+
+## AG Grid-native mapping rule
+
+For every public configurable property, the implementation must first ask whether AG Grid already provides the required primitive. Use native AG Grid behavior before adding registry/custom behavior.
+
+```text
+FieldDefinition.dataType
+        ↓ explicit compiler mapping
+AG Grid ColDef.cellDataType
+        ↓
+native type behavior
+(parser / formatter / editor / renderer / filter defaults where provided)
+        ↓
+field-level custom configuration only when required
+```
+
+The first configurable runtime is SSRM. AG Grid cell-data-type inference only works with the Client-Side Row Model, so the configurable compiler must set `cellDataType` explicitly.
 
 ## `FeatureDefinition`
 
@@ -92,13 +111,23 @@ interface FieldDefinition<
 
 ### Label/type
 
-`labelKey` is a full explicit translation key. `dataType` is one of:
+`labelKey` is a full explicit translation key.
 
-```ts
-"text" | "number" | "boolean" | "date" | "dateTime"
+`dataType` maps directly to AG Grid `cellDataType` for the currently supported native types:
+
+```text
+text           → "text"
+number         → "number"
+boolean        → "boolean"
+date           → "date"           (JavaScript Date value)
+dateString     → "dateString"     (string date value)
+dateTime       → "dateTime"       (JavaScript Date value)
+dateTimeString → "dateTimeString" (string date-time value)
 ```
 
-`dataType` provides semantic value category and the shared filter vocabulary; it does not automatically choose custom formatter/editor/validator behavior.
+The representation distinction is intentional. A JSON API value such as `"2026-08-30"` is a string and should normally use `dateString`; AG Grid `date` expects a JavaScript `Date` value.
+
+`dataType` also supplies the baseline native AG Grid behavior. Do not require custom formatter/editor/parser/renderer registry keys when that baseline already satisfies the product requirement.
 
 ### `sortable`
 
@@ -125,7 +154,8 @@ Shared operators:
 text:    contains, equals, notEqual, startsWith, endsWith
 number:  equals, notEqual, greaterThan, greaterThanOrEqual,
          lessThan, lessThanOrEqual
-date:    equals, notEqual, lessThan, greaterThan
+date/dateString/dateTime/dateTimeString:
+         equals, notEqual, lessThan, greaterThan
 boolean: equals, notEqual
 ```
 
@@ -177,13 +207,15 @@ interface FieldFormatterDefinition<TFormatterKey extends string = string> {
 }
 ```
 
-A formatter is registered frontend value-presentation behavior. Backend config supplies only key + JSON-safe params.
+A formatter is an **optional custom display override**. Omit it when AG Grid's `cellDataType` formatter is sufficient.
 
 ```text
-formatter key/params → formatter registry → resolved function → AG Grid valueFormatter
+formatter key → formatter registry → resolved function → AG Grid valueFormatter
 ```
 
-It does not mutate raw row data, redefine edit/save values or redefine server sort/filter semantics. AG Grid can apply `valueFormatter` to clipboard/export, so configurable export integration must preserve the intended policy deliberately.
+`formatter.params` are extra declarative configuration for the registered formatter. AG Grid itself invokes `valueFormatter` with `ValueFormatterParams`; our compiler combines those AG Grid callback params with the configured params. There is no native `valueFormatterParams` column property analogous to `cellRendererParams`.
+
+A formatter does not mutate raw row data, redefine edit/save values or redefine server sort/filter semantics. AG Grid can apply `valueFormatter` to clipboard/export, so configurable export integration must preserve the intended policy deliberately.
 
 ## Renderer
 
@@ -194,14 +226,18 @@ interface FieldRendererDefinition<TRendererKey extends string = string> {
 }
 ```
 
-A renderer selects richer frontend cell UI.
+A renderer is an **optional custom rich cell UI override**.
 
 ```text
-renderer key → renderer registry → React component → AG Grid cellRenderer
-renderer params → registered renderer input / cellRendererParams
+renderer.key    → renderer registry → React component → AG Grid cellRenderer
+renderer.params → AG Grid cellRendererParams
 ```
 
-No renderer means normal AG Grid rendering. Formatter and renderer may coexist; a renderer can use both raw and formatted values. Plain text formatting should use a formatter rather than a renderer.
+AG Grid still supplies its normal renderer props such as `value`, `valueFormatted`, `data`, `node`, `column`, `colDef` and `api`. `renderer.params` should only contain extra declarative component configuration that AG Grid does not already supply.
+
+Omitting a custom renderer means let normal AG Grid / `cellDataType` rendering apply. That is not necessarily plain text; for example AG Grid's boolean cell data type supplies checkbox rendering.
+
+Formatter and renderer may coexist; a renderer can use both raw and formatted values. Plain text formatting should use a formatter rather than a renderer.
 
 ## Editing
 
@@ -243,7 +279,7 @@ An empty editing object is valid:
 editing: {}
 ```
 
-and means the field is editable using the editor AG Grid selects from the semantic data type, subject to runtime editability policy.
+and means the field is editable using the native editor/parser behavior supplied by its AG Grid `cellDataType`, subject to runtime editability policy.
 
 ### `FieldEditorDefinition`
 
@@ -252,7 +288,7 @@ Custom editors are registry-selected; configuration never carries React componen
 ```ts
 editor: {
   key: "transactionDate",
-  params: { /* JSON-safe */ },
+  params: { /* JSON-safe extra props */ },
   popup: true,
   popupPosition: "under",
 }
@@ -262,14 +298,16 @@ Compiler mapping:
 
 ```text
 editor.key    → frontend editor registry → AG Grid cellEditor
-editor.params → AG Grid cellEditorParams / registered editor input
+editor.params → AG Grid cellEditorParams
 popup         → AG Grid cellEditorPopup
 popupPosition → AG Grid cellEditorPopupPosition
 ```
 
+AG Grid provides the editor's normal runtime props (`value`, row/column information, `onValueChange`, `stopEditing`, `parseValue`, `formatValue`, etc.). Config params are only additional props for the editor/input.
+
 Popup position is valid only when `popup: true`; TypeScript and runtime validation must enforce this. Supported positions are `over` and `under`.
 
-When `editor` is omitted, use AG Grid's data-type-selected provided editor where suitable instead of registering trivial wrappers merely to reproduce native behavior.
+When `editor` is omitted, use AG Grid's data-type-selected provided editor where suitable instead of registering trivial wrappers merely to reproduce native behavior. Registered custom inputs remain fully supported when richer React/MUI/domain editing is required.
 
 ### `FieldValueParserDefinition`
 
@@ -280,19 +318,23 @@ interface FieldValueParserDefinition<TParserKey extends string = string> {
 }
 ```
 
-Parser purpose:
+This is an **optional custom parser override**.
 
 ```text
-editor/import candidate
+AG Grid/editor/import candidate
         ↓
-registered parser
+AG Grid valueParser
         ↓
 local draft value
 ```
 
-The compiler maps it to AG Grid `valueParser`. It is **not** the backend save-payload mapper.
+When a custom parser is configured, the compiler resolves its key and supplies the resulting function as `ColDef.valueParser`. AG Grid invokes that callback with `ValueParserParams`; our compiler combines those runtime params with the configured JSON-safe `parser.params`.
 
-If no parser is configured, the editor-produced value becomes the local draft unchanged.
+If no custom parser is configured, the compiler does **not** overwrite `valueParser`; the parser supplied by `cellDataType` remains in effect when AG Grid defines one.
+
+A custom React editor also receives AG Grid's `parseValue()` and `formatValue()` utilities, which invoke the column parser/formatter when the editor needs them.
+
+A parser is **not** the backend save-payload mapper.
 
 AG Grid can reuse `valueParser` for clipboard/fill/import-style operations depending grid configuration. That behavior must be deliberate in the configurable runtime.
 
@@ -303,11 +345,12 @@ Keep these stages distinct:
 ```text
 1. authoritative API row value
 2. effective grid value (authoritative or LOCAL draft overlay)
-3. formatted display value
-4. editor-produced candidate
-5. parser output = LOCAL draft value
-6. validation of LOCAL draft
-7. save mapping → backend payload        [designed later]
+3. AG Grid cellDataType baseline behavior
+4. optional custom formatted/rendered display
+5. editor-produced candidate
+6. native or custom valueParser output = LOCAL draft value
+7. validation of LOCAL draft
+8. save mapping → backend payload        [designed later]
 ```
 
 Do not collapse these into one "value" concept.
@@ -320,15 +363,27 @@ The existing Transactions implementation can use property names directly because
 
 ### Parser vs normalizer
 
-`valueParser` only covers the AG Grid editor/import candidate path. Programmatic bulk/current-page edits can bypass it. Therefore this contract does **not** pretend parser is a universal normalizer. If a real requirement needs canonicalization across every local edit source, design a separate normalization stage later and route every edit source through it explicitly.
+AG Grid `valueParser` covers AG Grid value-entry/import paths. Programmatic application-owned edits can bypass it. Therefore this contract does **not** pretend parser is a universal normalizer. If a real requirement needs canonicalization across every local edit source, design a separate normalization stage later and route every edit source through it explicitly.
 
 ## JSON-safe parameters
 
 `ConfigurationJsonValue`/`ConfigurationJsonObject` allow JSON primitives, arrays and nested objects only. Registered formatter/renderer/editor/parser infrastructure must validate both key existence and the allowed parameter schema for that key.
 
+General rule:
+
+```text
+params = extra declarative configuration
+```
+
+Do not use config params to repeat `value`, row data, GridApi, node, column or other runtime information already supplied by AG Grid.
+
+Renderer/editor params map directly to `cellRendererParams` / `cellEditorParams`. Formatter/parser params are compiler-owned extras combined with AG Grid callback params before invoking the registered function.
+
 ## Strong frontend typing vs runtime JSON
 
 Frontend definitions may narrow field IDs, row paths, translation keys, extra filter keys, formatter/renderer keys, and the editing-definition type. Backend JSON remains runtime data and requires schema + registry validation before compilation.
+
+A later registry contract should associate each registry key with its valid params type so frontend-authored config cannot supply arbitrary keys inside `params`. Runtime validation must enforce the corresponding schema for backend JSON.
 
 ## Separate future contracts
 
