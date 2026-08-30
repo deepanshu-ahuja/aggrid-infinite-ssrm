@@ -7,7 +7,8 @@ It is written so developers, reviewers, architects, and readers without the Type
 ## Start here
 
 - [`concepts.md`](concepts.md) — plain-language meaning of the main configuration concepts.
-- [`configuration-reference.md`](configuration-reference.md) — agreed public interfaces and property semantics.
+- [`configuration-reference.md`](configuration-reference.md) — current public interfaces, property semantics, constraints, and examples.
+- [`documentation-standard.md`](documentation-standard.md) — required quality standard for TypeScript JSDoc/IDE hover and the library-style reference.
 
 ## Related design documents
 
@@ -17,6 +18,8 @@ It is written so developers, reviewers, architects, and readers without the Type
 
 ## Documentation contract
 
-The source code provides concise JSDoc for IDE hover. These Markdown documents provide the deeper library-style explanation.
+The TypeScript source provides useful JSDoc for IDE hover. These Markdown documents provide the deeper library-style explanation for readers who may not have source access.
+
+A non-obvious property must explain its real responsibility rather than merely repeat its name. Keep source JSDoc and the public configuration reference synchronized.
 
 Split documentation by coherent topic as the public surface grows. Do not create one oversized document or one file per small interface by default.

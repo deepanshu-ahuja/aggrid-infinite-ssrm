@@ -18,6 +18,21 @@ Primary architecture context remains `docs/configurable-feature-handoff.md`. Pub
 - Group related source/docs; avoid one giant file and avoid one file per tiny interface.
 - Shared configuration contracts must be feature-, entity-, and row-model-neutral in shape. Concrete values and executable business behavior remain feature/entity owned.
 
+### Durable documentation-quality rule
+
+Follow `docs/configurable-feature/documentation-standard.md` for every current and future public configuration interface.
+
+The standard is intentionally stronger than merely requiring a comment:
+
+- an obvious property may have short JSDoc;
+- a non-obvious property must explain its actual responsibility/interpretation well enough that IDE hover is useful without opening another file;
+- examples belong in JSDoc when they materially clarify the real contract;
+- comments must not contain irrelevant comparisons, speculative future behavior, or filler;
+- the library-style `configuration-reference.md` must be understandable without source access and must give non-obvious interfaces/properties enough purpose, type/required/default information, interpretation, constraints, and examples where useful;
+- source JSDoc and the Markdown reference must stay synchronized whenever a public contract changes.
+
+Do not accept weak comments that merely restate names such as "key of the adapter" when the developer still would not know what that adapter is responsible for.
+
 ## Implemented/finalized contracts
 
 Source: `frontend/src/shared/grid/configurable/configuration.types.ts`.
