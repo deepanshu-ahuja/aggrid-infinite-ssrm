@@ -10,7 +10,7 @@ It is written so developers, reviewers, architects, and readers without the Type
 - [`configuration-reference.md`](configuration-reference.md) — current public interfaces, property semantics, constraints and compiler expectations.
 - [`type-hierarchy.md`](type-hierarchy.md) — quick visual type tree, **GitHub-rendered Mermaid diagram**, AG Grid mappings, configuration flow and registry/runtime classification.
 - [`documentation-standard.md`](documentation-standard.md) — required quality standard for JSDoc/IDE hover, curated docs and generated API/type documentation.
-- `generated/` — TypeDoc-generated Markdown API pages after `npm run docs:configurable` has been run and the generated output committed.
+- [`Generated TypeDoc API`](generated/README.md) — source-generated interface/type documentation with links to every configurable contract.
 
 ## New-chat continuation
 
@@ -54,6 +54,8 @@ and writes GitHub-readable Markdown under:
 ```text
 docs/configurable-feature/generated/
 ```
+
+Open [`generated/README.md`](generated/README.md) to browse the generated API landing page. From there, click an interface such as `FieldDefinition`, `EntityDefinition`, or `FeatureDefinition` to open its generated JSDoc/type page.
 
 Generated Markdown is a checked-in documentation artifact. When the public configurable TypeScript contract changes, regenerate it, review the diff, and commit the generated output with the related source/docs change.
 
