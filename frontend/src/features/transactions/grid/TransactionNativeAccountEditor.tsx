@@ -20,7 +20,11 @@ export function TransactionNativeAccountEditor({
       const errors = validateTransactionField('account', currentValue);
       return errors.length > 0 ? errors.map((error) => error.message) : null;
     },
-    getValidationElement: () => editorRootRef.current,
+    getValidationElement: () => {
+      const element = editorRootRef.current;
+      if (!element) throw new Error('Account editor validation element is not mounted.');
+      return element;
+    },
   });
 
   return (
