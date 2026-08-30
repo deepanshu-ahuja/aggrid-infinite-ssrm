@@ -1,15 +1,31 @@
 import type { ColDef } from 'ag-grid-community';
 
-/** Reusable configuration root for one configurable business feature. */
+/**
+ * Reusable configuration root for one configurable business feature.
+ *
+ * The feature knows entity identities through the keys of `entities`; for example a feature could
+ * use `"transaction" | "loan"` as `TEntityKey`. The generic entity type only constrains the shape
+ * of each entity definition; it does not make this shared contract business-specific.
+ *
+ * @typeParam TFeatureKey Stable application feature key, such as `"review"`.
+ * @typeParam TEntityKey Stable entity keys available inside the feature, such as `"transaction"`.
+ * @typeParam TEntityDefinition Entity configuration shape stored at each `entities` key.
+ */
 export interface FeatureDefinition<
   TFeatureKey extends string = string,
   TEntityKey extends string = string,
+  TEntityDefinition extends EntityDefinition = EntityDefinition,
 > {
   /** Stable programmatic identifier for this feature definition. @example "review" */
   featureKey: TFeatureKey;
 
-  /** Entity definitions keyed by their stable entity identifier. */
-  entities: Record<TEntityKey, EntityDefinition>;
+  /**
+   * Entity definitions keyed by stable business/configuration identity.
+   *
+   * The record key is where an identity such as `"transaction"` or `"loan"` belongs. The reusable
+   * `EntityDefinition` itself intentionally has no hard-coded knowledge of those business names.
+   */
+  entities: Record<TEntityKey, TEntityDefinition>;
 }
 
 /** JSON-safe primitive allowed in declarative configuration parameters. */
@@ -84,14 +100,21 @@ export type FilterOptionForCellDataType<TCellDataType extends FieldCellDataType>
           ? DateFilterOption
           : never;
 
-/** Filtering capability for one field. */
-export interface FieldFilterDefinition<TFilterOption extends string = FilterOption> {
+/**
+ * Server-supported filtering capability for one configurable field.
+ *
+ * This is deliberately named `filtering` at the field level rather than pretending this object is
+ * AG Grid `ColDef.filter`. AG Grid's `filter` property selects/enables a filter component, while this
+ * persisted descriptor declares the supported server-query options. The compiler turns a configured
+ * `filtering` block into the corresponding `ColDef.filter` / `filterParams` values.
+ */
+export interface FieldFilteringDefinition<TFilterOption extends string = FilterOption> {
   /**
    * Complete non-empty list of AG Grid Simple Filter choices exposed for this field.
    *
-   * The name intentionally matches AG Grid `filterParams.filterOptions`. The configurable compiler
-   * combines this field-level list with the resolved shared/entity filter defaults rather than
-   * inventing a second operator vocabulary.
+   * The leaf name intentionally matches AG Grid `filterParams.filterOptions`. The compiler combines
+   * this field-level list with resolved shared/entity filter defaults; the backend/data adapter must
+   * support the same operators before they are exposed to users.
    */
   filterOptions: readonly [TFilterOption, ...TFilterOption[]];
 }
@@ -102,55 +125,30 @@ export type FieldPinnedPosition = Extract<
   'left' | 'right'
 >;
 
-/** Sizing constraints that continue to apply after column creation. */
-export interface FieldSizingConstraintsDefinition {
-  /** Minimum width in pixels; same semantics/type as AG Grid `ColDef.minWidth`. */
-  minWidth?: ColDef['minWidth'];
-  /** Maximum width in pixels; same semantics/type as AG Grid `ColDef.maxWidth`. */
-  maxWidth?: ColDef['maxWidth'];
-  /** Whether the user can manually resize; same semantics/type as AG Grid `ColDef.resizable`. */
-  resizable?: ColDef['resizable'];
-}
-
 /**
- * Initial field sizing plus continuing constraints.
+ * Bounded JSON-safe subset of AG Grid `defaultColDef` currently supported by the configurable model.
  *
- * A field can declare an initial fixed width or an initial flex weight, never both. Runtime JSON
- * validation must enforce the same rule expressed by this TypeScript union.
+ * The property using this type is named `defaultColDef` because the values have the same semantics as
+ * AG Grid. The subset remains intentional: supporting the native name does not mean arbitrary `ColDef`
+ * values, callbacks, components or runtime objects can be persisted and passed through unchecked.
  */
-export type FieldSizingDefinition =
-  | (FieldSizingConstraintsDefinition & {
-      /** Same semantics/type as AG Grid `ColDef.initialWidth`. */
-      initialWidth?: ColDef['initialWidth'];
-      initialFlex?: never;
-    })
-  | (FieldSizingConstraintsDefinition & {
-      initialWidth?: never;
-      /** Same semantics/type as AG Grid `ColDef.initialFlex`. */
-      initialFlex?: ColDef['initialFlex'];
-    });
-
-/** Initial layout configuration for one field. */
-export interface FieldLayoutDefinition {
-  /** Whether the column starts hidden; same semantics/type as AG Grid `ColDef.initialHide`. */
-  initialHide?: ColDef['initialHide'];
-  /** Initial pinned side; same semantics/type as AG Grid `ColDef.initialPinned`. */
-  initialPinned?: FieldPinnedPosition;
-  /** Optional initial sizing and persistent size constraints. */
-  sizing?: FieldSizingDefinition;
-}
-
-/**
- * Configurable defaults applied to every field in one entity.
- *
- * The compiler adds these values to shared `baseDefaultColDef` and supplies the result to AG Grid
- * `defaultColDef`. Individual compiled columns then use AG Grid's normal override precedence.
- */
-export interface FieldDefaultsDefinition {
+export interface ConfigurableDefaultColDef {
   /** Default sortable setting; same semantics/type as AG Grid `ColDef.sortable`. */
   sortable?: ColDef['sortable'];
-  /** Default layout/sizing settings inherited by fields that do not override them. */
-  layout?: FieldLayoutDefinition;
+  /** Initial hidden state for columns that do not override it; maps to `ColDef.initialHide`. */
+  initialHide?: ColDef['initialHide'];
+  /** Initial pinned side for columns that do not override it; maps to `ColDef.initialPinned`. */
+  initialPinned?: FieldPinnedPosition;
+  /** Initial width for columns that do not override it; maps to `ColDef.initialWidth`. */
+  initialWidth?: ColDef['initialWidth'];
+  /** Initial flex value for columns that do not override it; maps to `ColDef.initialFlex`. */
+  initialFlex?: ColDef['initialFlex'];
+  /** Continuing minimum-width constraint; maps to `ColDef.minWidth`. */
+  minWidth?: ColDef['minWidth'];
+  /** Continuing maximum-width constraint; maps to `ColDef.maxWidth`. */
+  maxWidth?: ColDef['maxWidth'];
+  /** Continuing resize permission; maps to `ColDef.resizable`. */
+  resizable?: ColDef['resizable'];
 }
 
 /** Registered frontend value formatter selected by declarative configuration. */
@@ -160,69 +158,71 @@ export interface FieldFormatterDefinition<TFormatterKey extends string = string>
   /**
    * Extra JSON-safe configuration for the registered formatter.
    *
-   * AG Grid already supplies normal `ValueFormatterParams` when it invokes `valueFormatter`. These
-   * values are additional declarative inputs interpreted by the registered formatter; the compiler
-   * combines them with the AG Grid callback params. AG Grid has no `valueFormatterParams` ColDef
-   * property analogous to `cellRendererParams`.
+   * This descriptor is not named `valueFormatter` because AG Grid's `ColDef.valueFormatter` expects
+   * executable formatter behavior, while persisted configuration can only carry a safe registry key
+   * and declarative data. AG Grid supplies normal `ValueFormatterParams` when the resolved formatter
+   * is invoked; these values are additional application inputs interpreted by that implementation.
    */
   params?: ConfigurationJsonObject;
 }
 
 /** Registered frontend cell renderer selected by declarative configuration. */
 export interface FieldRendererDefinition<TRendererKey extends string = string> {
-  /** Stable renderer registry key. @example "statusChip" */
+  /** Stable renderer registry key resolved to a frontend-owned AG Grid-compatible renderer. */
   key: TRendererKey;
   /**
-   * Extra JSON-safe props for the registered renderer, compiled to AG Grid `cellRendererParams`.
+   * Extra JSON-safe props compiled to AG Grid `ColDef.cellRendererParams`.
    *
-   * AG Grid still supplies its normal renderer props such as `value`, `valueFormatted`, `data`,
-   * `node`, `column`, `colDef` and `api`. Configuration should not duplicate those runtime values.
+   * AG Grid still supplies normal renderer props such as `value`, `valueFormatted`, `data`, `node`,
+   * `column`, `colDef` and `api`. Configuration should not duplicate those runtime values.
    */
-  params?: ConfigurationJsonObject;
+  cellRendererParams?: ConfigurationJsonObject;
 }
 
 /** Popup position supported by AG Grid cell editors, derived from `ColDef`. */
 export type FieldEditorPopupPosition = NonNullable<ColDef['cellEditorPopupPosition']>;
 
 interface FieldEditorBaseDefinition<TEditorKey extends string> {
-  /** Stable key of the registered frontend editor implementation. */
+  /** Stable key resolved to a frontend-owned AG Grid-compatible cell editor. */
   key: TEditorKey;
   /**
-   * Extra JSON-safe props for the registered editor, compiled to AG Grid `cellEditorParams`.
+   * Extra JSON-safe props compiled to AG Grid `ColDef.cellEditorParams`.
    *
    * AG Grid still supplies normal editor props (`value`, row/column information, `onValueChange`,
    * `stopEditing`, `parseValue`, `formatValue`, etc.).
    */
-  params?: ConfigurationJsonObject;
+  cellEditorParams?: ConfigurationJsonObject;
 }
 
 /**
  * Registered editor configuration for one editable field.
  *
- * Popup position is valid only when popup editing is explicitly enabled. The union gives
- * frontend-authored config the same rule that runtime JSON validation must enforce.
+ * The descriptor uses AG Grid leaf names where the values have the same semantics. The `key` remains
+ * application-specific because persisted JSON cannot contain the executable editor component itself.
  */
 export type FieldEditorDefinition<TEditorKey extends string = string> =
   | (FieldEditorBaseDefinition<TEditorKey> & {
-      popup?: false;
-      popupPosition?: never;
+      /** Whether this registered editor opens as an AG Grid popup editor. */
+      cellEditorPopup?: false;
+      cellEditorPopupPosition?: never;
     })
   | (FieldEditorBaseDefinition<TEditorKey> & {
-      popup: true;
-      /** Popup placement relative to the cell; AG Grid defaults to `over` when omitted. */
-      popupPosition?: FieldEditorPopupPosition;
+      /** Enables AG Grid popup editing for the registered editor. */
+      cellEditorPopup: true;
+      /** Placement relative to the cell; AG Grid defaults to `over` when omitted. */
+      cellEditorPopupPosition?: FieldEditorPopupPosition;
     });
 
 /** Registered parser overriding the value parser provided by the field's AG Grid cell data type. */
 export interface FieldValueParserDefinition<TParserKey extends string = string> {
-  /** Stable parser registry key. */
+  /** Stable parser registry key resolved to an AG Grid-compatible `valueParser` implementation. */
   key: TParserKey;
   /**
    * Extra JSON-safe configuration for the registered parser.
    *
-   * AG Grid invokes `valueParser` with normal `ValueParserParams`; the compiler combines those
-   * callback params with this declarative configuration. Custom React editors may also use AG Grid's
-   * supplied `parseValue()` utility when they need to apply the column parser explicitly.
+   * This remains application-specific because AG Grid has no `valueParserParams` ColDef property.
+   * AG Grid invokes the resolved parser with normal `ValueParserParams`; custom React editors may also
+   * use AG Grid's supplied `parseValue()` utility when they need to apply the column parser explicitly.
    */
   params?: ConfigurationJsonObject;
 }
@@ -230,9 +230,9 @@ export interface FieldValueParserDefinition<TParserKey extends string = string> 
 /**
  * Editing capability for one field.
  *
- * Presence means the field is eligible for editing; it does not force `editable=true` for every
- * row. Runtime editability must also satisfy current access/authorization, feature row policy and
- * tracked-editing conflict rules.
+ * This is an application configuration concept rather than a replacement name for `ColDef.editable`.
+ * Presence means the field is eligible for editing; the compiled `editable` callback must still satisfy
+ * current access/authorization, feature row policy and tracked-editing conflict rules for each row.
  *
  * When `editor` is omitted, AG Grid's editor selected by `cellDataType` remains available. When
  * `parser` is omitted, the compiler does not override `valueParser`, so the parser supplied by the
@@ -242,7 +242,7 @@ export interface FieldEditingDefinition<
   TEditorKey extends string = string,
   TParserKey extends string = string,
 > {
-  /** Optional registered custom editor. */
+  /** Optional registered custom editor configuration. */
   editor?: FieldEditorDefinition<TEditorKey>;
   /** Optional registered parser override. */
   parser?: FieldValueParserDefinition<TParserKey>;
@@ -251,26 +251,55 @@ export interface FieldEditingDefinition<
 /**
  * Reusable configuration for one field/column exposed by an entity.
  *
- * Native AG Grid concepts deliberately keep AG Grid names and compatible types where the semantics
- * are the same. Executable formatting/rendering/editing/parsing behavior stays frontend-owned behind
- * registries; persisted/backend configuration carries only keys and JSON-safe parameters.
+ * Native, JSON-safe AG Grid concepts deliberately use AG Grid property names and compatible types.
+ * Application concepts keep distinct names when the persisted value has different semantics—for
+ * example `filtering`, `formatter`, `renderer` and `editing` are descriptors that the compiler must
+ * translate/resolve rather than values that can be spread directly into a `ColDef`.
+ *
+ * @typeParam TColId Stable AG Grid column/configuration identity type.
+ * @typeParam TFieldPath Row/API value path bound to `ColDef.field`.
+ * @typeParam TLabelKey Allowed translation-key type for the column label.
+ * @typeParam TCellDataType Supported AG Grid cell data type for this field.
+ * @typeParam TAdditionalFilterOption Feature-specific server filter options, if any.
+ * @typeParam TFormatterKey Allowed formatter registry keys.
+ * @typeParam TRendererKey Allowed renderer registry keys.
+ * @typeParam TEditingDefinition Concrete editing descriptor type for this field family.
  */
 export interface FieldDefinition<
-  TFieldId extends string = string,
+  TColId extends NonNullable<ColDef['colId']> = NonNullable<ColDef['colId']>,
   TFieldPath extends string = string,
-  TTranslationKey extends string = string,
+  TLabelKey extends string = string,
   TCellDataType extends FieldCellDataType = FieldCellDataType,
   TAdditionalFilterOption extends string = never,
   TFormatterKey extends string = string,
   TRendererKey extends string = string,
   TEditingDefinition extends FieldEditingDefinition = FieldEditingDefinition,
 > {
-  /** Stable configuration identity independent of the API row path. @example "loanAmount" */
-  id: TFieldId;
-  /** API row path containing the value. Dot notation supports nested response shapes. */
+  /**
+   * Stable AG Grid column ID and application field-configuration identity.
+   *
+   * This maps directly to `ColDef.colId`. AG Grid uses Column ID to associate sorting, filtering,
+   * column state and API operations with the same logical column. The configurable model requires an
+   * explicit value so identity can remain stable even when the API `field` path later changes.
+   *
+   * @example "transactionDate"
+   */
+  colId: TColId;
+
+  /**
+   * API/row value path, passed to AG Grid `ColDef.field`; dot notation supports nested response shapes.
+   * This is value binding, not stable column identity, so it may legitimately differ from `colId`.
+   */
   field: TFieldPath;
-  /** Full translation key used to resolve the field/column label. */
-  labelKey: TTranslationKey;
+
+  /**
+   * Translation key resolved by the frontend into the final AG Grid header text.
+   *
+   * This intentionally does not use AG Grid's `headerName`: `headerName` is the final display string,
+   * whereas this application value must first be translated before compilation.
+   */
+  labelKey: TLabelKey;
+
   /**
    * AG Grid cell data type/representation, passed to `ColDef.cellDataType`.
    *
@@ -283,31 +312,50 @@ export interface FieldDefinition<
   /** Whether users can sort; omitted values inherit the resolved AG Grid `defaultColDef`. */
   sortable?: ColDef['sortable'];
 
-  /** Omit when not filterable; when present, `filterOptions` are the exact allowed choices. */
-  filter?: FieldFilterDefinition<
+  /**
+   * Optional server-supported filtering descriptor.
+   *
+   * When present, the compiler enables the appropriate AG Grid filter and supplies the configured
+   * `filterOptions` through `filterParams`. Omission means this field is not exposed as filterable by
+   * the configurable contract, regardless of broader shared defaults that the compiler starts from.
+   */
+  filtering?: FieldFilteringDefinition<
     FilterOptionForCellDataType<TCellDataType> | TAdditionalFilterOption
   >;
 
-  /** Optional initial layout/sizing; supplied values override corresponding default column values. */
-  layout?: FieldLayoutDefinition;
+  /** Initial hidden state; same semantics/type as AG Grid `ColDef.initialHide`. */
+  initialHide?: ColDef['initialHide'];
+  /** Initial pinned side; same semantics/type as AG Grid `ColDef.initialPinned`. */
+  initialPinned?: FieldPinnedPosition;
+  /** Initial width in pixels; same semantics/type as AG Grid `ColDef.initialWidth`. */
+  initialWidth?: ColDef['initialWidth'];
+  /** Initial flex value; same semantics/type as AG Grid `ColDef.initialFlex`. */
+  initialFlex?: ColDef['initialFlex'];
+  /** Continuing minimum-width constraint; same semantics/type as AG Grid `ColDef.minWidth`. */
+  minWidth?: ColDef['minWidth'];
+  /** Continuing maximum-width constraint; same semantics/type as AG Grid `ColDef.maxWidth`. */
+  maxWidth?: ColDef['maxWidth'];
+  /** Continuing resize permission; same semantics/type as AG Grid `ColDef.resizable`. */
+  resizable?: ColDef['resizable'];
 
-  /** Optional custom display formatter compiled to AG Grid `valueFormatter`. */
+  /** Optional custom display formatter descriptor resolved to AG Grid `ColDef.valueFormatter`. */
   formatter?: FieldFormatterDefinition<TFormatterKey>;
 
-  /** Optional custom rich cell renderer compiled to AG Grid `cellRenderer`. */
+  /** Optional rich-renderer descriptor resolved to AG Grid `ColDef.cellRenderer`. */
   renderer?: FieldRendererDefinition<TRendererKey>;
 
   /**
-   * Optional editing capability. Omit to make this field non-editable; presence makes it potentially
-   * editable, but the compiled AG Grid `editable` callback still composes row/access/conflict policy.
+   * Optional application editing capability. Omit to make the field non-editable; presence makes it
+   * potentially editable, but the compiled AG Grid `editable` callback still composes row/access/
+   * conflict policy rather than becoming unconditional `true`.
    */
   editing?: TEditingDefinition;
 }
 
-type ConfigurableFieldDefinition<TTranslationKey extends string = string> = FieldDefinition<
+type ConfigurableFieldDefinition<TLabelKey extends string = string> = FieldDefinition<
+  NonNullable<ColDef['colId']>,
   string,
-  string,
-  TTranslationKey,
+  TLabelKey,
   FieldCellDataType,
   string,
   string,
@@ -315,24 +363,60 @@ type ConfigurableFieldDefinition<TTranslationKey extends string = string> = Fiel
   FieldEditingDefinition
 >;
 
-/** Reusable configuration for one entity/data context inside a configurable feature. */
+/**
+ * Reusable configuration for one entity/data context inside a configurable feature.
+ *
+ * This shared interface does not know whether the entity is a Transaction, Loan, Finance, or another
+ * business type. The entity's business identity is the key used in `FeatureDefinition.entities`.
+ * These generic parameters only let a concrete feature narrow the allowed label keys and field shape.
+ *
+ * @typeParam TLabelKey Translation keys allowed by this entity definition.
+ * @typeParam TFieldDefinition Concrete configurable field shape allowed in this entity's `fields` list.
+ */
 export interface EntityDefinition<
-  TTranslationKey extends string = string,
-  TFieldDefinition extends ConfigurableFieldDefinition<TTranslationKey> = ConfigurableFieldDefinition<TTranslationKey>,
+  TLabelKey extends string = string,
+  TFieldDefinition extends ConfigurableFieldDefinition<TLabelKey> = ConfigurableFieldDefinition<TLabelKey>,
 > {
-  /** Full translation key used to resolve the entity label. */
-  labelKey: TTranslationKey;
-  /** Key of the frontend data adapter for loading/saving and API/grid mapping. */
+  /** Full translation key resolved into the entity's display label. */
+  labelKey: TLabelKey;
+
+  /**
+   * Key of the frontend data adapter used for this entity's data/API boundary.
+   *
+   * The resolved adapter owns entity-specific loading/saving and request/response mapping. It may also
+   * participate in backend-wire/config normalization when storage names or shapes differ from the
+   * normalized frontend model. This is application infrastructure, not an AG Grid property.
+   */
   dataAdapterKey: string;
-  /** Stable business-row identity definition. */
+
+  /** Stable business-row identity definition used to build the runtime AG Grid `getRowId` behavior. */
   rowId: RowIdDefinition;
-  /** Optional configurable defaults compiled into AG Grid `defaultColDef`. */
-  fieldDefaults?: FieldDefaultsDefinition;
-  /** Fields available for the entity in their configured initial column order. */
+
+  /**
+   * Supported entity-wide column defaults, supplied to AG Grid as part of `defaultColDef`.
+   *
+   * The name deliberately matches AG Grid because the normalized values have the same semantics. The
+   * compiler first combines these values with application `baseDefaultColDef`, then individual field
+   * definitions use AG Grid's normal per-column override precedence.
+   */
+  defaultColDef?: ConfigurableDefaultColDef;
+
+  /**
+   * Fields available for this entity in configured initial column order.
+   *
+   * Each field becomes one compiled AG Grid `ColDef`. Business entity identity does not come from this
+   * generic array type; it comes from the containing `FeatureDefinition.entities` record key.
+   */
   fields: readonly TFieldDefinition[];
 }
 
-/** Defines how to locate an entity row's stable unique identifier in the API row shape. */
+/**
+ * Defines where the stable business-row identifier is found in the API row shape.
+ *
+ * This remains an application descriptor rather than being named `getRowId`: AG Grid `getRowId` is an
+ * executable callback, while persisted configuration can safely carry only the field path from which
+ * the frontend runtime constructs that callback.
+ */
 export interface RowIdDefinition {
   /** Field path containing the stable business-row identifier; dot notation is supported. */
   path: string;
