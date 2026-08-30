@@ -1,4 +1,4 @@
-import type { ColDef } from 'ag-grid-community';
+import type { ColDef, GridOptions } from 'ag-grid-community';
 
 /**
  * Reusable configuration root for one configurable business feature.
@@ -37,7 +37,7 @@ export type ConfigurationJsonValue =
   | readonly ConfigurationJsonValue[]
   | { readonly [key: string]: ConfigurationJsonValue };
 
-/** JSON-safe object passed to registered configurable behaviors. */
+/** JSON-safe object passed to registered/configured AG Grid behavior. */
 export interface ConfigurationJsonObject {
   readonly [key: string]: ConfigurationJsonValue;
 }
@@ -45,17 +45,27 @@ export interface ConfigurationJsonObject {
 /**
  * Built-in AG Grid cell-data-type names supported by configurable fields.
  *
- * The public property is intentionally named `cellDataType`, matching AG Grid `ColDef.cellDataType`.
- * The configurable SSRM compiler sets it explicitly because AG Grid data-type inference only runs
- * with the Client-Side Row Model. AG Grid's native type-specific parser, formatter, editor, renderer
- * and filter behavior is therefore the baseline before any configured override is applied.
+ * The normalized property is `cellDataType`, matching AG Grid `ColDef.cellDataType`. SSRM does not
+ * infer cell data types from row data, so the configurable compiler must set the type explicitly.
+ * AG Grid's native type-specific parser, formatter, editor, renderer, sorting and filtering behavior
+ * is then the baseline before a field deliberately overrides one of those capabilities.
  *
  * `date` / `dateTime` represent JavaScript `Date` values. `dateString` / `dateTimeString` represent
- * values kept as strings, which is the normal representation for dates arriving from JSON APIs.
+ * strings. `bigint` requires the data adapter to materialise real JavaScript bigint values because
+ * raw JSON cannot transport bigint directly. `object` normally requires application formatter/parser
+ * behavior that understands the object's shape.
  */
 export type FieldCellDataType = Extract<
   NonNullable<ColDef['cellDataType']>,
-  'text' | 'number' | 'boolean' | 'date' | 'dateString' | 'dateTime' | 'dateTimeString'
+  | 'text'
+  | 'number'
+  | 'bigint'
+  | 'boolean'
+  | 'date'
+  | 'dateString'
+  | 'dateTime'
+  | 'dateTimeString'
+  | 'object'
 >;
 
 /** Base text-filter options supported by the shared server-query vocabulary. */
@@ -66,7 +76,7 @@ export type TextFilterOption =
   | 'startsWith'
   | 'endsWith';
 
-/** Base number-filter options supported by the shared server-query vocabulary. */
+/** Base number/BigInt-filter options supported by the shared server-query vocabulary. */
 export type NumberFilterOption =
   | 'equals'
   | 'notEqual'
@@ -88,11 +98,11 @@ export type FilterOption =
   | DateFilterOption
   | BooleanFilterOption;
 
-/** Resolves the shared filter-option vocabulary appropriate for an AG Grid cell data type. */
+/** Resolves the shared server-filter vocabulary appropriate for an AG Grid cell data type. */
 export type FilterOptionForCellDataType<TCellDataType extends FieldCellDataType> =
   TCellDataType extends 'text'
     ? TextFilterOption
-    : TCellDataType extends 'number'
+    : TCellDataType extends 'number' | 'bigint'
       ? NumberFilterOption
       : TCellDataType extends 'boolean'
         ? BooleanFilterOption
@@ -103,167 +113,257 @@ export type FilterOptionForCellDataType<TCellDataType extends FieldCellDataType>
 /**
  * Server-supported filtering capability for one configurable field.
  *
- * This is deliberately named `filtering` at the field level rather than pretending this object is
- * AG Grid `ColDef.filter`. AG Grid's `filter` property selects/enables a filter component, while this
- * persisted descriptor declares the supported server-query options. The compiler turns a configured
- * `filtering` block into the corresponding `ColDef.filter` / `filterParams` values.
+ * This remains application-specific because the important persisted meaning is not merely "which AG
+ * Grid filter component should render?" It is "which filter operations can this data adapter/backend
+ * execute correctly?" The compiler turns this descriptor into the matching AG Grid `filter` plus
+ * `filterParams.filterOptions` configuration.
  */
 export interface FieldFilteringDefinition<TFilterOption extends string = FilterOption> {
   /**
-   * Complete non-empty list of AG Grid Simple Filter choices exposed for this field.
+   * Complete non-empty list of filter operations that the active server-query adapter supports.
    *
-   * The leaf name intentionally matches AG Grid `filterParams.filterOptions`. The compiler combines
-   * this field-level list with resolved shared/entity filter defaults; the backend/data adapter must
-   * support the same operators before they are exposed to users.
+   * The leaf name intentionally matches AG Grid Simple Filter `filterOptions`. A native option is not
+   * exposed merely because AG Grid can render it; the data adapter/backend must support the same model.
    */
   filterOptions: readonly [TFilterOption, ...TFilterOption[]];
 }
 
-/** Initial pin position available to a configurable field, derived from AG Grid `ColDef`. */
+/** Initial pin position available to configurable columns, derived from AG Grid `ColDef`. */
 export type FieldPinnedPosition = Extract<
   NonNullable<ColDef['initialPinned']>,
   'left' | 'right'
 >;
 
 /**
- * Bounded JSON-safe subset of AG Grid `defaultColDef` currently supported by the configurable model.
+ * JSON-safe native `ColDef` properties that the configurable contract may carry directly.
  *
- * The property using this type is named `defaultColDef` because the values have the same semantics as
- * AG Grid. The subset remains intentional: supporting the native name does not mean arbitrary `ColDef`
- * values, callbacks, components or runtime objects can be persisted and passed through unchecked.
+ * These properties intentionally keep AG Grid names because their normalized values have the same
+ * meaning as AG Grid. Function/callback branches are deliberately removed where a native property is
+ * a union of declarative and executable forms. Frontend runtime policy may still further restrict a
+ * native capability; for example `editable: true` makes the column eligible for editing while the
+ * compiled `editable` callback can additionally enforce current row/access policy.
+ *
+ * Registered custom editors/renderers are represented by their AG Grid component names. Executable
+ * component implementations remain frontend-owned and are registered by runtime infrastructure.
  */
-export interface ConfigurableDefaultColDef {
-  /** Default sortable setting; same semantics/type as AG Grid `ColDef.sortable`. */
+export interface ConfigurableNativeColDefOptions<
+  TCellEditorName extends string = string,
+  TCellRendererName extends string = string,
+> {
+  /** Whether the column participates in native AG Grid sorting. */
   sortable?: ColDef['sortable'];
-  /** Initial hidden state for columns that do not override it; maps to `ColDef.initialHide`. */
+  /** Initial sort direction without continuously overwriting later Grid State. */
+  initialSort?: ColDef['initialSort'];
+  /** Initial multi-sort priority without continuously overwriting later Grid State. */
+  initialSortIndex?: ColDef['initialSortIndex'];
+  /** Native sort-cycle order, for example `['asc', 'desc', null]`. */
+  sortingOrder?: ColDef['sortingOrder'];
+
+  /** Initial hidden state; seeds new column state. */
   initialHide?: ColDef['initialHide'];
-  /** Initial pinned side for columns that do not override it; maps to `ColDef.initialPinned`. */
+  /** Initial pinned side; seeds new column state. */
   initialPinned?: FieldPinnedPosition;
-  /** Initial width for columns that do not override it; maps to `ColDef.initialWidth`. */
+  /** Initial width in pixels; seeds new column state. */
   initialWidth?: ColDef['initialWidth'];
-  /** Initial flex value for columns that do not override it; maps to `ColDef.initialFlex`. */
+  /** Initial flex value; seeds new column state. */
   initialFlex?: ColDef['initialFlex'];
-  /** Continuing minimum-width constraint; maps to `ColDef.minWidth`. */
+  /** Continuing minimum-width constraint. */
   minWidth?: ColDef['minWidth'];
-  /** Continuing maximum-width constraint; maps to `ColDef.maxWidth`. */
+  /** Continuing maximum-width constraint. */
   maxWidth?: ColDef['maxWidth'];
-  /** Continuing resize permission; maps to `ColDef.resizable`. */
+  /** Whether users may resize the column. */
   resizable?: ColDef['resizable'];
-}
+  /** Whether the column is excluded from size-to-fit calculations. */
+  suppressSizeToFit?: ColDef['suppressSizeToFit'];
+  /** Whether the column is excluded from auto-size calculations. */
+  suppressAutoSize?: ColDef['suppressAutoSize'];
+  /** Whether the user may move this column. */
+  suppressMovable?: ColDef['suppressMovable'];
+  /** Native AG Grid position lock for this column. */
+  lockPosition?: ColDef['lockPosition'];
+  /** Whether users may change this column's pinned state. */
+  lockPinned?: ColDef['lockPinned'];
 
-/** Registered frontend value formatter selected by declarative configuration. */
-export interface FieldFormatterDefinition<TFormatterKey extends string = string> {
-  /** Stable formatter registry key. @example "currency" */
-  key: TFormatterKey;
-  /**
-   * Extra JSON-safe configuration for the registered formatter.
-   *
-   * This descriptor is not named `valueFormatter` because AG Grid's `ColDef.valueFormatter` expects
-   * executable formatter behavior, while persisted configuration can only carry a safe registry key
-   * and declarative data. AG Grid supplies normal `ValueFormatterParams` when the resolved formatter
-   * is invoked; these values are additional application inputs interpreted by that implementation.
-   */
-  params?: ConfigurationJsonObject;
-}
+  /** Whether cell text wraps. */
+  wrapText?: ColDef['wrapText'];
+  /** Whether row height may grow to fit this column's wrapped cell content. */
+  autoHeight?: ColDef['autoHeight'];
+  /** Whether header text wraps. */
+  wrapHeaderText?: ColDef['wrapHeaderText'];
+  /** Whether header height may grow to fit wrapped header text. */
+  autoHeaderHeight?: ColDef['autoHeaderHeight'];
+  /** Static header tooltip text. */
+  headerTooltip?: ColDef['headerTooltip'];
+  /** Row-data field used by AG Grid as the cell tooltip value. */
+  tooltipField?: ColDef['tooltipField'];
 
-/** Registered frontend cell renderer selected by declarative configuration. */
-export interface FieldRendererDefinition<TRendererKey extends string = string> {
-  /** Stable renderer registry key resolved to a frontend-owned AG Grid-compatible renderer. */
-  key: TRendererKey;
   /**
-   * Extra JSON-safe props compiled to AG Grid `ColDef.cellRendererParams`.
+   * Native column editing eligibility.
    *
-   * AG Grid still supplies normal renderer props such as `value`, `valueFormatted`, `data`, `node`,
-   * `column`, `colDef` and `api`. Configuration should not duplicate those runtime values.
+   * Only the declarative boolean branch is persisted. `true` does not bypass application row/access
+   * policy: the compiler may turn it into an AG Grid `editable` callback that combines this permission
+   * with the current authoritative business rules.
    */
+  editable?: boolean;
+
+  /**
+   * AG Grid provided-editor name or frontend-registered custom editor name.
+   *
+   * This is deliberately the native `cellEditor` property rather than `editing.editor.key`. AG Grid
+   * supports selecting registered components by name, which is the JSON-safe representation we need.
+   */
+  cellEditor?: TCellEditorName;
+
+  /**
+   * Static JSON-safe params passed through to AG Grid `cellEditorParams`.
+   *
+   * Runtime/compiler-owned functions such as native `getValidationErrors` are merged separately and
+   * are never accepted from backend JSON.
+   */
+  cellEditorParams?: ConfigurationJsonObject;
+
+  /** Native popup-editor flag. */
+  cellEditorPopup?: ColDef['cellEditorPopup'];
+  /** Native popup placement relative to the edited cell. */
+  cellEditorPopupPosition?: ColDef['cellEditorPopupPosition'];
+  /** Start editing this column on one click instead of the grid's normal double-click behavior. */
+  singleClickEdit?: ColDef['singleClickEdit'];
+  /** Whether import/paste should apply this column's resolved value parser. */
+  useValueParserForImport?: ColDef['useValueParserForImport'];
+  /** Static branch of AG Grid `suppressPaste`; callbacks remain frontend-owned. */
+  suppressPaste?: boolean;
+  /** Prevent Fill Handle updates for this column. Non-editable cells are already skipped natively. */
+  suppressFillHandle?: ColDef['suppressFillHandle'];
+
+  /** AG Grid provided-renderer name or frontend-registered custom renderer name. */
+  cellRenderer?: TCellRendererName;
+  /** Static JSON-safe props passed through to AG Grid `cellRendererParams`. */
   cellRendererParams?: ConfigurationJsonObject;
 }
 
-/** Popup position supported by AG Grid cell editors, derived from `ColDef`. */
-export type FieldEditorPopupPosition = NonNullable<ColDef['cellEditorPopupPosition']>;
-
-interface FieldEditorBaseDefinition<TEditorKey extends string> {
-  /** Stable key resolved to a frontend-owned AG Grid-compatible cell editor. */
-  key: TEditorKey;
-  /**
-   * Extra JSON-safe props compiled to AG Grid `ColDef.cellEditorParams`.
-   *
-   * AG Grid still supplies normal editor props (`value`, row/column information, `onValueChange`,
-   * `stopEditing`, `parseValue`, `formatValue`, etc.).
-   */
-  cellEditorParams?: ConfigurationJsonObject;
-}
+/**
+ * Bounded JSON-safe AG Grid `defaultColDef` used by configurable entities.
+ *
+ * This reuses the same native declarative surface as individual fields. It intentionally does not
+ * accept executable callbacks, component implementations or arbitrary `ColDef` objects.
+ */
+export interface ConfigurableDefaultColDef
+  extends ConfigurableNativeColDefOptions<string, string> {}
 
 /**
- * Registered editor configuration for one editable field.
+ * JSON-safe Cell Selection configuration supported by the configurable SSRM grid.
  *
- * The descriptor uses AG Grid leaf names where the values have the same semantics. The `key` remains
- * application-specific because persisted JSON cannot contain the executable editor component itself.
+ * The names match AG Grid `cellSelection`. The callback-based Fill Handle `setFillValue` option is
+ * intentionally absent; custom executable fill behavior would require a separately reviewed frontend
+ * registry capability rather than backend-supplied JavaScript.
  */
-export type FieldEditorDefinition<TEditorKey extends string = string> =
-  | (FieldEditorBaseDefinition<TEditorKey> & {
-      /** Whether this registered editor opens as an AG Grid popup editor. */
-      cellEditorPopup?: false;
-      cellEditorPopupPosition?: never;
-    })
-  | (FieldEditorBaseDefinition<TEditorKey> & {
-      /** Enables AG Grid popup editing for the registered editor. */
-      cellEditorPopup: true;
-      /** Placement relative to the cell; AG Grid defaults to `over` when omitted. */
-      cellEditorPopupPosition?: FieldEditorPopupPosition;
-    });
-
-/** Registered parser overriding the value parser provided by the field's AG Grid cell data type. */
-export interface FieldValueParserDefinition<TParserKey extends string = string> {
-  /** Stable parser registry key resolved to an AG Grid-compatible `valueParser` implementation. */
-  key: TParserKey;
-  /**
-   * Extra JSON-safe configuration for the registered parser.
-   *
-   * This remains application-specific because AG Grid has no `valueParserParams` ColDef property.
-   * AG Grid invokes the resolved parser with normal `ValueParserParams`; custom React editors may also
-   * use AG Grid's supplied `parseValue()` utility when they need to apply the column parser explicitly.
-   */
-  params?: ConfigurationJsonObject;
+export interface ConfigurableCellSelectionOptions {
+  /** Allow only one cell range at a time. */
+  suppressMultiRanges?: boolean;
+  /** Highlight headers that intersect selected cell ranges. */
+  enableHeaderHighlight?: boolean;
+  /** Allow whole-column cell selection from the header. */
+  enableColumnSelection?: boolean;
+  /** Native range or Fill Handle configuration. */
+  handle?: ConfigurableCellSelectionHandle;
 }
 
+/** JSON-safe native selection-handle modes. */
+export type ConfigurableCellSelectionHandle =
+  | {
+      /** Native range-resize handle. */
+      mode: 'range';
+    }
+  | {
+      /** Native Fill Handle used for spreadsheet-like editing. */
+      mode: 'fill';
+      /** Limit fill dragging to horizontal, vertical, or both axes. */
+      direction?: 'x' | 'y' | 'xy';
+      /** Prevent shrinking a fill range from clearing removed cells. */
+      suppressClearOnFillReduction?: boolean;
+    };
+
 /**
- * Editing capability for one field.
+ * Bounded native AG Grid options for the configurable SSRM root.
  *
- * This is an application configuration concept rather than a replacement name for `ColDef.editable`.
- * Presence means the field is eligible for editing; the compiled `editable` callback must still satisfy
- * current access/authorization, feature row policy and tracked-editing conflict rules for each row.
+ * This is an allowlisted JSON-safe subset of `GridOptions`, not a parallel grid API. Application-wide
+ * defaults are merged with entity overrides before the runtime supplies the resolved values to
+ * `AgGridReact`. Executable callbacks/events, `serverSideDatasource`, `context`, `columnDefs`, GridApi
+ * references and React `modules` remain runtime-owned.
  *
- * When `editor` is omitted, AG Grid's editor selected by `cellDataType` remains available. When
- * `parser` is omitted, the compiler does not override `valueParser`, so the parser supplied by the
- * AG Grid cell data type (if any) remains in effect.
+ * Editing options here intentionally include the native capabilities proved by the merged SSRM native
+ * editing spike: Cell Selection/Fill Handle, normal clipboard-driven editing and AG Grid validation.
+ * The old custom Apply Last Edit/current-page bulk-edit controls are not configurable substitutes for
+ * those native operations.
  */
-export interface FieldEditingDefinition<
-  TEditorKey extends string = string,
-  TParserKey extends string = string,
-> {
-  /** Optional registered custom editor configuration. */
-  editor?: FieldEditorDefinition<TEditorKey>;
-  /** Optional registered parser override. */
-  parser?: FieldValueParserDefinition<TParserKey>;
+export interface ConfigurableSsrmGridOptions {
+  /** Native AG Grid column defaults after application defaults are merged. */
+  defaultColDef?: ConfigurableDefaultColDef;
+
+  /** Enable native AG Grid pagination. */
+  pagination?: GridOptions['pagination'];
+  /** Number of rows displayed per pagination page. */
+  paginationPageSize?: GridOptions['paginationPageSize'];
+  /** Native page-size selector configuration. */
+  paginationPageSizeSelector?: GridOptions['paginationPageSizeSelector'];
+
+  /** SSRM rows requested per server-side cache block. */
+  cacheBlockSize?: GridOptions['cacheBlockSize'];
+  /** Maximum retained SSRM blocks before least-recent blocks are evicted. */
+  maxBlocksInCache?: GridOptions['maxBlocksInCache'];
+  /** Debounce before issuing another block-load request during rapid scrolling. */
+  blockLoadDebounceMillis?: GridOptions['blockLoadDebounceMillis'];
+  /** Maximum simultaneous datasource requests. */
+  maxConcurrentDatasourceRequests?: GridOptions['maxConcurrentDatasourceRequests'];
+
+  /**
+   * Native AG Grid Cell Selection configuration.
+   *
+   * This enables the selection surface used by native Ctrl/Cmd+D, Ctrl/Cmd+Enter and Fill Handle
+   * editing. Required AG Grid Enterprise modules are runtime/bundle infrastructure, not JSON config.
+   */
+  cellSelection?: boolean | ConfigurableCellSelectionOptions;
+
+  /** Native AG Grid invalid-editor handling, including the spike's `"block"` mode. */
+  invalidEditValueMode?: GridOptions['invalidEditValueMode'];
+  /** Enable single-click editing across columns unless a column overrides it. */
+  singleClickEdit?: GridOptions['singleClickEdit'];
+  /** Disable click/double-click edit entry while retaining other native edit entry points. */
+  suppressClickEdit?: GridOptions['suppressClickEdit'];
+  /** Commit/stop the active edit when focus leaves the grid. */
+  stopEditingWhenCellsLoseFocus?: GridOptions['stopEditingWhenCellsLoseFocus'];
+  /** Enable AG Grid's native undo/redo stack for cell edits, paste and Fill Handle changes. */
+  undoRedoCellEditing?: GridOptions['undoRedoCellEditing'];
+  /** Native maximum undo/redo stack depth. */
+  undoRedoCellEditingLimit?: GridOptions['undoRedoCellEditingLimit'];
+  /** Disable clipboard paste for the entire grid. */
+  suppressClipboardPaste?: GridOptions['suppressClipboardPaste'];
+
+  /** Native fixed row height when the table chooses one. */
+  rowHeight?: GridOptions['rowHeight'];
+  /** Native header-row height. */
+  headerHeight?: GridOptions['headerHeight'];
+  /** Native row animation toggle. */
+  animateRows?: GridOptions['animateRows'];
 }
 
 /**
  * Reusable configuration for one field/column exposed by an entity.
  *
- * Native, JSON-safe AG Grid concepts deliberately use AG Grid property names and compatible types.
- * Application concepts keep distinct names when the persisted value has different semantics—for
- * example `filtering`, `formatter`, `renderer` and `editing` are descriptors that the compiler must
- * translate/resolve rather than values that can be spread directly into a `ColDef`.
+ * Native JSON-safe AG Grid concepts are deliberately flat and keep their AG Grid property names. A
+ * custom descriptor exists only when the persisted value cannot have AG Grid's executable semantics.
+ * For example `valueFormatterKey` and `valueParserKey` select frontend functions; they are not raw AG
+ * Grid expressions/functions from backend JSON.
  *
  * @typeParam TColId Stable AG Grid column/configuration identity type.
  * @typeParam TFieldPath Row/API value path bound to `ColDef.field`.
  * @typeParam TLabelKey Allowed translation-key type for the column label.
  * @typeParam TCellDataType Supported AG Grid cell data type for this field.
  * @typeParam TAdditionalFilterOption Feature-specific server filter options, if any.
- * @typeParam TFormatterKey Allowed formatter registry keys.
- * @typeParam TRendererKey Allowed renderer registry keys.
- * @typeParam TEditingDefinition Concrete editing descriptor type for this field family.
+ * @typeParam TCellEditorName Allowed AG Grid provided/registered editor names.
+ * @typeParam TCellRendererName Allowed AG Grid provided/registered renderer names.
+ * @typeParam TValueFormatterKey Allowed frontend formatter registry keys.
+ * @typeParam TValueParserKey Allowed frontend parser registry keys.
  */
 export interface FieldDefinition<
   TColId extends NonNullable<ColDef['colId']> = NonNullable<ColDef['colId']>,
@@ -271,10 +371,11 @@ export interface FieldDefinition<
   TLabelKey extends string = string,
   TCellDataType extends FieldCellDataType = FieldCellDataType,
   TAdditionalFilterOption extends string = never,
-  TFormatterKey extends string = string,
-  TRendererKey extends string = string,
-  TEditingDefinition extends FieldEditingDefinition = FieldEditingDefinition,
-> {
+  TCellEditorName extends string = string,
+  TCellRendererName extends string = string,
+  TValueFormatterKey extends string = string,
+  TValueParserKey extends string = string,
+> extends ConfigurableNativeColDefOptions<TCellEditorName, TCellRendererName> {
   /**
    * Stable AG Grid column ID and application field-configuration identity.
    *
@@ -293,63 +394,50 @@ export interface FieldDefinition<
   field: TFieldPath;
 
   /**
-   * Translation key resolved by the frontend into the final AG Grid header text.
+   * Translation key resolved by the frontend into final AG Grid header text.
    *
-   * This intentionally does not use AG Grid's `headerName`: `headerName` is the final display string,
-   * whereas this application value must first be translated before compilation.
+   * This intentionally does not use `headerName`: AG Grid `headerName` is already display text whereas
+   * this application value must first go through translation.
    */
   labelKey: TLabelKey;
 
   /**
-   * AG Grid cell data type/representation, passed to `ColDef.cellDataType`.
-   *
-   * The configurable SSRM compiler sets this explicitly. Native type behavior is the baseline: do
-   * not require formatter, renderer, editor or parser registry entries when AG Grid already provides
-   * the required behavior.
+   * AG Grid cell data type/representation, supplied to `ColDef.cellDataType`.
+   * Native data-type behavior remains the baseline before explicit field overrides are compiled.
    */
   cellDataType: TCellDataType;
 
-  /** Whether users can sort; omitted values inherit the resolved AG Grid `defaultColDef`. */
-  sortable?: ColDef['sortable'];
-
   /**
    * Optional server-supported filtering descriptor.
-   *
-   * When present, the compiler enables the appropriate AG Grid filter and supplies the configured
-   * `filterOptions` through `filterParams`. Omission means this field is not exposed as filterable by
-   * the configurable contract, regardless of broader shared defaults that the compiler starts from.
+   * Omission means this configurable field does not expose server filtering.
    */
   filtering?: FieldFilteringDefinition<
     FilterOptionForCellDataType<TCellDataType> | TAdditionalFilterOption
   >;
 
-  /** Initial hidden state; same semantics/type as AG Grid `ColDef.initialHide`. */
-  initialHide?: ColDef['initialHide'];
-  /** Initial pinned side; same semantics/type as AG Grid `ColDef.initialPinned`. */
-  initialPinned?: FieldPinnedPosition;
-  /** Initial width in pixels; same semantics/type as AG Grid `ColDef.initialWidth`. */
-  initialWidth?: ColDef['initialWidth'];
-  /** Initial flex value; same semantics/type as AG Grid `ColDef.initialFlex`. */
-  initialFlex?: ColDef['initialFlex'];
-  /** Continuing minimum-width constraint; same semantics/type as AG Grid `ColDef.minWidth`. */
-  minWidth?: ColDef['minWidth'];
-  /** Continuing maximum-width constraint; same semantics/type as AG Grid `ColDef.maxWidth`. */
-  maxWidth?: ColDef['maxWidth'];
-  /** Continuing resize permission; same semantics/type as AG Grid `ColDef.resizable`. */
-  resizable?: ColDef['resizable'];
-
-  /** Optional custom display formatter descriptor resolved to AG Grid `ColDef.valueFormatter`. */
-  formatter?: FieldFormatterDefinition<TFormatterKey>;
-
-  /** Optional rich-renderer descriptor resolved to AG Grid `ColDef.cellRenderer`. */
-  renderer?: FieldRendererDefinition<TRendererKey>;
+  /**
+   * Frontend registry key resolved to the executable AG Grid `valueFormatter`.
+   * Raw formatter functions/AG Grid expression strings are never accepted from persisted JSON.
+   */
+  valueFormatterKey?: TValueFormatterKey;
 
   /**
-   * Optional application editing capability. Omit to make the field non-editable; presence makes it
-   * potentially editable, but the compiled AG Grid `editable` callback still composes row/access/
-   * conflict policy rather than becoming unconditional `true`.
+   * Extra JSON-safe application configuration consumed by the registered formatter implementation.
+   * AG Grid itself has no `valueFormatterParams` `ColDef` property, so this name remains explicit.
    */
-  editing?: TEditingDefinition;
+  valueFormatterConfig?: ConfigurationJsonObject;
+
+  /**
+   * Frontend registry key resolved to the executable AG Grid `valueParser`.
+   * If omitted, the compiler leaves the parser supplied by `cellDataType` intact where applicable.
+   */
+  valueParserKey?: TValueParserKey;
+
+  /**
+   * Extra JSON-safe application configuration consumed by the registered parser implementation.
+   * AG Grid supplies normal `ValueParserParams` at runtime; this object is additional app config.
+   */
+  valueParserConfig?: ConfigurationJsonObject;
 }
 
 type ConfigurableFieldDefinition<TLabelKey extends string = string> = FieldDefinition<
@@ -360,7 +448,8 @@ type ConfigurableFieldDefinition<TLabelKey extends string = string> = FieldDefin
   string,
   string,
   string,
-  FieldEditingDefinition
+  string,
+  string
 >;
 
 /**
@@ -389,17 +478,17 @@ export interface EntityDefinition<
    */
   dataAdapterKey: string;
 
-  /** Stable business-row identity definition used to build the runtime AG Grid `getRowId` behavior. */
+  /** Stable business-row identity definition used to build runtime AG Grid `getRowId`. */
   rowId: RowIdDefinition;
 
   /**
-   * Supported entity-wide column defaults, supplied to AG Grid as part of `defaultColDef`.
+   * Entity-level native AG Grid overrides for the configurable SSRM root.
    *
-   * The name deliberately matches AG Grid because the normalized values have the same semantics. The
-   * compiler first combines these values with application `baseDefaultColDef`, then individual field
-   * definitions use AG Grid's normal per-column override precedence.
+   * The nested keys deliberately retain AG Grid `GridOptions` names. Application defaults are resolved
+   * first, then these entity overrides are normalized/merged. `defaultColDef` lives here because it is
+   * itself a GridOptions property; individual fields then use normal AG Grid column override precedence.
    */
-  defaultColDef?: ConfigurableDefaultColDef;
+  gridOptions?: ConfigurableSsrmGridOptions;
 
   /**
    * Fields available for this entity in configured initial column order.
