@@ -2,7 +2,7 @@
 
 Quick visual map for `frontend/src/shared/grid/configurable/configuration.types.ts`.
 
-The hand-maintained diagram stays useful because it explains ownership and compiler meaning. Generated TypeDoc/type-relationship output can sit beside it once the runtime/registry contracts are added.
+The curated hierarchy stays useful because it explains ownership and compiler meaning, not just TypeScript inheritance. Keep the portable text view and the rendered Mermaid view together.
 
 ## Current type hierarchy
 
@@ -30,7 +30,7 @@ FeatureDefinition
         ├── cellDataType                    ← ColDef.cellDataType-compatible
         ├── sortable?                       ← ColDef.sortable
         ├── filter?: FieldFilterDefinition
-        │   └── filterOptions[]              ← AG Grid filterParams.filterOptions naming
+        │   └── filterOptions[]              ← AG Grid filterParams.filterOptions
         ├── layout?: FieldLayoutDefinition
         ├── formatter?: FieldFormatterDefinition
         │   ├── key
@@ -49,6 +49,44 @@ FeatureDefinition
                 └── params?
 ```
 
+## Rendered relationship view
+
+GitHub renders this Mermaid diagram directly. The text hierarchy above remains the portable fallback.
+
+```mermaid
+flowchart TD
+    F[FeatureDefinition] --> E[EntityDefinition]
+    E --> R[RowIdDefinition]
+    E --> FD[FieldDefaultsDefinition]
+    E --> FL[FieldDefinition array]
+
+    FD --> L1[FieldLayoutDefinition]
+    L1 --> S1[FieldSizingDefinition]
+
+    FL --> FF[FieldFilterDefinition]
+    FL --> L2[FieldLayoutDefinition]
+    FL --> FM[FieldFormatterDefinition]
+    FL --> FR[FieldRendererDefinition]
+    FL --> ED[FieldEditingDefinition]
+
+    L2 --> S2[FieldSizingDefinition]
+    ED --> CE[FieldEditorDefinition]
+    ED --> VP[FieldValueParserDefinition]
+
+    FM --> REG1[formatter registry]
+    FR --> REG2[renderer registry]
+    CE --> REG3[editor registry]
+    VP --> REG4[parser registry]
+
+    REG1 --> VF[AG Grid valueFormatter]
+    REG2 --> CR[AG Grid cellRenderer]
+    REG3 --> CED[AG Grid cellEditor]
+    REG4 --> VPR[AG Grid valueParser]
+
+    FL --> CD[compiled AG Grid ColDef]
+    FD --> DCD[resolved AG Grid defaultColDef]
+```
+
 ## End-to-end configuration boundary
 
 ```text
@@ -65,6 +103,8 @@ compiler + registries
 final AG Grid options / columns / callbacks / components
 ```
 
+**The normalization boundary remains even when backend/storage names currently match the normalized frontend names.** In that case normalization may be close to an identity transform, but runtime data is still validated/normalized before compilation.
+
 Raw backend configuration never goes straight into `AgGridReact`. If backend/storage names differ later, normalize them once at the boundary. A backend property that the deployed frontend does not read/normalize/compile has no effect.
 
 ## AG Grid alignment rule
@@ -73,12 +113,12 @@ Raw backend configuration never goes straight into `AgGridReact`. If backend/sto
 same AG Grid concept + same semantics
 → keep AG Grid property name
 → reuse/derive AG Grid type where practical
-→ merge/pass through instead of pointless one-to-one remapping
+→ merge/pass through instead of pointless rename-and-map code
 
 executable AG Grid concept
 → JSON-safe key in config
 → frontend registry
-→ implementation typed with the real AG Grid callback/component type
+→ implementation typed with real AG Grid callback/component/property type
 
 runtime/compiler infrastructure
 → frontend creates it
@@ -243,6 +283,12 @@ tracked editing + validation
         ↓
 save mapping / backend payload   [later]
 ```
+
+## Generated API docs
+
+The intended generated-docs tooling is **TypeDoc + Markdown output** so generated API pages can be read directly in GitHub. It is not installed yet on this branch because adding a dev dependency requires a reproducibly generated `package-lock.json`; do not hand-edit the lockfile.
+
+The curated hierarchy in this file remains even after generated docs are introduced because it explains architecture/ownership that a generated API tree does not.
 
 ## Design checklist for every new property
 
