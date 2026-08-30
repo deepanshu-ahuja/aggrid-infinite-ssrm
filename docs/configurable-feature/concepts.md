@@ -53,14 +53,16 @@ stored/managed by backend/database
         ↓
 backend response
         ↓
-validate + normalize once
+validate + normalize
         ↓
 frontend compiler/registries
         ↓
 AG Grid
 ```
 
-The backend storage/wire shape does not have to stay identical to the frontend normalized shape. If it differs, transform at the boundary. Do not scatter backend-key checks throughout the table.
+The normalization boundary **always remains**, even when backend/storage keys happen to match the normalized frontend/AG Grid-aligned names exactly. Matching names simply make normalization close to an identity transform; they do not make raw runtime data trusted frontend configuration.
+
+The backend storage/wire shape does not have to stay identical to the frontend normalized shape. If it differs, transform at the same boundary. Do not scatter backend-key checks throughout the table.
 
 A backend property that the current frontend does not read/normalize/compile has no effect. Raw backend JSON is never spread blindly into `AgGridReact`.
 
