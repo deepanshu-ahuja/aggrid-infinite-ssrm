@@ -71,11 +71,9 @@ application/business semantics differ
 → keep application name
 ```
 
-## Latest whole-contract audit — DONE for current field/grid batch
+The audit is capability-driven, not Transaction-demo-driven. Applicable native JSON-safe options should keep their native names. Exclude a native property only for a concrete reason: executable value, incompatible flat-SSRM semantics, unsupported end-to-end capability, or a different runtime architecture.
 
-The previous contract was too custom around editing/rendering. It has been corrected after the merged native-first SSRM editing spike.
-
-### Removed custom wrappers
+## Whole-contract native-first cleanup — DONE for current field/editing batch
 
 Removed from the normalized public model:
 
@@ -93,51 +91,66 @@ field.renderer
 field.formatter
 ```
 
-### Native column/editing properties now stay native
+### Native column/editing properties stay native
 
-Fields/defaults use `ConfigurableNativeColDefOptions`, including reviewed JSON-safe native properties such as:
+Fields/defaults use `ConfigurableNativeColDefOptions`. The reviewed safe surface currently includes:
 
 ```text
-sortable
-initialSort
-initialSortIndex
-sortingOrder
-initialHide
-initialPinned
-initialWidth
-initialFlex
-minWidth
-maxWidth
-resizable
-suppressSizeToFit
-suppressAutoSize
-suppressMovable
-lockPosition
-lockPinned
-wrapText
-autoHeight
-wrapHeaderText
-autoHeaderHeight
-headerTooltip
-tooltipField
+sorting
+→ sortable
+→ initialSort
+→ initialSortIndex
+→ sortingOrder
 
-editable
-cellEditor
-cellEditorParams
-cellEditorPopup
-cellEditorPopupPosition
-singleClickEdit
-useValueParserForImport
-suppressPaste
-suppressFillHandle
+layout/sizing
+→ initialHide
+→ lockVisible
+→ initialPinned
+→ initialWidth
+→ initialFlex
+→ minWidth
+→ maxWidth
+→ resizable
+→ suppressSizeToFit
+→ suppressAutoSize
+→ suppressMovable
+→ lockPosition
+→ lockPinned
 
-cellRenderer
-cellRendererParams
+presentation/filter UI/navigation
+→ wrapText
+→ autoHeight
+→ wrapHeaderText
+→ autoHeaderHeight
+→ headerTooltip
+→ tooltipField
+→ suppressNavigable (boolean branch)
+→ floatingFilter
+→ suppressHeaderMenuButton
+→ suppressHeaderFilterButton
+→ suppressHeaderContextMenu
+→ suppressFloatingFilterButton
+
+editing/import/export
+→ editable (boolean branch)
+→ cellEditor
+→ cellEditorParams
+→ cellEditorPopup
+→ cellEditorPopupPosition
+→ singleClickEdit
+→ useValueParserForImport
+→ useValueFormatterForExport
+→ suppressPaste (boolean branch)
+→ suppressFillHandle
+
+rendering
+→ cellRenderer
+→ cellRendererParams
 ```
 
-`editable` and `suppressPaste` expose only their safe boolean branch; callback branches remain frontend-owned.
-
 `cellEditor` / `cellRenderer` are native because AG Grid supports provided/registered component names as strings. Frontend runtime owns the actual custom component implementations/registration.
+
+Stateful current values such as `hide`, `pinned`, `width`, `flex`, `sort` and `sortIndex` are not the declarative initial-config vocabulary; use their `initial*` forms so later Grid State/user changes are not repeatedly overwritten.
 
 ### Executable parser/formatter stay safe
 
@@ -148,9 +161,7 @@ valueParserKey
 valueParserConfig
 ```
 
-These are explicit application descriptors because AG Grid's actual `valueFormatter` / `valueParser` values are executable functions/expressions.
-
-Raw AG Grid expression strings are not accepted from backend configuration.
+These remain explicit descriptors because AG Grid's actual `valueFormatter` / `valueParser` values are executable functions/expressions. Raw AG Grid expression strings are not accepted from backend configuration.
 
 ### Cell data types broadened
 
@@ -170,7 +181,7 @@ object
 
 SSRM still requires explicit `cellDataType`. Adapter conversion is responsible for producing the JavaScript representation AG Grid expects.
 
-## Grid-level native configuration — NOW PRESENT
+## Grid-level native configuration — BROAD CURRENT PASS DONE
 
 `EntityDefinition` now has:
 
@@ -180,34 +191,95 @@ gridOptions?: ConfigurableSsrmGridOptions
 
 `defaultColDef` moved under `gridOptions` because it is itself a native GridOptions property.
 
-Current reviewed grid-level native surface includes:
+Current reviewed native surface:
 
 ```text
-defaultColDef
+column defaults
+→ defaultColDef
 
 pagination
-paginationPageSize
-paginationPageSizeSelector
-cacheBlockSize
-maxBlocksInCache
-blockLoadDebounceMillis
-maxConcurrentDatasourceRequests
+→ pagination
+→ paginationAutoPageSize
+→ paginationPageSize
+→ paginationPageSizeSelector
+→ suppressPaginationPanel
 
-cellSelection
-invalidEditValueMode
-singleClickEdit
-suppressClickEdit
-stopEditingWhenCellsLoseFocus
-undoRedoCellEditing
-undoRedoCellEditingLimit
-suppressClipboardPaste
+SSRM loading/cache
+→ cacheBlockSize
+→ maxBlocksInCache
+→ blockLoadDebounceMillis
+→ maxConcurrentDatasourceRequests
+→ serverSideInitialRowCount
+→ suppressServerSideFullWidthLoadingRow
 
-rowHeight
-headerHeight
-animateRows
+row selection
+→ rowSelection: ConfigurableSsrmRowSelectionOptions
+
+cell selection / editing
+→ cellSelection
+→ invalidEditValueMode
+→ singleClickEdit
+→ suppressClickEdit
+→ enterNavigatesVertically
+→ enterNavigatesVerticallyAfterEdit
+→ stopEditingWhenCellsLoseFocus
+→ undoRedoCellEditing
+→ undoRedoCellEditingLimit
+→ suppressClipboardPaste
+
+column movement
+→ suppressMovableColumns
+→ suppressMoveWhenColumnDragging
+→ suppressColumnMoveAnimation
+→ suppressDragLeaveHidesColumns
+
+layout / presentation
+→ rowHeight
+→ rowBuffer
+→ headerHeight
+→ animateRows
+→ enableRtl
+
+tooltips
+→ enableBrowserTooltips
+→ tooltipShowDelay
+→ tooltipSwitchShowDelay
+→ tooltipHideDelay
+→ tooltipMouseTrack
+→ tooltipInteraction
+
+focus/accessibility
+→ suppressCellFocus
+→ suppressHeaderFocus
+→ enableCellTextSelection
+→ ensureDomOrder
 ```
 
-`ConfigurableCellSelectionOptions` supports the JSON-safe native range/fill configuration, including Fill Handle direction and `suppressClearOnFillReduction`. Executable `setFillValue` is deliberately excluded.
+This is still an intentional allowlist rather than an unchecked `GridOptions` pass-through, but it is no longer limited to the current Transaction demo values. Continue adding applicable native properties by capability using the same rule, not by inventing replacement names.
+
+## Native flat-SSRM row selection
+
+`ConfigurableSsrmRowSelectionOptions` now captures the safe native configuration while leaving business callbacks runtime-owned.
+
+```text
+common
+→ mode: singleRow | multiRow
+→ checkboxes?: boolean
+→ hideDisabledCheckboxes?
+→ enableClickSelection?
+→ copySelectedRows?
+→ enableSelectionWithoutKeys?
+
+multiRow
+→ groupSelects?: self
+→ selectAll?: all
+→ headerCheckbox?
+→ ctrlASelectsRows?
+```
+
+`isRowSelectable` remains a runtime callback because it enforces feature/business row policy.
+
+AG Grid 36.1 documents `rowSelection.selectAll='filtered'|'currentPage'` as invalid for SSRM; the grid behaves as `'all'`. Therefore those values are not exposed as native SSRM config. The repository's All Filtered / Current Page semantics remain explicit application operations.
 
 ## Runtime-owned React/AG Grid props
 
@@ -222,9 +294,10 @@ context
 getRowId callback
 events/callbacks
 GridApi refs
+business-policy callbacks such as isRowSelectable
 ```
 
-`CellSelectionModule` and `ClipboardModule` are required runtime/bundle capabilities for the corresponding native features, not backend JSON.
+`CellSelectionModule` and `ClipboardModule` are required runtime/bundle capabilities for corresponding native features, not backend JSON.
 
 ## Editing architecture learned from merged PR #42
 
@@ -309,14 +382,14 @@ The merged native-first spike deliberately has no REMOTE/conflict layer.
 
 Do not automatically carry the previous BASE/LOCAL/REMOTE conflict machinery into configurable runtime. Concurrency/version/conflict semantics remain a separate later decision.
 
-## Deliberately unsupported native option
+## Deliberately unsupported native examples
 
-`readOnlyEdit` is intentionally not exposed yet.
+### `readOnlyEdit`
 
-Reason:
+Not exposed yet because it changes the selected editing lifecycle:
 
 ```text
-normal edit architecture
+normal edit
 → AG Grid mutates value
 → cellValueChanged
 → BASE+LOCAL observer
@@ -327,13 +400,17 @@ readOnlyEdit=true
 → different runtime ownership/lifecycle
 ```
 
-Omit it until that alternate lifecycle is intentionally supported.
+### Grouping/tree/pivot options
+
+The initial configurable proof uses the flat SSRM backend request contract. Grouping, tree data, aggregation and pivot native options remain outside the normalized contract until their server request/response semantics are implemented.
+
+These are examples of justified exclusions. "The current Transaction demo does not use it" is not by itself a justification.
 
 ## Filtering status
 
 `filtering` remains custom because its persisted meaning is server-query support, not only AG Grid filter UI selection.
 
-Current shared operator vocabulary remains bounded by backend semantics. Common server filter UX (`buttons`, `maxNumConditions`, `closeOnApply`, debounce/defaults as applicable) still needs a final normalized/default-merge design.
+Current shared operator vocabulary remains bounded by backend semantics. Native filter presentation such as `floatingFilter` can stay native, while common server filter UX (`buttons`, `maxNumConditions`, `closeOnApply`, debounce/defaults as applicable) still needs the next normalized/default-merge design.
 
 ## Coverage snapshot
 
@@ -343,11 +420,12 @@ EntityDefinition generic meaning                DONE
 RowIdDefinition                                DONE
 colId / field identity                         DONE
 cellDataType native built-ins                  DONE current set
-ConfigurableNativeColDefOptions                 DONE current reviewed set
+ConfigurableNativeColDefOptions                 DONE broad current pass
 native cellEditor / cellRenderer                DONE
 valueFormatter/valueParser registry keys        DONE direction
 filtering/filterOptions core                    DONE
-ConfigurableSsrmGridOptions                     DONE current reviewed set
+ConfigurableSsrmGridOptions                     DONE broad current pass
+ConfigurableSsrmRowSelectionOptions             DONE flat-SSRM pass
 cellSelection / native editing grid props       DONE
 PR #42 editing architecture review              DONE
 backend/store → normalize → compile boundary    DONE DIRECTION
@@ -377,11 +455,11 @@ Resume with one coherent compiler/defaults batch:
 
 1. inspect the latest branch and merged PR state again;
 2. define application configurable-SSRM defaults and exact `entity.gridOptions` merge semantics;
-3. define nested merge behavior for `defaultColDef` and `cellSelection`;
+3. define nested merge behavior for `defaultColDef`, `cellSelection`, and `rowSelection`;
 4. design common server Simple Filter defaults and their merge with `field.filtering.filterOptions`;
 5. define frontend registration/validation for native `cellEditor` / `cellRenderer` string names;
 6. type formatter/parser registries using real AG Grid `valueFormatter` / `valueParser` function contracts;
-7. define the compiler output classification: native pass-through vs registry-resolved vs runtime-owned;
+7. define compiler output classification: native pass-through vs registry-resolved vs runtime-owned;
 8. preserve mandatory backend/storage normalization.
 
 Then design configurable validation rules adapted into AG Grid native validation lifecycle, followed by server query/search, save mapping, access/security/masking and runtime compiler layers.
