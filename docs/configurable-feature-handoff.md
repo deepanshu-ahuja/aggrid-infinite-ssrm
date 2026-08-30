@@ -1,195 +1,1237 @@
-# Configurable Feature / Metadata-Driven Grid — Consolidated Handoff
+# Handoff: Configurable / Metadata-Driven Feature + Grid Architecture
 
-> **Status:** architecture/design context only. This document does **not** authorize implementation.
+> **Status:** consolidated architecture/design context only. This document does **not** authorize implementation.
 >
-> A new chat should read this document first, inspect the current repository/GitHub state when needed, and then follow the user's next explicit instruction. The user may want more schema/design discussion before any code changes.
+> This document is deliberately based on the original 48-point handoff and updates it with the later discussion. A new chat should be able to read this **single file** and understand the full context without needing the earlier chat.
+>
+> Where later discussion changed an earlier idea, the later decision wins. Illustrative property names are examples, not finalized API contracts.
+>
+> Before implementation, a new chat must inspect the current repository/GitHub state and follow the user's next explicit instruction. The user may first want further schema/design discussion.
 
 ---
 
-## 1. What we are building
+# 1. Terminology and scope
 
-The real unit is a **business feature/page**, not a standalone generic configurable grid and not an entity such as Loan or Finance.
+Do **not** use the word “adjustment” for this work. That terminology overlaps with a real project and should stay out of this personal/reference project.
 
-Use a neutral example feature name such as `Review`.
+Use neutral terminology such as:
 
-A feature page can contain:
+- configurable feature;
+- configurable grid;
+- metadata-driven grid;
+- dynamic table;
+- configurable feature grid;
+- configurable SSRM grid;
+- a neutral feature name such as `Review` or `Correction`.
 
-- an SSRM grid;
-- page-level actions such as Approve / Reject;
-- summaries or other sections;
-- other feature-specific UI.
+The repository already has three proven Transaction-based grid implementations:
 
-Inside that feature, the **entity/data context can vary**:
+- Client-Side Row Model;
+- Infinite Row Model;
+- SSRM.
+
+The configurable work is a **new architectural exploration** and must not initially destabilize those three implementations.
+
+A major clarification from later discussion is that the real product unit is **the business feature/page**, not Loan, Finance, Transaction, or a standalone “configurable grid”.
+
+Conceptually:
 
 ```text
-Review + Loan
-Review + Finance
-Review + SomeOtherEntity
+Review feature/page
+    ├── page-level UI / sections / actions
+    └── SSRM grid
+            ↑
+       entity context
+       Loan / Finance / ...
 ```
 
-A different feature may also use Loan but require a different Loan view/configuration:
+Loan, Finance, etc. are different entity/data contexts **inside** that feature.
+
+Another feature may also use Loan but require a different Loan view/configuration:
 
 ```text
 Review + Loan
 AnotherFeature + Loan
 ```
 
-Those are allowed to have different columns, editing rules, actions, defaults, validation, presentation, API mapping, etc.
+Those two Loan configurations may differ because the business purpose is different.
 
-Therefore configuration identity is closer to:
+For the first configurable implementation, prove the architecture with **SSRM only**. Existing Client/Infinite/SSRM Transaction grids remain untouched during this experiment.
+
+---
+
+# 2. What problem we are actually trying to solve
+
+The goal is not simply to make `columnDefs` come from JSON.
+
+The goal is to support a real feature/page whose entity/data context may vary and whose effective UI may vary based on resolved user access.
+
+For example:
+
+```text
+Review + Loan
+Review + Finance
+```
+
+may share the same overall feature purpose while having different:
+
+- row/data shapes;
+- columns;
+- nested field paths;
+- renderers/editors/formatters;
+- validation;
+- datasource/request mapping;
+- save/mutation mapping;
+- page-level capabilities;
+- initial Grid State defaults.
+
+Within one base feature/entity definition, the current user's resolved access can further change:
+
+- which fields are available;
+- read-only vs editable state;
+- masking/unmask capability;
+- filter/sort/search/export/copy capability;
+- actions or sections the user is allowed to see/use.
+
+The configuration identity is therefore closer to:
 
 ```text
 feature/view + entity/context
 ```
 
-not simply:
+not merely `loanConfig` or `financeConfig`.
 
-```text
-loanConfig
-financeConfig
+The grid must not contain scattered checks such as:
+
+```ts
+if (entity === 'loan') { ... }
+if (role === 'roleA') { ... }
 ```
 
-The configurable grid is an architectural capability underneath the feature; it is not the feature itself.
+Those choices should be resolved at the feature/configuration boundary.
 
 ---
 
-## 2. Feature-level vs shared-level reuse
+# 3. Three concepts must remain separate
 
-The feature is the business ownership boundary, but not every reusable mechanism must remain inside the feature.
+There are at least three separate concerns.
 
-Use the normal ownership rule:
+## A. Feature/entity base definition
 
-```text
-feature-specific business meaning / composition
-    → keep under the feature
+This represents what a particular feature + entity view is capable of containing.
 
-genuinely reusable, domain-neutral mechanics
-    → shared layer when reuse is real and useful
+Example:
+
+```json
+{
+  "id": "customerName",
+  "field": "borrower.customer.name",
+  "dataType": "text",
+  "sensitive": {
+    "maskable": true
+  }
+}
 ```
 
-Examples that may become shared when the implementation proves the reuse:
+This says the field exists in the base definition and can support masking. It does **not** mean every user can see it or unmask it.
 
-- metadata/config validation primitives;
-- registry-resolution helpers;
-- safe nested-path read/write utilities;
-- reusable renderer/editor/formatter plumbing;
-- Grid State reconciliation helpers;
-- generic typed adapter contracts;
-- domain-neutral config-error/Error Boundary presentation.
+## B. Resolved authorization/access projection
 
-Examples that normally remain feature-owned:
+This represents what the current user/session is actually allowed to see or do.
 
-- Loan/Finance business definitions;
-- feature workflow/actions;
-- entity-specific datasource/request mapping;
-- business-specific validation/action semantics;
-- entity-specific renderers/editors that are not genuinely reusable.
+Example:
 
-Do not force code into `shared` just because it might theoretically be reused later. Equally, do not duplicate a stable domain-neutral mechanism once real reuse exists.
-
----
-
-## 3. First implementation scope
-
-The first real implementation should prove the architecture using **one new isolated configurable SSRM feature**.
-
-Do **not** modify the existing proven Client, Infinite or SSRM Transaction grids to make this work.
-
-Those existing three grids stay untouched during this experiment.
-
-After configurable SSRM is genuinely proven, Client and Infinite can be considered separately.
-
-Do not create one universal row-model implementation. Client, Infinite and SSRM should keep row-model-specific lifecycle/ownership where it matters.
-
----
-
-## 4. Branch and PR #40
-
-The real work should start from the latest `main` on the new configurable-feature branch.
-
-PR #40 was created before requirements were fully discussed. It can be inspected as a **reference/experiment only**.
-
-Do not:
-
-- merge PR #40 into `main` for this work;
-- treat PR #40's schema/architecture as approved merely because code exists;
-- copy its decisions without reconciling them against this handoff and the current repository.
-
-A future chat may inspect PR #40 to understand what was tried and may reuse an idea only if it still fits the approved design.
-
----
-
-## 5. Frontend vs backend responsibility
-
-Frontend access/configuration shapes the UX:
-
-- feature/route visibility;
-- column visibility;
-- editable/read-only presentation;
-- action visibility/disabled state;
-- filter/search/etc. availability;
-- renderer/editor/formatter choice;
-- presentation defaults;
-- Grid State reconciliation.
-
-Backend remains authoritative for:
-
-- authorization;
-- protected data;
-- updates and bulk updates;
-- protected actions;
-- authoritative validation;
-- masking/unmasking sensitive values.
-
-If a user's real permission changes while stale UI is open and they still submit an operation, the backend must reject it when no longer authorized.
-
-Do not duplicate backend authorization logic in the frontend.
-
----
-
-## 6. Access/configuration lifetime
-
-Configuration and access are not expected to change frequently while the page is open.
-
-Normal flow:
-
-```text
-application starts
-    ↓
-fetch current user/access
-    ↓
-routing determines feature access
-    ↓
-user enters feature
-    ↓
-resolve feature + entity definition
-    ↓
-apply current-user access projection
-    ↓
-reconcile valid user preferences
-    ↓
-build effective feature/grid inputs
-    ↓
-keep them stable for the page session
+```json
+{
+  "customerName": {
+    "visible": true,
+    "access": "read",
+    "canRequestUnmask": false
+  },
+  "balance": {
+    "visible": true,
+    "access": "edit",
+    "canRequestUnmask": true
+  }
+}
 ```
 
-Do not build a hot-swapping system that dynamically removes columns/actions while the user has dirty edits.
+The frontend should consume the **resolved result**, not understand backend role/group/entitlement algorithms.
 
-If current-user information is refetched later:
+During development, local mock role/profile mappings may simulate this future result, but they must be isolated behind a provider/resolver boundary.
 
-- route-level changes can be handled by routing;
-- inside-feature changes can take effect on reload/re-entry;
-- live dirty-edit reconciliation is not required unless a future product requirement explicitly asks for it.
+## C. Runtime row/value state
+
+A field being maskable and a user being allowed to request unmasking does not mean the currently returned value is unmasked.
+
+Keep these distinct:
+
+```text
+maskable
+    = field type supports masking
+
+canRequestUnmask
+    = current user/session may request unmasking
+
+masked
+    = current delivered value is masked
+```
+
+Do not collapse them into one boolean.
 
 ---
 
-## 7. Temporary local demo controls
+# 4. Sensitive data must be protected by the backend
 
-For the local experiment, keep at least these development choices in `localStorage`:
+Frontend-only masking is not security.
+
+If the user is not currently authorized to receive the true value, the backend should return a masked representation. Do not send the raw value and merely hide it in React.
+
+If unmasking exists, the likely flow is:
+
+```text
+masked value returned
+        ↓
+user requests unmask
+        ↓
+frontend calls authoritative endpoint
+        ↓
+backend rechecks authorization/policy
+        ↓
+optional reason/approval/AI/workflow/audit
+        ↓
+backend returns permitted value
+```
+
+The grid architecture consumes the result; it does not care how the backend reached the authorization decision.
+
+Sensitive-field filtering, sorting and other secondary capabilities also require explicit policy consideration.
+
+---
+
+# 5. Shared fields and entities across different business features/views are normal
+
+Two different feature/view definitions may contain some of the same logical fields.
+
+The same field may have different access/presentation in different views or for different users.
+
+Likewise, the same entity can appear in multiple features:
+
+```text
+Review + Loan
+AnotherFeature + Loan
+```
+
+and those Loan configurations can differ because the business purpose differs.
+
+Therefore:
+
+```text
+entity != complete configuration identity
+```
+
+---
+
+# 6. Backend should eventually own business policy and authorization
+
+The long-term scalable direction remains:
+
+```text
+Backend decides WHAT is permitted/configured
+                     ↓
+JSON-safe declarative metadata + authorized data
+                     ↓
+Frontend decides HOW supported metadata becomes UI behavior
+```
+
+Backend should eventually be authoritative for things such as:
+
+- accessible features/routes/views;
+- fields that may be returned;
+- field visibility;
+- read/edit authorization;
+- masking state/capability;
+- unmask eligibility;
+- row-level restrictions;
+- business action availability;
+- server-supported sort/filter behavior;
+- business-managed validation configuration;
+- lookups/options when business-managed;
+- authoritative data;
+- business operation authorization.
+
+A later clarification is important: **the frontend should not try to duplicate backend authorization enforcement**.
+
+If stale frontend UI attempts Save, bulk update, Approve/Reject, etc. after server-side permission changed, backend is responsible for rejecting the unauthorized operation.
+
+Frontend is primarily responsible for correct UX based on the access snapshot it received.
+
+---
+
+# 7. Backend must NOT remotely program React or AG Grid
+
+Backend configuration must remain JSON-safe.
+
+It must not contain:
+
+- React components;
+- JavaScript functions;
+- AG Grid callbacks;
+- executable expressions;
+- arbitrary script;
+- serialized executable `ColDef` functions.
+
+The backend should **not** directly return an executable AG Grid `ColDef[]`.
+
+The architecture should be:
+
+```text
+JSON-safe metadata
+        ↓
+frontend compiler/resolver
+        ↓
+real strongly typed AG Grid ColDef[] / feature inputs
+        ↓
+AgGridReact / feature components
+```
+
+---
+
+# 8. Metadata says WHAT; frontend code knows HOW
+
+Key principle:
+
+```text
+metadata/configuration describes WHAT behavior is requested
+frontend capability code knows HOW that behavior is implemented
+```
+
+Example:
+
+```json
+{
+  "renderer": {
+    "key": "statusBadge"
+  }
+}
+```
+
+Frontend owns:
+
+```ts
+rendererRegistry = {
+  statusBadge: StatusBadgeRenderer
+}
+```
+
+The same bounded registry/resolver pattern can apply where genuinely needed to:
+
+- renderers;
+- editors;
+- formatters;
+- parsers/normalizers;
+- non-trivial value accessors;
+- validators;
+- bounded behaviors/event handlers;
+- page/component keys;
+- datasource/service adapters;
+- save/mutation functions;
+- lookup/options providers;
+- specialized parameter resolvers;
+- translation/message resolution.
+
+Unknown required keys must fail in a controlled, diagnosable way.
+
+Registries contain plain frontend functions/components/providers. React hooks and TanStack Query hooks must **not** live inside registries.
+
+React/feature composition may use the plain service functions with TanStack Query for normal application queries/mutations where appropriate.
+
+AG Grid SSRM row/block loading remains owned by the SSRM datasource lifecycle.
+
+---
+
+# 9. Field identity, value paths and server-query identity must be explicit
+
+Do not infer a data field from the header name or arbitrary response keys.
+
+Distinguish conceptually:
+
+```text
+id
+field/value path
+server query key(s), when different
+```
+
+`id` is the stable UI/configuration identity used for Grid State, persistence, references, etc.
+
+`field` is the exact property/path used to read the row value.
+
+Nested API paths are normal:
+
+```text
+borrower.customer.name
+loan.pricing.interestRate
+a.b.c
+```
+
+Server sorting/filtering/search may use different keys.
+
+Illustrative example:
+
+```ts
+{
+  id: 'borrowerName',
+  field: 'loan.borrower.displayName',
+  sortKey: 'borrower_name',
+  filterKey: 'borrower_name'
+}
+```
+
+Exact names are not finalized.
+
+Desired rule:
+
+```text
+simple case
+    → clear documented default
+
+different backend contract
+    → optional explicit server key
+
+complex request transformation
+    → typed datasource/adapter mapper
+```
+
+Do not make developers repeat identical values when a safe default exists, but every default/fallback must be documented clearly.
+
+---
+
+# 10. Semantic field identity may also be needed
+
+A field may require a stable business-semantic identity beyond presentation.
+
+Conceptually:
+
+```json
+{
+  "id": "status",
+  "field": "status",
+  "semanticKey": "status"
+}
+```
+
+Very important:
+
+```text
+renderer key != business semantic key
+```
+
+Do not infer business meaning from renderer names.
+
+---
+
+# 11. Renderers, editors, formatters and value conversion
+
+The complete design must consider these from the beginning.
+
+A field may conceptually provide:
+
+```json
+{
+  "renderer": {
+    "key": "statusBadge",
+    "params": {}
+  },
+  "editor": {
+    "key": "statusSelect",
+    "params": {}
+  },
+  "formatter": {
+    "key": "currency",
+    "params": {}
+  }
+}
+```
+
+Params remain JSON-safe.
+
+Real cases require thinking about:
+
+```text
+API/raw value
+displayed value
+editor value
+local edited value
+save payload value
+```
+
+Those may differ.
+
+Example:
+
+```text
+API:      0.075
+display:  7.50%
+editor:   7.5
+save:     0.075
+```
+
+or a lookup:
+
+```text
+API:      "APR"
+display:  "Approved"
+editor:   "Approved"
+save:     "APR"
+```
+
+Therefore the schema review must consider formatting, parsing, normalization, lookup mapping, nested reads/writes and save-request mapping.
+
+Executable transformations stay in frontend registries/adapters.
+
+---
+
+# 12. Dynamic renderer/editor params
+
+Many renderer/editor parameters can simply be JSON values.
+
+AG Grid already supplies runtime params such as value, data, node, api, context, etc.
+
+Preferred approach:
+
+```text
+config supplies JSON-safe extra params
++
+component reads normal AG Grid params/data
+```
+
+Do not immediately make every parameter a JavaScript callback.
+
+Only when genuinely needed should a bounded `paramsResolverKey`-like concept map to an allowlisted frontend function.
+
+---
+
+# 13. Event handlers / behaviors are a separate problem
+
+Business behavior may respond to things such as value changed, cell clicked, selection changed or domain events.
+
+Metadata must not send executable handlers.
+
+A possible direction is a bounded behavior key resolved frontend-side, but the **exact behavior/event schema is not finalized** and should be driven by real use cases.
+
+Settled principle:
+
+```text
+renderer/editor key != business behavior key
+```
+
+Presentation and semantics must not be secretly coupled.
+
+---
+
+# 14. Dependencies must be deliberate, but do not build a generic runtime dependency engine upfront
+
+A user may not receive a field at all.
+
+The preferred first approach is that the **resolved effective configuration is already internally consistent**.
+
+Example:
+
+```text
+Profile B
+
+Status column
+    → absent
+
+Approve action that requires Status
+    → absent
+```
+
+Then no runtime dependency engine is required.
+
+If real dependencies later become difficult to maintain, a bounded declaration such as:
+
+```json
+{
+  "requires": ["currencyCode"]
+}
+```
+
+may be introduced for config validation.
+
+That would catch invalid configuration, not create a giant runtime framework.
+
+---
+
+# 15. Hidden, read-only and editable are not the same
+
+Do not collapse everything into visible/not visible.
+
+For a field:
+
+```text
+not authorized
+    → absent/unavailable
+
+authorized read-only
+    → visible but not editable
+
+authorized editable
+    → visible and editable
+```
+
+For rows, existing generic interaction concepts such as enabled / selectionDisabled / readOnly remain important.
+
+---
+
+# 16. Row-level and field-level authorization may coexist
+
+A future backend may resolve:
+
+```text
+field editable generally
+but this row is read-only
+```
+
+or:
+
+```text
+action available only for some rows
+```
+
+The exact wire shape is not finalized.
+
+The architecture should leave room for resolved runtime row capabilities without rebuilding the entire table definition per row.
+
+This is different from live role/config hot-swapping. Configuration/access snapshot is expected to stay stable for the page session.
+
+---
+
+# 17. Actions are part of the feature architecture, but keep them bounded
+
+A configurable feature page may eventually need actions such as Approve, Reject, Change Status, Reassign, Export, Unmask, etc.
+
+The same rule applies:
+
+```text
+config may identify supported action declaratively
+frontend owns executable UI/handler
+backend authorizes execution
+```
+
+Actions belong to the feature/page, not a generic grid engine.
+
+Do not prematurely build one giant generic action system.
+
+Normal application mutation lifecycle may use TanStack Query where appropriate.
+
+Optional success/error feedback can use translation/message keys, and an operation may intentionally show no success message.
+
+---
+
+# 18. Validation is independent from configurable metadata
+
+Validation is required even if configurable tables are never implemented.
+
+Therefore:
+
+```text
+validation capability MUST NOT depend on metadata runtime architecture
+```
+
+Static fields can use validation directly.
+
+Later metadata simply becomes another way to produce inputs to the same validation engine.
+
+---
+
+# 19. Validation rule direction
+
+Use stable known rule keys with JSON-safe params rather than arbitrary executable rules.
+
+Conceptually:
+
+```json
+{
+  "validation": {
+    "rules": [
+      { "key": "required" },
+      {
+        "key": "numberRange",
+        "params": {
+          "min": 0,
+          "max": 100000
+        }
+      }
+    ]
+  }
+}
+```
+
+The exact final representation remains open.
+
+Settled principles:
+
+- frontend owns executable validator functions;
+- config/backend sends known keys + JSON-safe params/messages;
+- backend remains authoritative;
+- client validation improves UX but is not the security/business authority.
+
+---
+
+# 20. Validation UX requirements
+
+Invalid LOCAL edits should generally:
+
+```text
+remain visible
+remain dirty
+show field error
+block relevant Save
+allow correction or Discard
+```
+
+The invalid value should not silently snap back merely because it fails validation.
+
+Backend structured field errors should map into the same validation state where practical.
+
+---
+
+# 21. Validation and edit conflicts are separate
+
+Validation asks:
+
+```text
+Is LOCAL acceptable?
+```
+
+Conflict asks:
+
+```text
+Did REMOTE diverge from BASE while LOCAL exists?
+```
+
+A field can be invalid only, conflicted only, both, or neither.
+
+Do not merge validation and conflict state into one model.
+
+---
+
+# 22. Existing conflict algorithm remains frontend code
+
+Current reconciliation semantics remain frontend executable behavior:
+
+```text
+REMOTE == BASE
+→ keep LOCAL dirty
+
+REMOTE == LOCAL
+→ automatically clean
+
+REMOTE differs from BASE and LOCAL
+→ conflict
+→ keep LOCAL visible
+→ remember REMOTE
+```
+
+Resolution remains:
+
+```text
+Use server
+→ REMOTE wins
+→ local draft clears
+
+Keep my edit
+→ LOCAL remains dirty
+→ REMOTE becomes new BASE
+→ conflict clears
+```
+
+Metadata must not encode this algorithm in JSON.
+
+---
+
+# 23. Full configuration surface must be thought through before implementation
+
+Do not build a tiny schema and repeatedly defer everything else.
+
+Before building the configurable runtime, intentionally review the **complete realistic feature/grid surface**.
+
+Where genuinely applicable, consider:
+
+### Identity / binding
+
+- feature/view ID;
+- entity/context ID;
+- stable column ID;
+- nested response-data field/value path;
+- semantic key;
+- required row identity field/path or bounded accessor;
+- data type;
+- computed/display-only values.
+
+### Presentation / translation
+
+- label/header translation key;
+- description/help translation key;
+- tooltip;
+- width/min/max width;
+- default visibility/order/pinning;
+- initial Grid State defaults;
+- formatter + params;
+- renderer + params.
+
+### Editing / values
+
+- read-only/editable semantics;
+- editor + params;
+- parsing/normalization;
+- lookup code/display mapping;
+- nested write handling;
+- save-payload mapping.
+
+### Validation
+
+- rules;
+- params;
+- message/help keys;
+- backend field-error mapping where practical.
+
+### Data/query support
+
+- datasource/adapter key;
+- sort/filter/search capability;
+- optional server sort/filter/search keys;
+- complex request mapping in adapter;
+- response mapping;
+- mutation/save mapping.
+
+### Security/access
+
+- field visibility;
+- read/edit authorization;
+- sensitivity/masking capability;
+- runtime masked state;
+- unmask capability;
+- row runtime capabilities;
+- filter/search/sort/copy/export implications for restricted values.
+
+### Feature/page behavior
+
+- bounded page sections/capabilities where genuinely variable;
+- page/grid actions;
+- optional success/error message keys;
+- behavior/event bindings only when real use cases require them;
+- dependencies only when real dependencies justify them.
+
+### State/lifecycle compatibility
+
+- Grid State identity;
+- base/entity initial defaults;
+- user preference precedence;
+- authorization reconciliation;
+- schema version;
+- definition version;
+- config validation/error handling.
+
+For each candidate decide deliberately whether it is:
+
+```text
+business/product configuration
+resolved access/runtime capability
+user preference
+frontend registry/adapter/mechanic
+```
+
+This does **not** mean every AG Grid option becomes JSON-configurable.
+
+---
+
+# 24. What must stay frontend-owned
+
+Frontend continues owning executable mechanics such as:
+
+- React components/lifecycle;
+- AG Grid lifecycle and GridApi interactions;
+- renderer/editor implementations;
+- formatter/parser/normalizer functions;
+- non-trivial value accessors;
+- validators;
+- event-handler functions;
+- selection algorithms;
+- Infinite/SSRM datasource lifecycle;
+- request freshness/cancellation/retry/teardown;
+- tracked editing state;
+- BASE/LOCAL/REMOTE reconciliation;
+- conflict resolution;
+- Grid State mechanics;
+- theme;
+- generic error presentation mechanics;
+- translation resolution;
+- datasource/request adapters;
+- save/mutation service functions;
+- TanStack Query hooks/orchestration for normal app queries/mutations where appropriate;
+- row-model-specific refresh mechanics.
+
+---
+
+# 25. Do not create a giant dynamic grid abstraction
+
+Avoid a giant `useDynamicGridEverything(metadata)` or universal wrapper that drives loading, selection, editing, validation, actions, rendering, routing, authorization and lifecycle.
+
+Safer model:
+
+```text
+metadata
+   ↓
+compiler / resolvers / registries
+   ↓
+small strongly typed inputs
+   ↓
+existing focused mechanics
+```
+
+The compiler/resolver layer is an isolation boundary between declarative configuration and proven frontend runtime code.
+
+---
+
+# 26. Important conclusion about existing reusable logic
+
+Many lower-level mechanics are already reasonably generic, including concepts such as tracked editing, row IDs, BASE/LOCAL/REMOTE reconciliation, request freshness, selection semantics, datasource lifecycle helpers, Grid State and validation mechanics.
+
+Transaction-specific code is more concentrated in feature composition: columns, editable field list, request mapping, actions, renderer/editor wiring, persistence wiring and APIs.
+
+Therefore configurable architecture should primarily replace/configure **feature-composition inputs**, not rewrite underlying algorithms.
+
+A later clarification is important: reuse is **not limited to the feature folder**.
+
+If a mechanism is genuinely domain-neutral and reusable across features/row models, it may belong in the shared layer.
+
+Rule:
+
+```text
+business/entity-specific composition
+    → feature level
+
+genuinely reusable domain-neutral mechanic
+    → shared level
+
+uncertain/experimental abstraction
+    → keep local until proven
+```
+
+---
+
+# 27. Do NOT refactor the existing three grids yet
+
+Even if existing shared functions look generic, do not immediately restructure `/client`, `/infinite` and `/ssrm` around the new metadata architecture.
+
+The configurable architecture is still unproven.
+
+Keep the experiment isolated.
+
+---
+
+# 28. Build a new isolated configurable SSRM feature
+
+The safer direction is:
+
+```text
+existing Client Transaction grid
+    → untouched
+
+existing Infinite Transaction grid
+    → untouched
+
+existing SSRM Transaction grid
+    → untouched
+
+NEW configurable business feature/page
+    → isolated SSRM experiment
+```
+
+Use a neutral feature name such as `Review`.
+
+Inside that feature, support at least two entity contexts such as Loan and Finance.
+
+Do not try to prove Client + Infinite + SSRM simultaneously.
+
+---
+
+# 29. Start the new feature from proven SSRM behavior
+
+The new configurable feature may start from a copy/parallel composition of the current SSRM feature so existing UI/behavior remains a concrete reference.
+
+Isolation and behavioral parity are more important than immediate deduplication.
+
+Reuse a proven shared/domain-neutral mechanism when clearly safe, but do not modify mature SSRM behavior merely to shorten the experiment.
+
+---
+
+# 30. Treat shared mechanics carefully during the experiment
+
+Do not casually modify proven shared hooks/mechanics merely to make the experimental implementation shorter.
+
+Especially protect SSRM lifecycle, selection, tracked editing, conflicts, request freshness, Save/Discard behavior and teardown.
+
+At the same time, do not prohibit shared reuse where the contract is already clearly domain-neutral and appropriate.
+
+---
+
+# 31. What the configurable SSRM feature is meant to prove
+
+The new feature should answer questions such as:
+
+- Can one JSON-safe feature/entity definition safely create real ColDefs/feature inputs?
+- Can the same feature switch Loan/Finance-like entity definitions without entity conditionals inside low-level grid mechanics?
+- Are renderer/editor/formatter registries sufficient?
+- Are params structured correctly?
+- Are nested `a.b.c` paths supported cleanly?
+- How are display/editor/save value conversions handled?
+- How should server sort/filter/search mapping work?
+- How should bounded behaviors/handlers be represented if a real use case needs them?
+- How does resolved authorization alter columns/capabilities?
+- Can masking remain backend-authoritative?
+- Are restricted secondary capabilities safe?
+- Can validation integrate without depending on metadata?
+- Can existing edit/conflict mechanics consume compiled inputs?
+- Can feature/page actions remain bounded?
+- Can initial Grid State defaults combine with user preferences safely?
+- Can old user preferences reconcile with current authorization/version?
+- Can translations resolve page labels, grid headers, help and errors?
+- Can entity-specific message overrides fall back to feature defaults?
+- Where should datasource/request/save mapping live?
+- Can config errors be caught in tests and handled safely at runtime?
+- Which pieces are genuinely shared, feature-specific or row-model-specific?
+
+---
+
+# 32. Do not replace the current grids automatically after the experiment
+
+Success does not mean immediately rewriting Client, Infinite or SSRM Transaction grids.
+
+After the experiment, evaluate whether the new boundary is actually cleaner, native-first, understandable and regression-safe.
+
+Only then consider selective migration.
+
+---
+
+# 33. There is still no universal row-model implementation
+
+Client, Infinite and SSRM remain different row models.
+
+The application/frontend chooses the row model for its product surface.
+
+Backend metadata should not dynamically decide Client vs Infinite vs SSRM per user/entity.
+
+For the current experiment, frontend chooses SSRM.
+
+If configurable Client or Infinite versions are needed later, build row-model-specific compositions on the proven metadata concepts.
+
+---
+
+# 34. Possible future shape after the experiment
+
+Conceptually:
+
+```text
+Feature/entity metadata
+        ↓
+compiler / resolvers
+        ↓
+strongly typed config
+        ↓
+Configured SSRM root
+        ↓
+existing/proven SSRM mechanics
+```
+
+Later, only if genuinely needed:
+
+```text
+metadata
+   ↓
+shared compiler concepts
+  /       |       \
+Client  Infinite  SSRM
+ root     root     root
+  ↓        ↓        ↓
+native   native   native
+```
+
+This still does not imply one universal `DynamicGrid`.
+
+---
+
+# 35. Application/view manifest and route access idea
+
+A future backend could return a resolved application/view manifest.
+
+Conceptually:
+
+```json
+{
+  "schemaVersion": 1,
+  "views": [
+    {
+      "id": "some.business.view",
+      "labelKey": "someView.title",
+      "route": "/some-view",
+      "componentKey": "configurableFeaturePage"
+    }
+  ]
+}
+```
+
+Frontend owns the executable page/component registry.
+
+Feature-level access is naturally handled by routing.
+
+Current user/session information may initially be fetched once on application load.
+
+If the app later refetches user/session access, routing can check whether the current feature is still allowed and redirect if necessary.
+
+Do not add continuous polling/live removal of feature internals merely because a future manifest may exist.
+
+---
+
+# 36. Datasource and mutation/service configuration
+
+Avoid arbitrary backend-provided URLs as the first abstraction.
+
+Different entities may have different paging, sort/filter/search mapping, response shapes, transformations and save payloads.
+
+Prefer a known frontend adapter key.
+
+Conceptually:
+
+```json
+{
+  "dataSourceKey": "reviewLoan"
+}
+```
+
+mapped to plain typed frontend service functions:
+
+```ts
+const adapterRegistry = {
+  reviewLoan: {
+    loadRows: loadLoanRows,
+    saveRow: saveLoanRow,
+    saveRows: saveLoanRows
+  },
+  reviewFinance: {
+    loadRows: loadFinanceRows,
+    saveRow: saveFinanceRow,
+    saveRows: saveFinanceRows
+  }
+}
+```
+
+These are plain async functions, not React hooks and not `useMutation()` instances.
+
+Normal application queries/mutations may use these functions through TanStack Query in the React/feature layer where appropriate.
+
+AG Grid SSRM row/block loading stays datasource-owned.
+
+Column-to-server query mapping must be deliberate.
+
+Simple case:
+
+```text
+field = amount
+sort/filter key defaults clearly to amount
+```
+
+Different backend contract:
+
+```text
+field = loan.borrower.displayName
+sortKey = borrower_name
+filterKey = borrower_name
+```
+
+Complex request transformation remains in the typed entity adapter rather than turning column config into an API implementation.
+
+---
+
+# 37. Configuration versioning is important
+
+Conceptually include:
+
+```json
+{
+  "schemaVersion": 1,
+  "definitionVersion": 17
+}
+```
+
+Frontend should detect unsupported schemas or required registry keys.
+
+Do not silently render incorrect behavior when configuration is incompatible.
+
+---
+
+# 38. Configuration/access caching, lifetime and invalidation
+
+Feature/entity definitions and authorization metadata are application/session/page configuration, separate from SSRM row data.
+
+They should not be fetched for every SSRM data block.
+
+Later discussion deliberately simplified runtime behavior:
+
+- config and role/access changes are expected to be infrequent;
+- current-user/access may initially be fetched once on app load;
+- when a feature is entered, resolve feature/entity config + user access;
+- keep the resulting effective configuration stable for that page session;
+- do not hot-swap columns/actions while the user is editing.
+
+If a future app refetches user/session access, feature-level changes can be handled by routing and inside-feature changes can take effect on reload/re-entry.
+
+Do not build sophisticated live dirty-edit reconciliation unless a future product requirement explicitly asks for it.
+
+Backend remains authoritative for stale-UI operations.
+
+---
+
+# 39. Grid State defaults, user preferences and current authorization
+
+A feature/entity definition may define initial presentation defaults such as:
+
+- column order;
+- widths;
+- pinning;
+- visibility;
+- default sort;
+- other genuine product defaults.
+
+If the user has no saved preferences, use those defaults.
+
+If the user has saved preferences, user presentation preferences override applicable defaults.
+
+But current authorization/configuration always wins.
+
+A saved preference must never resurrect:
+
+- an unauthorized field;
+- a field removed from the current definition;
+- a capability no longer allowed.
+
+Reconciliation should be sensible/property-by-property rather than “saved state exists, ignore all new defaults”.
+
+If a new definition version adds a column, surviving user preferences may remain while the new column receives its configured default.
+
+---
+
+# 40. Local configuration now versus future backend configuration
+
+During development, configuration can be local JSON-safe frontend data behind provider interfaces.
+
+The local experiment should keep at least these temporary choices in `localStorage`:
 
 ```text
 current mock profile/role
-current entity/data type
+current entity/data context
 ```
 
 Examples:
@@ -199,305 +1241,275 @@ profileA / profileB
 Loan / Finance
 ```
 
-Switching them and refreshing/re-entering the feature should visibly prove different effective configurations.
+Changing them and refreshing/re-entering the feature should visibly demonstrate different effective configurations.
 
-The low-level grid must not contain scattered checks such as:
+The grid itself must not contain scattered `if role === ...` / `if entity === ...` logic.
 
-```ts
-if (role === 'profileA') { ... }
-if (entity === 'loan') { ... }
-```
-
-Role/profile and entity are resolved at the feature/config boundary.
+Later the provider may call backend APIs without redesigning the compiler/grid runtime.
 
 ---
 
-## 8. Configuration layers
+# 41. Backend team should not be forced to implement everything immediately
 
-Keep these separate.
+Frontend can establish provider/contract boundaries first.
 
-### 8.1 Feature + entity base definition
+Backend can later supply resolved access, table definitions, validation metadata, lookup sources, etc.
 
-Says what a view can support.
-
-Example:
-
-```text
-Review + Loan
-```
-
-may support certain columns, editing, renderers, page actions and initial state.
-
-### 8.2 Current-user access projection
-
-Says what this user actually receives/can use.
-
-Example:
-
-```text
-base: Status supports editing
-user: Status is read-only
-effective: Status visible + read-only
-```
-
-or:
-
-```text
-base: Sensitive Reference supported
-user: no access
-effective: field absent
-```
-
-### 8.3 User presentation preferences
-
-Saved Grid State/preferences may override **presentation defaults**, but never authorization/capability.
-
-### 8.4 Runtime row/value state
-
-Keep concepts such as these separate:
-
-```text
-maskable
-canRequestUnmask
-masked
-```
-
-A base definition can say a field supports masking, the access projection can say whether unmask is allowed, and a row can contain the current masked representation.
+Temporary local logic must stay behind those boundaries and not leak into grid internals.
 
 ---
 
-## 9. Effective resolution flow
+# 42. Native AG Grid remains the first choice
 
-Conceptually:
+For every behavior:
 
 ```text
-Feature + Entity Base Config
-             +
-Resolved Current-User Access
-             +
-Valid Saved User Preferences
-             ↓
-      validate / reconcile
-             ↓
-frontend registries / mappers / adapters
-             ↓
- strongly typed effective inputs
-             ↓
- configurable SSRM feature
-             ↓
- existing/proven SSRM mechanics
+AG Grid native capability first
+        ↓
+actual row-model capability
+        ↓
+Enterprise/Community capability
+        ↓
+custom application behavior only for a real semantic gap
 ```
 
-Low-level grid mechanics should not ask whether they are Loan, Finance or profileA. They receive resolved normal inputs.
+Metadata is not an excuse to reimplement AG Grid behavior.
 
 ---
 
-## 10. Readability and comments are hard requirements
+# 43. Configuration must not become “every AG Grid option in JSON”
 
-The configuration and non-obvious architecture code must be extremely easy for another developer to understand.
+Only product/business-variable aspects should become metadata candidates.
 
-Bad:
+React lifecycle, datasource callbacks, GridApi, request sequencing, editing state machine, selection implementation, retry/destroy behavior, etc. stay frontend code.
+
+---
+
+# 44. Documentation and code readability are part of the architecture
+
+This is a hard requirement.
+
+Configuration and non-obvious architecture code must be unusually easy for another developer to understand.
+
+Do not write vague comments such as:
 
 ```ts
 // renderer config
-renderer: { ... }
 ```
 
-Better:
+Prefer comments/JSDoc that explain, where useful:
 
-```ts
-// Displays the business status using the registered status-pill renderer.
-// The config stores only the registry key and JSON-safe params.
-// The compiler resolves the key to the actual React component.
-// Unknown keys are configuration errors and must fail validation.
-renderer: {
-  key: 'statusPill',
-  params: { ... }
-}
-```
-
-Comments/JSDoc should explain, where useful:
-
-- what a property means;
+- what the property means;
 - why it exists;
 - who consumes it;
-- what happens when it is omitted;
+- what happens when omitted;
 - what default/fallback is used;
 - when an entity may override that default;
-- frontend vs config/backend ownership;
-- important lifecycle/precedence rules.
+- what is frontend-owned vs config/backend-owned;
+- important precedence/lifecycle rules.
 
-Defaults must never be "magic". If `sortKey`, a message key, renderer params, state defaults or another optional setting can fall back to something else, that must be obvious from types/comments/docs.
+Defaults must never be “magic”.
 
-A maintained architecture/workflow document should accompany the implementation.
+If `sortKey`, a translation/message key, state default, renderer param or another optional setting falls back to something else, that behavior should be obvious from type names/comments/docs.
 
----
+Maintain architecture/workflow documentation with readable diagrams when they materially help.
 
-# 11. Configuration surface to review before freezing the schema
-
-This does **not** mean exposing every AG Grid option as JSON. For each candidate, decide whether it belongs to business configuration, resolved authorization, user preference, frontend mechanics/registries or runtime row state.
-
----
-
-## 11.1 Stable column ID vs value field/path
-
-Do not make one property perform every responsibility.
-
-Conceptually:
+Example flow:
 
 ```text
-column id
-    → stable config/Grid-State identity
-
-field / value path
-    → where the row value comes from
+Feature + Entity Base Definition
+             +
+Resolved User Access
+             +
+Valid User Preferences
+             ↓
+validate / resolve / compile
+             ↓
+registries + adapters + translations
+             ↓
+strongly typed feature/grid inputs
+             ↓
+SSRM feature page
 ```
 
-Example:
-
-```ts
-{
-  id: 'borrowerName',
-  field: 'loan.borrower.name'
-}
-```
-
-`id` and `field` are intentionally distinct.
+The goal is that a developer can configure a new entity without reverse-engineering resolver internals.
 
 ---
 
-## 11.2 Nested API values are a normal case
+# 45. Updated implementation sequence
 
-Real API data can be nested:
-
-```json
-{
-  "loan": {
-    "borrower": {
-      "name": "Alice"
-    }
-  }
-}
-```
-
-A config may therefore use:
-
-```ts
-field: 'loan.borrower.name'
-```
-
-Nested `a.b.c` paths are a real requirement, not an edge case.
-
-For values that cannot be represented by a simple path, use a bounded frontend accessor/getter registry rather than arbitrary JavaScript in metadata.
-
----
-
-## 11.3 Nested editing/write path
-
-Reading a nested value is only half the requirement.
-
-If it is editable, consider how the edited value is written back to local edit state and mapped into the save request.
-
-Example:
+Current direction:
 
 ```text
-API row:     loan.pricing.interestRate = 0.075
-display:     7.50%
-editor:      7.5
-save value:  0.075
+1. Validation remains independent and usable by static grids.
+
+2. Start the real configurable work from latest main on a NEW branch.
+
+3. PR #40 was started before requirements were finalized.
+   Inspect it only as reference; do not blindly continue its design.
+
+4. Build one NEW isolated business feature/page using SSRM.
+
+5. Keep existing Client/Infinite/SSRM Transaction grids untouched.
+
+6. Use at least two entity contexts (e.g. Loan and Finance)
+   and two local mock access profiles.
+
+7. Python provides representative SSRM data/API contracts.
+
+8. Before coding runtime/schema, review/propose the complete config surface.
+
+9. Prove compiler/resolver/registry/adapter/translation boundaries
+   without creating one giant dynamic grid abstraction.
+
+10. Reuse proven domain-neutral shared mechanics where clearly safe.
+    Keep uncertain/business-specific experimentation local until proven.
+
+11. Add exceptionally clear comments and architecture/workflow docs.
+
+12. Only after SSRM is genuinely proven, separately evaluate
+    configurable Client and Infinite versions.
+
+13. Success does not automatically authorize migration of existing grids.
+
+14. Never merge without explicit user approval.
 ```
-
-The architecture must leave room for:
-
-- nested read path;
-- nested local write/update;
-- parsing;
-- normalization;
-- lookup conversion;
-- save-request mapping.
-
-Do not assume `field` alone solves every editable value.
 
 ---
 
-## 11.4 Value/data type
+# 46. Important non-goals
 
-Consider logical data type where useful, for example:
+Do not:
 
-```text
-string
-number
-date
-boolean
-enum
-currency
-percentage
-```
-
-Do not expose AG Grid internals as business metadata unless there is a real need.
-
----
-
-## 11.5 Server sort/filter/search mapping
-
-The value path used to read a row may differ from the key expected by the backend query contract.
-
-Example:
-
-```ts
-{
-  id: 'borrowerName',
-  field: 'loan.borrower.displayName',
-
-  // Optional only when backend sort naming differs from the value path.
-  sortKey: 'borrower_name',
-
-  // Optional only when backend filter naming differs.
-  filterKey: 'borrower_name'
-}
-```
-
-Possible schema candidates:
-
-- `sortKey`;
-- `filterKey`;
-- `searchKey`;
-- server aliases.
-
-Exact property names are **not finalized**.
-
-The intended rule is:
-
-```text
-simple case
-    → use a clearly documented default
-
-different backend contract
-    → allow an explicit override
-
-complex transformation
-    → keep it in the typed entity datasource/adapter mapper
-```
-
-For a simple field, do not force repetition such as:
-
-```text
-field = amount
-sortKey = amount
-filterKey = amount
-```
-
-if a clear documented default can derive it.
-
-Do not turn each column config into an API implementation.
+- rewrite all three row models at once;
+- create a universal `AgGridReact` wrapper;
+- create a giant `useDynamicGrid()` / `useGrid()` hook;
+- make shared editing understand the whole metadata object;
+- make shared selection understand table metadata;
+- make backend send React components/functions;
+- deserialize executable JavaScript;
+- send arbitrary executable backend `ColDef`;
+- infer business semantics from renderer names;
+- assume every user receives every field;
+- expose raw sensitive values and merely mask them visually;
+- treat hidden and read-only as equivalent;
+- blindly execute logic depending on a field removed by effective access;
+- build a generic runtime dependency engine without a real need;
+- build a giant configurable action framework;
+- build a generic page builder;
+- make backend choose Client/Infinite/SSRM dynamically;
+- wrap every SSRM block load in TanStack Query;
+- put React/TanStack hooks inside registries/adapters;
+- continuously hot-swap role/config columns while a user is editing;
+- duplicate backend authorization enforcement in frontend;
+- make every AG Grid option configurable;
+- hide defaults/fallbacks inside undocumented resolver behavior;
+- refactor proven grids merely to reduce temporary duplication;
+- migrate existing grids before the new architecture proves itself;
+- treat PR #40 as finalized architecture merely because code exists there.
 
 ---
 
-## 11.6 Translation / UI text keys
+# 47. Core architecture in one diagram
 
-Use translation keys rather than scattering final English strings through config.
+```text
+                 BUSINESS FEATURE / PAGE
 
-The translation resource should be organized around the **feature/page**, because the page owns more than the grid.
+        Feature + Entity Base Definition
+               (e.g. Review + Loan)
+                        +
+              Resolved User Access
+                        +
+              Authorized Runtime Data
+                        +
+             User Presentation State
+                        │
+                        ▼
+                  JSON-safe inputs
+                        │
+                        ▼
+        FRONTEND VALIDATION / RESOLUTION
+                        │
+        ┌───────────────┼────────────────┐
+        ▼               ▼                ▼
+     ColDefs       page/actions      data adapters
+ renderers/editors translations      query/mutations
+ formatters/parsers bounded behavior request mapping
+        │               │                │
+        └───────────────┼────────────────┘
+                        ▼
+             proven frontend mechanics
+                        ▼
+                  AG Grid / SSRM
+```
+
+For the initial experiment, runtime row model underneath this diagram = SSRM only.
+
+---
+
+# 48. Most important principle to preserve
+
+The project must not lose its existing strength merely to become “dynamic”.
+
+The configurable system should remove **domain hardcoding from composition**, while preserving **strong frontend ownership of executable mechanics**.
+
+In short:
+
+```text
+Make configuration dynamic.
+Do NOT make the grid engine vague.
+```
+
+and:
+
+```text
+Prove the new architecture beside the current architecture first.
+Do NOT rewrite proven behavior while still discovering the abstraction.
+```
+
+---
+
+# 49. Nested read paths, editable nested values and save mapping are real requirements
+
+Nested API values are normal, not edge cases.
+
+Config must support paths such as:
+
+```text
+a.b.c
+borrower.customer.name
+loan.pricing.interestRate
+```
+
+For a read-only field, a path may be enough.
+
+For an editable nested value, consider the whole flow:
+
+```text
+read nested value
+    ↓
+format/display
+    ↓
+native/custom editor
+    ↓
+parse/normalize edited value
+    ↓
+update local edit model
+    ↓
+map into save payload
+```
+
+Do not assume AG Grid `field` alone solves every write/save contract.
+
+Prefer simple field/path behavior where possible; use bounded frontend accessors/parsers/normalizers/save mappers only when the real data shape requires them.
+
+---
+
+# 50. Translation resources are feature/page-oriented
+
+Use translation keys rather than scattering final English strings throughout feature/entity/grid configuration.
+
+The translation resource should be rooted around the **feature/page**, because the page owns more than the grid.
 
 Conceptually:
 
@@ -531,7 +1543,7 @@ Conceptually:
 }
 ```
 
-Grid/feature config references keys:
+The config can store keys:
 
 ```ts
 {
@@ -542,308 +1554,165 @@ Grid/feature config references keys:
 }
 ```
 
-Resolution produces the final normal UI/AG Grid string.
+During resolution/compilation, those keys become the normal final strings passed to the page/grid.
 
-The same feature translation resource can cover:
-
-- page title;
-- section labels;
-- button/action labels;
-- grid headers;
-- help text;
-- validation messages;
-- empty-state text;
-- loading/retry/error text;
-- save/action success/error feedback.
+The same translation system can serve page titles, sections, action labels, grid headers, help, validation messages, empty/loading/retry/error text and operation feedback.
 
 The exact i18n library/file layout should follow repository conventions when implementation begins.
 
 ---
 
-## 11.7 Translation defaults and entity overrides
+# 51. Defaults and entity-specific translation/message overrides
 
-Common text should have sensible defaults, while an entity can override where product wording genuinely differs.
+Common UI/error text should have sensible defaults.
 
 Example:
 
 ```text
-Review default save failure
-    → "Unable to save your changes."
+feature default:
+"Unable to save your changes."
+```
 
-Review + Loan override
-    → "Unable to save the loan changes."
+An entity may override when genuinely needed:
+
+```text
+Review + Loan:
+"Unable to save the loan changes."
 ```
 
 Do not duplicate every message in every entity config.
 
-Use a small, obvious fallback model, conceptually:
+Use a small, documented fallback chain, conceptually:
 
 ```text
-entity-specific message key, when configured
+entity-specific message key, if configured
         ↓ otherwise
 feature/page default message key
         ↓ otherwise
-shared safe generic fallback
+shared safe generic translated fallback
 ```
 
-A developer must be able to see clearly:
-
-- which message is optional;
-- which default applies when omitted;
-- where the key is resolved;
-- whether the message appears automatically for that operation.
+A developer configuring a new entity must understand which key is optional, what happens when omitted, which default applies and whether an entity can override it.
 
 ---
 
-## 11.8 Optional query/mutation feedback
+# 52. Optional API/query/mutation feedback messages
 
-Not every query or mutation needs a toast/message.
+For normal operations such as Save, Approve or Reject, executable API/mutation behavior remains frontend code.
 
-For normal application operations such as Save, Approve or Reject, configuration may optionally describe feedback while the actual API/mutation stays in executable frontend code.
+Configuration may optionally provide translation/message keys for user feedback.
 
-Conceptual example:
+Illustrative only:
 
 ```ts
 {
-  actions: {
-    save: {
-      adapterActionKey: 'saveRows',
-      feedback: {
-        successMessageKey: 'messages.loanSaveSucceeded',
-        errorMessageKey: 'messages.loanSaveFailed'
-      }
+  save: {
+    actionKey: 'saveRows',
+    feedback: {
+      successMessageKey: 'messages.loanSaveSucceeded',
+      errorMessageKey: 'messages.loanSaveFailed'
     }
   }
 }
 ```
 
-An entity can omit those overrides and inherit feature defaults.
-
-Ownership remains:
+Rules:
 
 ```text
-API/service function
+plain API/service function
     → frontend adapter/registry
 
-TanStack query/mutation lifecycle, where appropriate
-    → frontend feature composition
+TanStack Query lifecycle, where appropriate
+    → React/feature composition
 
 message keys / optional feedback preference
     → declarative config
 
-final localized string
+localized final text
     → translation resolver
 ```
 
-Success may intentionally show no message.
+A successful operation may intentionally show **no message**.
 
-Do not display arbitrary raw backend exception text by default. Backend error codes/details can be mapped to known safe frontend messages where required.
-
-Do not create a giant generic notification framework merely because some operations can display messages.
+Do not show arbitrary raw backend exception text to the user by default. Map known backend error cases to known frontend message keys when product requirements need that behavior.
 
 ---
 
-## 11.9 Renderer
+# 53. Restricted or masked fields must not leak through secondary capabilities
 
-Config identifies a registered renderer key and JSON-safe params, never a React component/function.
+Masking is wider than the visible renderer.
 
-Example:
+If the user is not authorized to receive the underlying value, consider removing/disabling capabilities that can reveal or infer it, including:
 
-```ts
-{
-  renderer: {
-    key: 'statusPill',
-    params: {
-      compact: true
-    }
-  }
-}
-```
+- filter;
+- search;
+- copy/clipboard;
+- export;
+- tooltip;
+- sort;
+- aggregation;
+- other derived operations.
 
-Frontend registry:
+Start restrictive.
+
+Only enable such capabilities when the real product/security contract says they are safe.
+
+If unmask exists, do not persist unmasked values into localStorage, saved Grid State or long-lived user preferences.
+
+A fresh page/session should receive whatever representation backend currently authorizes.
+
+---
+
+# 54. Configuration validation and error ownership
+
+Validate configuration before rendering.
+
+Examples of configuration problems:
+
+- duplicate column IDs;
+- missing required row identity;
+- unknown renderer/editor/formatter/parser key;
+- unsupported schema version;
+- invalid required properties;
+- inconsistent required configuration.
+
+Because configs are frontend-owned initially, automated tests should catch these during development/CI.
+
+Still keep a small controlled page-level failure:
 
 ```text
-statusPill
-    → actual React/AG Grid renderer
+resolve config
+    ↓
+validate
+    ↓
+valid
+    → render feature
+
+invalid
+    → controlled "Unable to load this view" state
 ```
 
-The component can still receive normal AG Grid renderer params such as value, row data, node, API, context, etc.
-
-Do not duplicate information in config that AG Grid already supplies naturally.
-
-If truly necessary, a bounded params-resolver key may exist for dynamic params that cannot be represented by JSON + normal AG Grid params. Do not make every param a callback.
-
----
-
-## 11.10 Formatter
-
-Config stores a key + JSON-safe params.
-
-Example:
-
-```ts
-{
-  formatter: {
-    key: 'currency',
-    params: {
-      currencyCode: 'USD'
-    }
-  }
-}
-```
-
-Frontend owns the executable formatter.
-
----
-
-## 11.11 Editor
-
-Custom React editors are supported.
-
-Config stores a key + JSON-safe params.
-
-Example:
-
-```ts
-{
-  editing: {
-    supported: true,
-    editor: {
-      key: 'statusSelect',
-      params: {
-        optionsSourceKey: 'loanStatuses'
-      }
-    }
-  }
-}
-```
-
-Frontend resolves the editor key to the actual component.
-
----
-
-## 11.12 Editor/display/save value conversion
-
-Real values may have different representations.
-
-Examples:
+Keep error ownership separate:
 
 ```text
-percentage:
-API      0.075
-display  7.50%
-editor   7.5
-save     0.075
+configuration error
+    !=
+SSRM row-loading error
+    !=
+normal mutation/action error
+    !=
+unexpected React crash
 ```
 
-```text
-lookup:
-API      "APR"
-display  Approved
-editor   Approved
-save     "APR"
-```
+Use a React Error Boundary for unexpected component/runtime crashes.
 
-```text
-date:
-API      "2026-08-30"
-display  "30 Aug 2026"
-editor   date-input representation
-save     "2026-08-30"
-```
-
-Therefore the schema review must consider:
-
-- formatter;
-- parser;
-- normalizer;
-- lookup mapping;
-- value accessor when a path is insufficient;
-- save conversion.
-
-Executable conversion logic remains frontend-owned behind known keys/registries.
+Do not build a complicated remote-config recovery system before one is needed.
 
 ---
 
-## 11.13 Editing capability
+# 55. Required row identity
 
-Hidden, visible read-only and visible editable are distinct states.
-
-Example:
-
-```text
-Loan base definition:
-Amount supports editing
-
-Profile A:
-Amount editable
-
-Profile B:
-Amount read-only
-
-Profile C:
-Amount absent
-```
-
-Effective config should be resolved before the low-level grid uses it.
-
----
-
-## 11.14 Existing tracked editing stays authoritative
-
-Do not create a metadata-specific editing engine.
-
-Existing/proven mechanics should continue to own:
-
-- dirty state;
-- Save/Discard;
-- single/bulk persistence where supported;
-- BASE / LOCAL / REMOTE reconciliation;
-- validation interaction;
-- conflict handling.
-
-Configuration supplies composition inputs, not a new editing state machine.
-
-Do not add flags such as `tracked: true` unless a real requirement appears for an editable field that deliberately should not participate in tracked editing.
-
----
-
-## 11.15 Validation
-
-Validation stays independently reusable.
-
-Config can identify rules/params:
-
-```ts
-validation: {
-  rules: [
-    { key: 'required' },
-    { key: 'min', params: { value: 0 } }
-  ]
-}
-```
-
-Frontend registry owns actual validator functions.
-
-Backend remains authoritative for final validation.
-
----
-
-## 11.16 Lookups/options
-
-Editors/renderers may require option sets such as statuses, categories, reasons or product codes.
-
-Static options can be JSON-safe config where appropriate.
-
-Dynamic options should resolve through a known frontend provider/query key.
-
-Normal application queries can use TanStack Query where appropriate.
-
----
-
-## 11.17 Stable row identity
-
-Stable row identity should be a required contract, not an accidental assumption that every entity uses `id`.
+Stable row identity should be a required feature/entity contract rather than casually assuming every entity uses `id`.
 
 Conceptually:
 
@@ -851,488 +1720,127 @@ Conceptually:
 rowIdField: 'loanId'
 ```
 
-or, only when computation is genuinely needed:
+or, only when necessary:
 
 ```ts
 rowIdAccessorKey: 'reviewLoanRowId'
 ```
 
-Stable identity is required for editing, selection, SSRM refresh, reconciliation and Save/Discard behavior.
+Exact schema naming is open.
 
-Prefer a simple field/path when possible.
+Prefer a simple field/path where possible.
 
----
-
-## 11.18 Datasource/API adapter
-
-Loan and Finance may not share the same backend API contract.
-
-Conceptually:
-
-```text
-Review + Loan config
-    ↓
-reviewLoan adapter key
-    ↓
-Loan request mapper / API service functions
-
-Review + Finance config
-    ↓
-reviewFinance adapter key
-    ↓
-Finance request mapper / API service functions
-```
-
-The SSRM grid must not contain:
-
-```ts
-if (entity === 'loan') { ... }
-if (entity === 'finance') { ... }
-```
-
-The adapter registry contains plain async service/API functions, not React hooks and not `useMutation()` instances.
-
-Example conceptually:
-
-```ts
-const dataAdapterRegistry = {
-  reviewLoan: {
-    loadRows: loadLoanRows,
-    saveRow: saveLoanRow,
-    saveRows: saveLoanRows
-  },
-  reviewFinance: {
-    loadRows: loadFinanceRows,
-    saveRow: saveFinanceRow,
-    saveRows: saveFinanceRows
-  }
-}
-```
-
-Exact adapter shape is not finalized.
-
-### TanStack Query boundary
-
-For normal application queries/mutations, the feature composition can use TanStack Query around those plain functions where appropriate.
-
-Do **not** store TanStack hooks inside registries.
-
-AG Grid SSRM block loading remains datasource-owned; do not wrap every SSRM block request in TanStack Query merely because TanStack exists in the app.
+Stable identity is critical for selection, editing, Save/Discard, conflict reconciliation, SSRM refresh and stable row behavior.
 
 ---
 
-## 11.19 Page-level capabilities/actions
+# 56. Representative local data and proof matrix
 
-The page can contain more than the grid.
+The Python backend should provide enough representative data/API behavior to prove the architecture.
 
-Bounded feature configuration may eventually vary small things such as sections/actions between Loan and Finance or between user access projections.
-
-Do not build a generic page-builder.
-
-For actions such as Approve/Reject:
-
-```text
-config
-    → says whether the feature supports/exposes the action
-
-frontend
-    → owns handler, mutation, pending/success/error lifecycle
-
-backend
-    → authorizes execution
-```
-
-Do not build a giant generic action framework now.
-
----
-
-## 11.20 Dependencies between fields/actions
-
-Do not build a generic runtime dependency engine initially.
-
-If Status is absent for a profile and an action that requires Status should also be absent, the resolved access/config should simply omit both.
-
-If real configuration dependencies later become hard to maintain, explicit development-time metadata such as `requires: [...]` can be considered and validated.
-
-Only introduce that when a real dependency justifies it.
-
----
-
-## 11.21 Masking / sensitive data
-
-Never send the clear sensitive value to the frontend and merely hide it in React.
-
-Backend must return an authorized representation.
-
-Keep separate:
-
-```text
-maskable
-canRequestUnmask
-masked
-```
-
-Unmasked values should not be persisted into localStorage, saved Grid State or long-lived user preferences.
-
----
-
-## 11.22 Masking affects more than the cell renderer
-
-Restricted/masked fields must not leak through secondary capabilities.
-
-Consider removing/denying as required:
-
-- filter;
-- search;
-- sort;
-- copy/clipboard;
-- export;
-- tooltip;
-- aggregation;
-- other derived operations that could expose/infer the underlying value.
-
-Start restrictive and only enable a capability when the real product/security rule says it is safe.
-
----
-
-## 11.23 Initial Grid State and user preference precedence
-
-Feature/entity config may define initial presentation defaults:
-
-- order;
-- widths;
-- pinning;
-- visibility;
-- default sort;
-- other genuine defaults.
-
-If the user has no saved state, use those defaults.
-
-If the user has saved presentation preferences, those preferences override the defaults where still valid.
-
-But authorization/current configuration always wins.
-
-A saved preference must never restore a removed or unauthorized column/capability.
-
----
-
-## 11.24 Reconcile old saved state against new definitions
-
-Saved Grid State may have been produced by an older definition.
-
-Reconcile it so:
-
-- surviving user preferences remain;
-- removed columns stay removed;
-- new columns receive sensible config defaults;
-- unauthorized columns never return.
-
-Do not treat an old saved state object as a complete replacement for the current definition.
-
----
-
-## 11.25 Versioning
-
-Include version concepts from the beginning, at least conceptually:
-
-```text
-schemaVersion
-definitionVersion
-```
-
-This helps with compatibility, user-state reconciliation, caching and future remote config.
-
-It does not imply live runtime hot updates.
-
----
-
-## 11.26 Configuration validation
-
-Validate configuration before rendering.
-
-Examples:
-
-- duplicate IDs;
-- missing required row identity;
-- unknown renderer/editor/formatter keys;
-- invalid required properties;
-- unsupported schema version;
-- impossible shapes.
-
-Because config is local/frontend-owned initially, tests should catch most mistakes during development/CI.
-
-The same validator can later protect against incompatible backend-provided config.
-
----
-
-## 11.27 Error ownership
-
-Keep different errors separate.
-
-```text
-configuration error
-    → controlled feature/view configuration failure
-
-SSRM row-loading error
-    → normal grid loading/retry handling
-
-mutation/action error
-    → normal operation error handling
-
-unexpected React/runtime crash
-    → Error Boundary
-```
-
-Do not route every failure through one generic error state.
-
-A small controlled page-level invalid-config state is useful and not overengineering.
-
----
-
-## 11.28 Native AG Grid first
-
-Use AG Grid's native capabilities whenever they solve the problem.
-
-Config/metadata should compile into normal AG Grid inputs.
-
-Do not recreate native behavior in a vague custom grid engine without a concrete reason.
-
----
-
-## 11.29 No giant universal wrapper
-
-Do not create a universal `DynamicGrid`, giant `useGrid()` abstraction or one component controlled by `rowModel='client|infinite|ssrm'`.
-
-The metadata/compiler layer should produce small strongly typed inputs for existing/proven mechanics.
-
-Central principle:
-
-> **Make configuration dynamic. Do not make the grid engine vague.**
-
----
-
-# 12. Representative Python/backend data for the experiment
-
-The Python backend should provide representative datasets/APIs for at least:
+At minimum use two meaningfully different entity contexts, for example:
 
 ```text
 Loan
 Finance
 ```
 
-The shapes should differ enough to prove real configuration behavior.
+Do not merely rename Transaction columns.
 
-For example Loan might contain:
+Use data shapes that exercise real concerns such as nested values, different editable fields, renderers/editors/formatters, validation, sensitive/masked fields and different datasource/request mapping.
 
-- loan ID;
-- borrower nested object;
-- amount;
-- nested pricing/interest rate;
-- status;
-- sensitive reference;
-- dates;
-- editable fields.
+Also use at least two local mock access profiles.
 
-Finance should have a meaningfully different shape and different editing/renderer/formatter needs.
-
-Do not merely rename Transaction fields.
-
-If masking is demonstrated, backend should return masked data directly for restricted profiles.
-
-Only add backend endpoints/mutations required to prove agreed capabilities; do not overbuild backend infrastructure.
-
----
-
-# 13. Proof matrix
-
-A single entity + single profile is not enough to prove the architecture.
-
-At minimum use something like:
+Conceptually:
 
 ```text
                  Profile A       Profile B
 
 Review + Loan    effective A1    effective A2
-
 Review + Finance effective B1    effective B2
 ```
 
-Use the combinations to prove real differences in:
+This should expose accidental hardcoding without turning the experiment into a huge demo.
 
-- columns;
-- editing/read-only behavior;
-- masking/restrictions;
-- renderer/editor/formatter choices;
-- initial state;
-- saved-user-preference precedence;
-- entity-specific datasource/API mapping.
-
-The goal is architectural proof, not a giant demo.
+If masking is demonstrated, restricted backend responses must already be masked.
 
 ---
 
-# 14. Conceptual example only
+# 57. The config should be easy for another developer to author
 
-> Exact property names below are illustrative and are **not** a finalized contract.
+A major quality requirement is not merely that the compiler works.
 
-```ts
-const reviewLoanDefinition = {
-  schemaVersion: 1,
-  definitionVersion: 1,
+A developer adding a new entity config should be able to understand the schema quickly.
 
-  id: 'review.loan',
+Types, comments/JSDoc and architecture docs should make clear:
 
-  rowIdentity: {
-    field: 'loanId'
-  },
+- required vs optional properties;
+- defaults;
+- fallback precedence;
+- frontend registry keys;
+- translation-key resolution;
+- nested field behavior;
+- server query key behavior;
+- base definition vs resolved access;
+- which executable behavior lives in registries/adapters;
+- what user preferences may override;
+- what authorization always wins over.
 
-  data: {
-    adapterKey: 'reviewLoan'
-  },
+Do not rely on tribal knowledge or require a developer to trace several resolver functions just to understand a simple configuration.
 
-  translationNamespace: 'review',
+---
 
-  initialGridState: {
-    sort: [
-      {
-        columnId: 'createdAt',
-        direction: 'desc'
-      }
-    ]
-  },
+# 58. New branch and PR #40
 
-  columns: [
-    {
-      id: 'borrowerName',
-      field: 'borrower.name',
-      labelKey: 'grid.columns.borrowerName.label'
-    },
+The finalized direction is to build the real experiment from the latest `main` on a **new branch**.
 
-    {
-      id: 'interestRate',
-      field: 'pricing.interestRate',
-      labelKey: 'grid.columns.interestRate.label',
+The branch for this work is:
 
-      formatter: {
-        key: 'percentage',
-        params: {
-          decimalPlaces: 2
-        }
-      },
-
-      editing: {
-        supported: true,
-        editor: {
-          key: 'percentageInput'
-        },
-        valueParserKey: 'percentageInputToDecimal'
-      },
-
-      validation: {
-        rules: [
-          {
-            key: 'range',
-            params: {
-              min: 0,
-              max: 100
-            }
-          }
-        ]
-      }
-    },
-
-    {
-      id: 'status',
-      field: 'status.code',
-      labelKey: 'grid.columns.status.label',
-      sortKey: 'status_code',
-
-      renderer: {
-        key: 'statusPill',
-        params: {
-          compact: true
-        }
-      },
-
-      editing: {
-        supported: true,
-        editor: {
-          key: 'statusSelect',
-          params: {
-            optionsSourceKey: 'loanStatuses'
-          }
-        }
-      }
-    }
-  ]
-}
+```text
+configurable-feature-grid
 ```
 
-The current-user access projection reduces the base definition before the grid consumes it.
+This handoff document lives on that branch before implementation starts.
+
+PR #40 was created before these requirements were finalized.
+
+Therefore:
+
+- do not merge PR #40 into `main` merely to continue;
+- a new chat may inspect PR #40 for useful ideas;
+- it must not assume PR #40's schema/architecture is the desired final design;
+- reuse an idea only after reconciling it with this handoff and the current repository;
+- decide later whether PR #40 should be closed.
+
+The existing three reference grids remain the source of current proven behavior.
 
 ---
 
-# 15. Implementation principles once explicitly approved
+# 59. How a new chat should use this handoff
 
-When implementation is eventually authorized:
+This document is intended to be the single detailed context file for the next chat.
 
-1. inspect the repository and GitHub state first;
-2. read `AGENTS.md` and all applicable project/grid rules;
-3. read the current SSRM implementation fully;
-4. read editing, validation, selection, Grid State, datasource/query-lifecycle code;
+The next chat should:
+
+```text
+1. read this file completely;
+2. inspect current repository/GitHub state when asked/needed;
+3. read AGENTS.md and applicable project/grid rules before changes;
+4. inspect current SSRM/editing/validation/Grid State/data-source code;
 5. inspect PR #40 only as reference;
-6. start from latest `main` on the new configurable-feature branch;
-7. keep the existing three grids untouched;
-8. use current SSRM behavior/UI as the baseline for the isolated feature;
-9. reuse proven mechanics rather than rewriting them;
-10. extract domain-neutral shared pieces only where concrete reuse is real;
-11. keep business-specific composition under the feature;
-12. add unusually clear comments/JSDoc and architecture/flow documentation;
-13. keep code strongly typed;
-14. prefer native AG Grid;
-15. keep role/entity resolution outside low-level grid mechanics;
-16. keep executable behavior in frontend registries/adapters;
-17. keep config declarative/JSON-safe where practical;
-18. validate config;
-19. test resolver/compiler/config and real-grid behavior;
-20. do not automatically migrate existing grids after success;
-21. do not merge without explicit approval.
+6. follow the user's next instruction.
+```
 
----
+The next instruction may be **discussion only**.
 
-# 16. Explicit non-goals for now
+For example, the user may first ask the new chat to:
 
-Do not build these unless a real future requirement appears:
+- show the proposed complete schema;
+- explain each config area;
+- challenge missing requirements;
+- classify config vs frontend mechanic;
+- compare possible registry/adapter shapes.
 
-- live hot-swapping of config/permissions while editing;
-- dynamic dirty-edit reconciliation after role changes;
-- generic runtime dependency engine;
-- giant configurable action framework;
-- generic page builder;
-- universal Client/Infinite/SSRM grid engine;
-- arbitrary JavaScript in metadata;
-- every AG Grid option exposed as configuration;
-- complex remote-config fallback/retry system;
-- frontend duplication of backend authorization.
+Do **not** start implementation merely because this handoff exists.
 
----
-
-# 17. How the next chat should use this file
-
-This is the **single consolidated context handoff**.
-
-The next chat should read it completely first, then inspect the repository/current GitHub state when needed for the user's next request, including PR #40 as reference only.
-
-This file intentionally does **not** force the first next-chat task. The user may choose to:
-
-- continue design discussion;
-- ask for the proposed full schema;
-- ask to compare this design with the current repo/PR #40;
-- ask for an implementation plan;
-- or explicitly approve implementation.
-
-Do not begin code changes merely because this document exists.
-
-Do not assume PR #40 is the desired implementation simply because it exists.
-
-Do not mistake illustrative property names in this handoff for finalized contracts.
+Wait for explicit user approval before code/branch/PR/doc/CI changes beyond what the user specifically requests.
