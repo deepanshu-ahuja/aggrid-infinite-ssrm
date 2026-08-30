@@ -21,7 +21,11 @@ export function TransactionNativeDateEditor({
       const errors = validateTransactionField('transactionDate', candidate);
       return errors.length > 0 ? errors.map((error) => error.message) : null;
     },
-    getValidationElement: () => editorRootRef.current,
+    getValidationElement: () => {
+      const element = editorRootRef.current;
+      if (!element) throw new Error('Date editor validation element is not mounted.');
+      return element;
+    },
   });
 
   return (
