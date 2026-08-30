@@ -6,7 +6,7 @@
 
 # Interface: FieldDefinition\<TFieldId, TFieldPath, TTranslationKey, TCellDataType, TAdditionalFilterOption, TFormatterKey, TRendererKey, TEditingDefinition\>
 
-Defined in: [configuration.types.ts:258](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L258)
+Defined in: [configuration.types.ts:258](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L258)
 
 Reusable configuration for one field/column exposed by an entity.
 
@@ -54,7 +54,7 @@ registries; persisted/backend configuration carries only keys and JSON-safe para
 
 > **cellDataType**: `TCellDataType`
 
-Defined in: [configuration.types.ts:281](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L281)
+Defined in: [configuration.types.ts:281](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L281)
 
 AG Grid cell data type/representation, passed to `ColDef.cellDataType`.
 
@@ -68,7 +68,7 @@ the required behavior.
 
 > `optional` **editing?**: `TEditingDefinition`
 
-Defined in: [configuration.types.ts:304](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L304)
+Defined in: [configuration.types.ts:304](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L304)
 
 Optional editing capability. Omit to make this field non-editable; presence makes it potentially
 editable, but the compiled AG Grid `editable` callback still composes row/access/conflict policy.
@@ -79,7 +79,7 @@ editable, but the compiled AG Grid `editable` callback still composes row/access
 
 > **field**: `TFieldPath`
 
-Defined in: [configuration.types.ts:271](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L271)
+Defined in: [configuration.types.ts:271](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L271)
 
 API row path containing the value. Dot notation supports nested response shapes.
 
@@ -89,7 +89,7 @@ API row path containing the value. Dot notation supports nested response shapes.
 
 > `optional` **filter?**: [`FieldFilterDefinition`](FieldFilterDefinition.md)\<`TAdditionalFilterOption` \| [`FilterOptionForCellDataType`](../type-aliases/FilterOptionForCellDataType.md)\<`TCellDataType`\>\>
 
-Defined in: [configuration.types.ts:287](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L287)
+Defined in: [configuration.types.ts:287](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L287)
 
 Omit when not filterable; when present, `filterOptions` are the exact allowed choices.
 
@@ -99,7 +99,7 @@ Omit when not filterable; when present, `filterOptions` are the exact allowed ch
 
 > `optional` **formatter?**: [`FieldFormatterDefinition`](FieldFormatterDefinition.md)\<`TFormatterKey`\>
 
-Defined in: [configuration.types.ts:295](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L295)
+Defined in: [configuration.types.ts:295](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L295)
 
 Optional custom display formatter compiled to AG Grid `valueFormatter`.
 
@@ -109,7 +109,7 @@ Optional custom display formatter compiled to AG Grid `valueFormatter`.
 
 > **id**: `TFieldId`
 
-Defined in: [configuration.types.ts:269](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L269)
+Defined in: [configuration.types.ts:269](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L269)
 
 Stable configuration identity independent of the API row path.
 
@@ -125,7 +125,7 @@ Stable configuration identity independent of the API row path.
 
 > **labelKey**: `TTranslationKey`
 
-Defined in: [configuration.types.ts:273](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L273)
+Defined in: [configuration.types.ts:273](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L273)
 
 Full translation key used to resolve the field/column label.
 
@@ -135,7 +135,7 @@ Full translation key used to resolve the field/column label.
 
 > `optional` **layout?**: [`FieldLayoutDefinition`](FieldLayoutDefinition.md)
 
-Defined in: [configuration.types.ts:292](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L292)
+Defined in: [configuration.types.ts:292](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L292)
 
 Optional initial layout/sizing; supplied values override corresponding default column values.
 
@@ -145,7 +145,7 @@ Optional initial layout/sizing; supplied values override corresponding default c
 
 > `optional` **renderer?**: [`FieldRendererDefinition`](FieldRendererDefinition.md)\<`TRendererKey`\>
 
-Defined in: [configuration.types.ts:298](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L298)
+Defined in: [configuration.types.ts:298](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L298)
 
 Optional custom rich cell renderer compiled to AG Grid `cellRenderer`.
 
@@ -155,6 +155,6 @@ Optional custom rich cell renderer compiled to AG Grid `cellRenderer`.
 
 > `optional` **sortable?**: `boolean`
 
-Defined in: [configuration.types.ts:284](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L284)
+Defined in: [configuration.types.ts:284](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L284)
 
 Whether users can sort; omitted values inherit the resolved AG Grid `defaultColDef`.

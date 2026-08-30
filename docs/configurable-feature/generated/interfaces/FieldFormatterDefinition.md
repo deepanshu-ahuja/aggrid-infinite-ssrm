@@ -6,7 +6,7 @@
 
 # Interface: FieldFormatterDefinition\<TFormatterKey\>
 
-Defined in: [configuration.types.ts:157](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L157)
+Defined in: [configuration.types.ts:157](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L157)
 
 Registered frontend value formatter selected by declarative configuration.
 
@@ -22,7 +22,7 @@ Registered frontend value formatter selected by declarative configuration.
 
 > **key**: `TFormatterKey`
 
-Defined in: [configuration.types.ts:159](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L159)
+Defined in: [configuration.types.ts:159](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L159)
 
 Stable formatter registry key.
 
@@ -38,7 +38,7 @@ Stable formatter registry key.
 
 > `optional` **params?**: [`ConfigurationJsonObject`](ConfigurationJsonObject.md)
 
-Defined in: [configuration.types.ts:168](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L168)
+Defined in: [configuration.types.ts:168](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L168)
 
 Extra JSON-safe configuration for the registered formatter.
 

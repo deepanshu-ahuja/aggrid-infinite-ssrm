@@ -6,7 +6,7 @@
 
 # Interface: FieldDefaultsDefinition
 
-Defined in: [configuration.types.ts:149](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L149)
+Defined in: [configuration.types.ts:149](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L149)
 
 Configurable defaults applied to every field in one entity.
 
@@ -19,7 +19,7 @@ The compiler adds these values to shared `baseDefaultColDef` and supplies the re
 
 > `optional` **layout?**: [`FieldLayoutDefinition`](FieldLayoutDefinition.md)
 
-Defined in: [configuration.types.ts:153](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L153)
+Defined in: [configuration.types.ts:153](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L153)
 
 Default layout/sizing settings inherited by fields that do not override them.
 
@@ -29,6 +29,6 @@ Default layout/sizing settings inherited by fields that do not override them.
 
 > `optional` **sortable?**: `boolean`
 
-Defined in: [configuration.types.ts:151](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L151)
+Defined in: [configuration.types.ts:151](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L151)
 
 Default sortable setting; same semantics/type as AG Grid `ColDef.sortable`.

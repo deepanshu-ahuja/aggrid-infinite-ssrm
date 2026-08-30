@@ -6,7 +6,7 @@
 
 # Interface: FieldSizingConstraintsDefinition
 
-Defined in: [configuration.types.ts:106](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L106)
+Defined in: [configuration.types.ts:106](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L106)
 
 Sizing constraints that continue to apply after column creation.
 
@@ -16,7 +16,7 @@ Sizing constraints that continue to apply after column creation.
 
 > `optional` **maxWidth?**: `number`
 
-Defined in: [configuration.types.ts:110](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L110)
+Defined in: [configuration.types.ts:110](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L110)
 
 Maximum width in pixels; same semantics/type as AG Grid `ColDef.maxWidth`.
 
@@ -26,7 +26,7 @@ Maximum width in pixels; same semantics/type as AG Grid `ColDef.maxWidth`.
 
 > `optional` **minWidth?**: `number`
 
-Defined in: [configuration.types.ts:108](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L108)
+Defined in: [configuration.types.ts:108](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L108)
 
 Minimum width in pixels; same semantics/type as AG Grid `ColDef.minWidth`.
 
@@ -36,6 +36,6 @@ Minimum width in pixels; same semantics/type as AG Grid `ColDef.minWidth`.
 
 > `optional` **resizable?**: `boolean`
 
-Defined in: [configuration.types.ts:112](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L112)
+Defined in: [configuration.types.ts:112](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L112)
 
 Whether the user can manually resize; same semantics/type as AG Grid `ColDef.resizable`.

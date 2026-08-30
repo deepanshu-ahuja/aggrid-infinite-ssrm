@@ -6,7 +6,7 @@
 
 # Interface: FieldRendererDefinition\<TRendererKey\>
 
-Defined in: [configuration.types.ts:172](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L172)
+Defined in: [configuration.types.ts:172](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L172)
 
 Registered frontend cell renderer selected by declarative configuration.
 
@@ -22,7 +22,7 @@ Registered frontend cell renderer selected by declarative configuration.
 
 > **key**: `TRendererKey`
 
-Defined in: [configuration.types.ts:174](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L174)
+Defined in: [configuration.types.ts:174](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L174)
 
 Stable renderer registry key.
 
@@ -38,7 +38,7 @@ Stable renderer registry key.
 
 > `optional` **params?**: [`ConfigurationJsonObject`](ConfigurationJsonObject.md)
 
-Defined in: [configuration.types.ts:181](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L181)
+Defined in: [configuration.types.ts:181](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L181)
 
 Extra JSON-safe props for the registered renderer, compiled to AG Grid `cellRendererParams`.
 

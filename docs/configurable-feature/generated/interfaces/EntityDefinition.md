@@ -6,7 +6,7 @@
 
 # Interface: EntityDefinition\<TTranslationKey, TFieldDefinition\>
 
-Defined in: [configuration.types.ts:319](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L319)
+Defined in: [configuration.types.ts:319](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L319)
 
 Reusable configuration for one entity/data context inside a configurable feature.
 
@@ -26,7 +26,7 @@ Reusable configuration for one entity/data context inside a configurable feature
 
 > **dataAdapterKey**: `string`
 
-Defined in: [configuration.types.ts:326](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L326)
+Defined in: [configuration.types.ts:326](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L326)
 
 Key of the frontend data adapter for loading/saving and API/grid mapping.
 
@@ -36,7 +36,7 @@ Key of the frontend data adapter for loading/saving and API/grid mapping.
 
 > `optional` **fieldDefaults?**: [`FieldDefaultsDefinition`](FieldDefaultsDefinition.md)
 
-Defined in: [configuration.types.ts:330](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L330)
+Defined in: [configuration.types.ts:330](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L330)
 
 Optional configurable defaults compiled into AG Grid `defaultColDef`.
 
@@ -46,7 +46,7 @@ Optional configurable defaults compiled into AG Grid `defaultColDef`.
 
 > **fields**: readonly `TFieldDefinition`[]
 
-Defined in: [configuration.types.ts:332](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L332)
+Defined in: [configuration.types.ts:332](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L332)
 
 Fields available for the entity in their configured initial column order.
 
@@ -56,7 +56,7 @@ Fields available for the entity in their configured initial column order.
 
 > **labelKey**: `TTranslationKey`
 
-Defined in: [configuration.types.ts:324](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L324)
+Defined in: [configuration.types.ts:324](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L324)
 
 Full translation key used to resolve the entity label.
 
@@ -66,6 +66,6 @@ Full translation key used to resolve the entity label.
 
 > **rowId**: [`RowIdDefinition`](RowIdDefinition.md)
 
-Defined in: [configuration.types.ts:328](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/514125a8f5bbab75523bfa846ba12aa50c66d3d4/frontend/src/shared/grid/configurable/configuration.types.ts#L328)
+Defined in: [configuration.types.ts:328](https://github.com/deepanshu-ahuja/aggrid-infinite-ssrm/blob/d781783eb0755171f4eb7a9bb74d4049f5bb8cf8/frontend/src/shared/grid/configurable/configuration.types.ts#L328)
 
 Stable business-row identity definition.
