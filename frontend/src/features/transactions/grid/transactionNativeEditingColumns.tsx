@@ -36,7 +36,7 @@ function dirtyCellPresentation(field: TransactionEditableField): Pick<ColDef<Tra
 
 function getProvidedEditorValidation(field: TransactionEditableField) {
   return (params: ICellEditorParams<Transaction, TransactionEditableValue>) => {
-    const errors = validateTransactionField(field, params.value);
+    const errors = validateTransactionField(field, params.value ?? null);
     return errors.length > 0 ? errors.map((error) => error.message) : null;
   };
 }
