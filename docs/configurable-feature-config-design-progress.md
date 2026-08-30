@@ -11,7 +11,7 @@ Repository/source/docs are authoritative. Read in this order after root `AGENTS.
 3. `docs/configurable-feature/type-hierarchy.md` — portable relationship map + supplemental Mermaid;
 4. this file — exact status and resume point.
 
-## Design-phase rules
+## Working rules
 
 - Stay on `configurable-feature-grid`; do not create another branch unless explicitly asked.
 - Do not open/merge a PR unless explicitly asked.
@@ -21,7 +21,6 @@ Repository/source/docs are authoritative. Read in this order after root `AGENTS.
 - SSRM datasource loading remains datasource-owned, not TanStack Query.
 - AG Grid 36.1 is the implementation reference; native capability first.
 - Do not add a universal AG Grid wrapper or giant `useGrid`.
-- No console logging merely to inspect flow.
 
 ## Mandatory normalization boundary
 
@@ -41,18 +40,7 @@ compiler + registries/adapters
 AG Grid
 ```
 
-Normalization remains even when backend/storage names currently match normalized frontend names exactly.
-
-If storage/wire names differ later, transform once at the boundary. Example:
-
-```text
-backend columnDefaults
-→ normalizer
-→ normalized defaultColDef
-→ compiler
-```
-
-Raw backend configuration is never spread directly into `AgGridReact`.
+Normalization remains even when backend/storage names currently match normalized frontend names exactly. If a backend key differs later, map it once at this boundary; compiler/grid code continues to consume the stable normalized contract.
 
 ## AG Grid naming/type rule
 
@@ -63,25 +51,23 @@ same concept + same value semantics
 
 same final AG Grid destination but persisted semantics differ
 → explicit application descriptor name
-→ registry/compiler maps to native AG Grid property
+→ registry/compiler resolves/maps to native AG Grid property
 ```
 
-This distinction prevents both unnecessary rename layers and misleading fake-native properties.
+## Latest public-contract cleanup — DONE
 
-## Latest contract cleanup — DONE
+The source was re-audited against AG Grid 36.1.
 
-The public source contract was re-audited against AG Grid 36.1 and updated.
-
-### Renames/direct-native alignment
+### Direct-native alignment
 
 ```text
-field.id                → field.colId
-entity.fieldDefaults    → entity.defaultColDef
+field.id             → field.colId
+entity.fieldDefaults → entity.defaultColDef
 ```
 
-`colId` now directly represents AG Grid `ColDef.colId` and is the stable Grid State/API/edit-conflict-validation identity. `field` remains the API row value path.
+`colId` is now the stable AG Grid Column ID / Grid State / API / edit-conflict-validation identity. `field` remains the row/API value path.
 
-`defaultColDef` now uses AG Grid's real property name because its normalized supported values have the same semantics. The value remains a bounded `ConfigurableDefaultColDef`, not arbitrary persisted `ColDef`.
+`defaultColDef` now uses AG Grid's property name because the normalized values have the same semantics. Its type remains a bounded `ConfigurableDefaultColDef`; arbitrary persisted `ColDef` values are not exposed.
 
 ### Removed unnecessary wrappers
 
@@ -95,7 +81,7 @@ FieldSizingDefinition
 FieldSizingConstraintsDefinition
 ```
 
-Fields/defaults now expose native leaves directly:
+Fields/defaults now carry native leaves directly:
 
 ```text
 initialHide
@@ -111,21 +97,19 @@ The earlier custom `initialWidth XOR initialFlex` rule was removed. Follow AG Gr
 
 ### Filtering name corrected
 
-Old shape:
+Old:
 
 ```text
 filter: { filterOptions: [...] }
 ```
 
-was misleading because AG Grid `ColDef.filter` has different value semantics.
-
-Current shape:
+Current:
 
 ```text
 filtering: { filterOptions: [...] }
 ```
 
-Compiler intent:
+Reason: AG Grid `ColDef.filter` has different value semantics. Compiler intent is:
 
 ```text
 filtering
@@ -133,26 +117,20 @@ filtering
 + filterParams.filterOptions
 ```
 
-`filterOptions` itself keeps the AG Grid leaf name because that leaf has the same semantics.
-
-### Renderer/editor native parameter leaves
-
-Updated nested leaves:
+### Renderer/editor native leaves
 
 ```text
-renderer.params           → renderer.cellRendererParams
-editor.params             → editor.cellEditorParams
-editor.popup              → editor.cellEditorPopup
-editor.popupPosition      → editor.cellEditorPopupPosition
+renderer.params      → renderer.cellRendererParams
+editor.params        → editor.cellEditorParams
+editor.popup         → editor.cellEditorPopup
+editor.popupPosition → editor.cellEditorPopupPosition
 ```
-
-These values have native AG Grid semantics, so the native names are clearer.
 
 Formatter/parser `params` remain custom because AG Grid has no direct `valueFormatterParams` / `valueParserParams` ColDef properties.
 
-## Entity generic clarification — DONE
+## Entity generic meaning — clarified
 
-`EntityDefinition<TLabelKey, TFieldDefinition>` is now explicitly documented as reusable and business-agnostic.
+`EntityDefinition<TLabelKey, TFieldDefinition>` remains business-agnostic.
 
 ```text
 FeatureDefinition.entities record key
@@ -165,7 +143,7 @@ TFieldDefinition
 → allowed field-definition shape
 ```
 
-The source now includes `@typeParam` documentation so TypeDoc/IDE hover explains this directly.
+Source JSDoc now includes `@typeParam` explanations so TypeDoc/IDE hover shows this meaning.
 
 ## Current public hierarchy
 
@@ -243,7 +221,7 @@ editing
 registry keys/custom params
 ```
 
-Rationale examples:
+Examples:
 
 ```text
 labelKey != headerName
@@ -256,25 +234,9 @@ formatter { key, params } != valueFormatter
 because valueFormatter is executable behavior
 ```
 
-## `cellDataType`
-
-Current built-ins:
-
-```text
-text
-number
-boolean
-date           → JavaScript Date
-dateString     → string date
-dateTime       → JavaScript Date
-dateTimeString → string date-time
-```
-
-Configurable proof uses SSRM, so `cellDataType` must be set explicitly. Native AG Grid type behavior remains the baseline.
-
 ## Filtering status
 
-Field-level operator vocabulary remains bounded by the existing server-query semantics:
+Field operator vocabulary remains bounded by existing server-query semantics:
 
 ```text
 text: contains, equals, notEqual, startsWith, endsWith
@@ -285,41 +247,32 @@ date/dateString/dateTime/dateTimeString:
 boolean: equals, notEqual
 ```
 
-Existing `serverFilterParams.ts` proves Apply/Reset, `maxNumConditions: 1` and `closeOnApply: true`. The upcoming grid/filter-default batch still needs to decide how common Simple Filter defaults combine with field `filtering.filterOptions`.
+Existing `serverFilterParams.ts` proves Apply/Reset, `maxNumConditions: 1` and `closeOnApply: true`. The upcoming grid/filter-default batch still needs to decide how those common defaults combine with `field.filtering.filterOptions`.
 
-## Formatter / renderer / editor / parser status
-
-```text
-formatter.key                 → registry → ColDef.valueFormatter
-renderer.key                  → registry → ColDef.cellRenderer
-renderer.cellRendererParams   → ColDef.cellRendererParams
-editor.key                    → registry → ColDef.cellEditor
-editor.cellEditorParams       → ColDef.cellEditorParams
-editor.cellEditorPopup        → ColDef.cellEditorPopup
-editor.cellEditorPopupPosition→ ColDef.cellEditorPopupPosition
-parser.key                    → registry → ColDef.valueParser
-```
-
-Registry outputs should use the real AG Grid implementation types where practical.
-
-## Generated documentation
-
-TypeDoc tooling is configured:
+## Registry mapping status
 
 ```text
-TypeDoc 0.28.x
-+ typedoc-plugin-markdown 4.x
-+ typedoc.json
-+ npm run docs:configurable
+formatter.key                  → registry → ColDef.valueFormatter
+renderer.key                   → registry → ColDef.cellRenderer
+renderer.cellRendererParams    → ColDef.cellRendererParams
+editor.key                     → registry → ColDef.cellEditor
+editor.cellEditorParams        → ColDef.cellEditorParams
+editor.cellEditorPopup         → ColDef.cellEditorPopup
+editor.cellEditorPopupPosition → ColDef.cellEditorPopupPosition
+parser.key                     → registry → ColDef.valueParser
 ```
 
-The generated output under `docs/configurable-feature/generated/` was produced before the latest contract rename/cleanup and therefore must be regenerated after pulling this head:
+Resolved implementations should use real AG Grid implementation types where practical.
+
+## Generated TypeDoc status
+
+TypeDoc + `typedoc-plugin-markdown` are installed/configured through root `typedoc.json` and:
 
 ```bash
 npm run docs:configurable
 ```
 
-Then review and commit the generated Markdown. Do not hand-edit generated TypeDoc pages as the normal maintenance workflow.
+The currently committed generated pages were produced before the latest rename/JSDoc cleanup. After pulling this head, regenerate them and commit the resulting `docs/configurable-feature/generated/` diff. Generated pages should not be hand-maintained as the normal workflow.
 
 ## Coverage snapshot
 
@@ -360,9 +313,9 @@ final runtime/compiler                          NOT YET DESIGNED
 After regenerating TypeDoc and running the normal source validation locally, resume one coherent **grid-level/native configuration + normalization/registry-typing batch**:
 
 1. inspect AG Grid 36.1 `GridOptions` / SSRM option types and existing repo defaults;
-2. design the broad JSON-safe/native declarative SSRM configuration surface without limiting it to today's demo values;
+2. design a broad JSON-safe/native declarative SSRM configuration surface without limiting it to today's demo values;
 3. define application defaults + entity override/merge semantics;
-4. design common filter defaults and merge behavior with `fielding`/`filtering.filterOptions` (use the actual source name `filtering`; do not introduce another alias);
+4. design common filter defaults and merge behavior with `field.filtering.filterOptions`;
 5. classify supported native declarative vs executable-configurable vs runtime-owned properties;
 6. design registry typing so key-specific params and resolved implementations use real AG Grid types where practical;
 7. preserve mandatory backend/storage normalization even when names match.
