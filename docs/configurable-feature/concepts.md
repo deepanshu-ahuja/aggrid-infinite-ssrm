@@ -1,8 +1,8 @@
 # Configurable Feature Concepts
 
-Plain-language meanings for public configuration concepts already designed.
+Plain-language meanings for the configurable feature/grid model.
 
-For the visual type tree and exact AG Grid mapping, see `type-hierarchy.md`.
+For the visual type tree and AG Grid mapping, see [`type-hierarchy.md`](type-hierarchy.md).
 
 ```text
 Feature definition
@@ -12,7 +12,7 @@ Entity definition
 → one data context inside a feature, such as Loan or Finance.
 
 Data adapter
-→ frontend data/API boundary for loading, saving and request/response mapping.
+→ frontend data/API boundary for configuration/data normalization, loading, saving and request/response mapping.
 
 Row identity
 → API row field/path containing the stable business-record ID.
@@ -24,65 +24,118 @@ Field ID
 → stable configuration identity, separate from the API row path.
 
 Field path
-→ actual value location in the API row.
+→ actual value location in the normalized API row.
 
 Field defaults
 → common settings for an entity's fields; compiled into AG Grid `defaultColDef`.
 
-Initial field setting
-→ seeds column state when created without continuously overriding later user/Grid-State changes.
+cellDataType
+→ AG Grid value type/representation. The name and compatible type deliberately follow `ColDef.cellDataType`.
 
-Data type
-→ value type/representation compiled explicitly to AG Grid `cellDataType`; AG Grid's native type behavior is the baseline.
+Filter options
+→ exact AG Grid Simple Filter choices allowed for a filterable field; named after AG Grid `filterParams.filterOptions`.
 
-Formatter
-→ optional registered display override; compiled to AG Grid `valueFormatter` when native `cellDataType` formatting is not sufficient.
-
-Renderer
-→ optional registered rich cell UI; compiled to AG Grid `cellRenderer` when native rendering is not sufficient.
-
-Editing capability
-→ says a field may be edited; actual row/cell editability still depends on current access, row policy and conflict state.
-
-Editor
-→ editing UI for a field. If no custom editor is selected, AG Grid can use the editor supplied by the field's `cellDataType`.
-
-Value parser
-→ optional registered override of AG Grid `valueParser`; converts an editor/import candidate into the LOCAL draft value when custom conversion is required.
+Formatter / renderer / editor / parser
+→ optional registered executable overrides used only when native AG Grid behavior is not sufficient.
 
 Configuration params
-→ extra JSON-safe configuration supplied to a registered behavior; do not duplicate runtime values AG Grid already supplies.
+→ extra JSON-safe information for registered behavior; AG Grid's normal runtime params are not duplicated here.
 ```
 
-## Native-first rule
+## Frontend-authored, backend-stored configuration
+
+The long-term persistence flow is:
 
 ```text
-field.dataType
+frontend-supported config design
         ↓
-explicit AG Grid cellDataType
+stored/managed by backend/database
+        ↓
+backend response
+        ↓
+validate + normalize once
+        ↓
+frontend compiler/registries
+        ↓
+AG Grid
+```
+
+The backend storage/wire shape does not have to stay identical to the frontend normalized shape. If it differs, transform at the boundary. Do not scatter backend-key checks throughout the table.
+
+A backend property that the current frontend does not read/normalize/compile has no effect. Raw backend JSON is never spread blindly into `AgGridReact`.
+
+## Native AG Grid alignment
+
+When our configuration means the same thing AG Grid means:
+
+```text
+same concept
+→ same AG Grid name where practical
+→ reuse/derive AG Grid TypeScript type where practical
+→ no pointless rename-and-map layer
+```
+
+Examples already aligned:
+
+```text
+cellDataType
+sortable
+filterOptions
+initialHide
+initialPinned
+initialWidth
+initialFlex
+minWidth
+maxWidth
+resizable
+```
+
+Our own vocabulary remains for genuinely application-specific concepts such as `featureKey`, `dataAdapterKey`, `fieldDefaults`, registry keys, access/masking and backend save/query mapping.
+
+## Declarative vs executable vs runtime-owned
+
+```text
+Native + JSON-safe AG Grid option
+→ normalized config may carry it directly using AG Grid naming
+
+Executable behavior
+→ config stores a key (+ JSON-safe params when needed)
+→ frontend registry resolves to the real AG Grid-compatible function/component
+
+Runtime/compiler infrastructure
+→ frontend constructs it
+→ do not treat it as arbitrary persisted config
+```
+
+For example, a future configurable `onCellClicked` behavior may use a key if a real use case requires it, while `serverSideDatasource`, runtime `context` and compiled `columnDefs` remain frontend-built infrastructure.
+
+## Native-first field behavior
+
+```text
+field.cellDataType
         ↓
 AG Grid native parser / formatter / editor / renderer / filter behavior
         ↓
-custom field configuration overrides only when product behavior requires it
+custom field config only when product behavior requires it
 ```
 
-The configurable proof uses SSRM, so `cellDataType` must be set explicitly; AG Grid type inference is Client-Side Row Model only.
+The configurable proof uses SSRM, so `cellDataType` is set explicitly; AG Grid inference is Client-Side Row Model only.
 
-Current supported values intentionally distinguish Date objects from strings:
+Current values distinguish Date objects from strings:
 
 ```text
 text
 number
 boolean
 date           → JavaScript Date
-dateString     → string date, such as "2026-08-30"
+dateString     → string date, e.g. "2026-08-30"
 dateTime       → JavaScript Date
 dateTimeString → string date-time
 ```
 
-This matters for JSON APIs. A field carrying an ISO date string should normally use `dateString`, not `date`.
+## Defaults and merging
 
-## Defaults
+Current column-default relationship:
 
 ```text
 shared baseDefaultColDef
@@ -91,59 +144,67 @@ entity.fieldDefaults
         ↓
 AG Grid defaultColDef
         ↓
-individual compiled field ColDef overrides matching defaults
+individual compiled field ColDef overrides
 ```
 
-## Params and AG Grid
+A future table/grid-level SSRM configuration surface should follow the same idea:
 
-Renderer/editor params map directly to AG Grid component-param mechanisms:
+```text
+frontend/application defaults
+        +
+normalized entity overrides
+        ↓
+resolved supported AG Grid options
+```
+
+The schema should not be limited to only the handful of pagination/cache properties used by today's Transaction demo. It should support a broad reviewed declarative AG Grid surface while excluding executable/runtime-owned properties from raw persistence.
+
+## Params and AG Grid
 
 ```text
 renderer.params → cellRendererParams
 editor.params   → cellEditorParams
 ```
 
-AG Grid still supplies normal component runtime props such as value, row data, node, column and API. Custom configuration params are only the extra information our component needs.
+AG Grid still supplies its normal runtime props such as value, data, node, column and API.
 
-Formatter/parser params are slightly different: AG Grid supplies `ValueFormatterParams` / `ValueParserParams` to the callbacks, and our compiler combines those callback params with our JSON-safe configured params before calling the registered function.
+Formatter/parser params are compiler-owned extras combined with AG Grid `ValueFormatterParams` / `ValueParserParams` before calling the registered implementation.
+
+Registry implementations should use the real AG Grid callback/component types where practical rather than parallel signatures invented by us.
 
 ## Field value flow
 
 ```text
 authoritative API value
         ↓
-effective grid value (API or unsaved LOCAL draft)
+effective grid value (API or LOCAL overlay)
         ↓
 AG Grid cellDataType baseline behavior
         ↓
-optional custom formatter / renderer → displayed cell
+optional custom formatter / renderer
         ↓
-editor (AG Grid provided or custom input)
+editor (provided or custom)
         ↓
-optional custom parser override
+optional custom valueParser
         ↓
-LOCAL draft value
+LOCAL draft
         ↓
 validation
         ↓
-save mapping → backend payload   [designed later]
+save mapping → backend payload   [later]
 ```
 
-Omitting a custom parser does not mean "leave the candidate unchanged". The parser supplied by AG Grid's `cellDataType` can still apply. Likewise, omitting a custom renderer does not always mean plain text; for example AG Grid's boolean cell type provides checkbox rendering.
-
-The formatter and renderer affect presentation, not stable field identity or backend save/query meaning. A custom parser is not a universal normalizer because programmatic edits can bypass AG Grid `valueParser`.
+A parser is not a universal normalizer; programmatic application-owned edits can bypass AG Grid `valueParser`.
 
 ## Stable edit identity
 
 ```text
 field.id
-→ key used by configurable edit/conflict/validation state
+→ configurable edit/conflict/validation identity
 
 field.field
-→ API row path used to read/write the actual row value
+→ row/API value path
 ```
-
-These may be identical for simple models but the reusable contract must not require that.
 
 ## Example
 
@@ -152,7 +213,7 @@ These may be identical for simple models but the reusable contract must not requ
   id: "transactionDate",
   field: "transactionDate",
   labelKey: "review.fields.transactionDate.label",
-  dataType: "dateString",
+  cellDataType: "dateString",
   layout: {
     sizing: { initialWidth: 180 },
   },
@@ -167,6 +228,4 @@ These may be identical for simple models but the reusable contract must not requ
 }
 ```
 
-The example uses `dateString` because a normal JSON API date is a string. The custom formatter/editor are optional overrides; if AG Grid's native date-string presentation/editor were sufficient, they should be omitted.
-
-Editing, validation, business actions, access control, server query mapping and save mapping remain distinct responsibilities even when they all reference the same stable field ID.
+The custom formatter/editor are optional overrides. If AG Grid's native `dateString` behavior is enough, omit them.
