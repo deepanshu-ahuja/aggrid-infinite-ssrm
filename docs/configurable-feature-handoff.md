@@ -1,16 +1,16 @@
 # Handoff: Configurable Feature + AG Grid Architecture
 
-> **Status:** current architecture/design handoff for the configurable-feature work. This is not an implementation-complete document.
+> **Status:** current architecture/design handoff for configurable-feature work on `configurable-feature-grid`.
 >
-> Repository/source/docs are authoritative. Before changing code, inspect current GitHub state, read root `AGENTS.md`, then read `docs/configurable-feature-config-design-progress.md` for the latest exact resume point.
+> Repository/source/docs are authoritative. In a new chat: inspect GitHub state, read root `AGENTS.md`, read this handoff, then read `docs/configurable-feature-config-design-progress.md` for the exact resume point.
 
 ## 1. Scope
 
-The repository already has proven Transaction grids using Client-Side, Infinite and Server-Side Row Models. The configurable work is a separate architecture experiment; do not destabilize those concrete grids merely to make the experiment possible.
+The repository has proven Transaction Client, Infinite and SSRM grids plus an isolated native-first SSRM editing reference route merged from PR #42.
 
-The first configurable implementation remains **SSRM-only** unless the user explicitly changes direction. Backend metadata must not choose row model.
+The configurable work remains a separate SSRM-first architecture experiment. Backend metadata does not choose Client/Infinite/SSRM, and the existing concrete grids should not be refactored merely to make configurable composition work.
 
-The business unit is feature/page + entity context:
+Business structure:
 
 ```text
 Review feature
@@ -19,7 +19,7 @@ Review feature
 └── "finance" entity
 ```
 
-The entity business/configuration identity is the key in `FeatureDefinition.entities`. `EntityDefinition<TLabelKey, TFieldDefinition>` itself is reusable and has no hard-coded knowledge of Transaction, Loan, Finance, etc.; those generics only narrow translation keys and field shape.
+Entity identity is the key in `FeatureDefinition.entities`; `EntityDefinition<TLabelKey, TFieldDefinition>` stays business-agnostic.
 
 ## 2. Mandatory normalization boundary
 
@@ -28,125 +28,45 @@ frontend-supported configuration design
         ↓
 may be persisted/managed using backend/database shape
         ↓
-backend returns runtime JSON
+backend runtime JSON
         ↓
 validate + normalize/adapt ALWAYS
         ↓
 normalized frontend configuration
         ↓
-compiler + registries + adapters
+compiler + registries + runtime policy
         ↓
 AG Grid GridOptions / ColDef / callbacks / components
         ↓
-concrete SSRM runtime
+concrete configurable SSRM runtime
 ```
 
-**Normalization remains even when backend/storage keys exactly match normalized frontend/AG Grid-aligned names.** Matching names only make the transformation identity-like; they do not make raw runtime data trusted configuration.
+Normalization remains even when backend/storage keys exactly match normalized frontend names. If backend naming changes later, map once at this boundary; compiler/grid code continues to consume the stable normalized model.
 
-If storage naming changes later, transform once at this boundary. Example:
-
-```text
-backend: columnDefaults
-→ normalizer
-→ normalized frontend: defaultColDef
-→ compiler
-```
-
-Compiler/grid code should not contain scattered backend-shape compatibility checks.
-
-## 3. AG Grid naming/type rule
-
-Use AG Grid vocabulary when the **concept and value semantics are the same**:
+## 3. Native-first naming rule
 
 ```text
-same concept + same value semantics
-→ AG Grid property name
+same AG Grid concept + same persisted value semantics
+→ use AG Grid property name
 → derive/reuse AG Grid type where practical
+
+AG Grid supports registered component by JSON-safe string name
+→ keep native cellEditor / cellRenderer property
+→ validate name against frontend registrations
+
+AG Grid property expects function/expression
+→ do not persist executable value
+→ use explicit frontend registry key/config descriptor
+
+application/business meaning differs
+→ keep application name
 ```
 
-If the persisted value only *selects* executable behavior, keep an explicit application descriptor:
+This rule applies to the **whole configuration contract**, not just columns currently used by Transactions.
 
-```text
-formatter: { key, params }
-→ registry
-→ actual AG Grid valueFormatter function
-```
+## 4. Current normalized type structure
 
-Do not call that descriptor `valueFormatter`, because an object containing a registry key is not the function AG Grid expects.
-
-Current direct native names include:
-
-```text
-colId
-field
-cellDataType
-sortable
-defaultColDef
-initialHide
-initialPinned
-initialWidth
-initialFlex
-minWidth
-maxWidth
-resizable
-filterOptions
-cellRendererParams
-cellEditorParams
-cellEditorPopup
-cellEditorPopupPosition
-```
-
-Current application/configuration names intentionally include:
-
-```text
-featureKey
-entities
-labelKey
-dataAdapterKey
-rowId
-filtering
-formatter
-renderer
-editing
-registry key/custom params descriptors
-```
-
-## 4. Three configuration categories
-
-### Native + declarative + JSON-safe
-
-Validated normalized values may use AG Grid names/types directly where semantics match.
-
-### Executable behavior selected by configuration
-
-Persist a key plus JSON-safe params where required:
-
-```text
-formatter.key → registry → AG Grid valueFormatter
-renderer.key  → registry → AG Grid cellRenderer
-editor.key    → registry → AG Grid cellEditor
-parser.key    → registry → AG Grid valueParser
-```
-
-Registry implementations should use real AG Grid callback/component types where practical.
-
-### Runtime/compiler-owned infrastructure
-
-Frontend creates values such as:
-
-```text
-serverSideDatasource
-runtime context
-compiled columnDefs
-GridApi refs
-lifecycle/event wiring
-```
-
-`dataAdapterKey` identifies the application data/API boundary; it does not persist a datasource object.
-
-## 5. Current public type structure
-
-Source of truth:
+Source:
 
 `frontend/src/shared/grid/configurable/configuration.types.ts`
 
@@ -156,225 +76,359 @@ FeatureDefinition
     ├── labelKey
     ├── dataAdapterKey
     ├── rowId: RowIdDefinition
-    ├── defaultColDef?: ConfigurableDefaultColDef
+    ├── gridOptions?: ConfigurableSsrmGridOptions
+    │   ├── defaultColDef?: ConfigurableDefaultColDef
+    │   ├── pagination/cache native options
+    │   ├── cellSelection
+    │   ├── invalidEditValueMode
+    │   ├── native edit-entry/undo/clipboard options
+    │   └── basic native grid presentation options
     └── fields: FieldDefinition[]
         ├── colId
         ├── field
         ├── labelKey
         ├── cellDataType
-        ├── sortable?
+        ├── ConfigurableNativeColDefOptions
+        │   ├── sorting/layout/sizing/presentation
+        │   ├── editable
+        │   ├── cellEditor / cellEditorParams / popup options
+        │   ├── suppressPaste / suppressFillHandle
+        │   └── cellRenderer / cellRendererParams
         ├── filtering?: FieldFilteringDefinition
-        ├── initialHide?
-        ├── initialPinned?
-        ├── initialWidth?
-        ├── initialFlex?
-        ├── minWidth?
-        ├── maxWidth?
-        ├── resizable?
-        ├── formatter?: FieldFormatterDefinition
-        ├── renderer?: FieldRendererDefinition
-        └── editing?: FieldEditingDefinition
-            ├── editor?: FieldEditorDefinition
-            └── parser?: FieldValueParserDefinition
+        ├── valueFormatterKey? / valueFormatterConfig?
+        └── valueParserKey? / valueParserConfig?
 ```
 
-## 6. Stable column identity vs API field path
+The previous custom hierarchy:
 
 ```text
-field.colId
-→ AG Grid ColDef.colId
-→ stable Column ID used by Grid State/API
-→ application edit/conflict/validation identity
+editing
+├── editor
+└── parser
 
-field.field
-→ AG Grid ColDef.field
-→ current API row value path
+renderer
+└── key
 ```
 
-They may differ. Explicit `colId` prevents a backend field-path rename from silently changing logical column identity or restoring saved state onto the wrong logical column.
+has been removed from the normalized model.
 
-## 7. Defaults
+## 5. Why native `cellEditor` / `cellRenderer` are safe
+
+AG Grid supports provided/registered components by string name. Therefore normalized JSON can carry:
 
 ```text
-shared baseDefaultColDef
+cellEditor: "agNumberCellEditor"
+cellEditor: "transactionAccountEditor"
+cellRenderer: "statusChip"
+```
+
+Frontend runtime owns the actual custom component registration. Unknown/unapproved names must fail validation rather than being silently accepted.
+
+This is native AG Grid capability, so a separate `editor.key` or `renderer.key` abstraction is unnecessary.
+
+## 6. Why parser/formatter still use explicit keys
+
+AG Grid `valueParser` and `valueFormatter` are executable function/expression properties. Persisting arbitrary expression strings is not allowed.
+
+```text
+valueParserKey
+→ frontend registry
+→ real AG Grid valueParser
+
+valueFormatterKey
+→ frontend registry
+→ real AG Grid valueFormatter
+```
+
+Optional `valueParserConfig` / `valueFormatterConfig` remain JSON-safe app data interpreted by the registered implementation.
+
+## 7. `gridOptions` and `defaultColDef`
+
+Entity-level native grid overrides now live under:
+
+```text
+entity.gridOptions
+```
+
+because the nested names are actual GridOptions concepts.
+
+`defaultColDef` moved under that object because AG Grid itself defines `defaultColDef` as a GridOptions property:
+
+```text
+application configurable-SSRM defaults
         +
-entity.defaultColDef
+entity.gridOptions
         ↓
-resolved AG Grid defaultColDef
+resolved GridOptions
+
+resolved gridOptions.defaultColDef
+        +
+compiled field properties
         ↓
-individual compiled field ColDef overrides
+final ColDef
 ```
 
-`ConfigurableDefaultColDef` is intentionally bounded. Using the native property name does not mean arbitrary `ColDef` callbacks/components can be persisted.
+Exact nested merge behavior belongs in the later normalizer/compiler implementation, but downstream property names stay native.
 
-Current supported default leaves:
+## 8. Current reviewed native GridOptions surface
+
+The normalized SSRM grid options currently include:
 
 ```text
-sortable
-initialHide
-initialPinned
-initialWidth
-initialFlex
-minWidth
-maxWidth
-resizable
+defaultColDef
+
+pagination
+paginationPageSize
+paginationPageSizeSelector
+
+cacheBlockSize
+maxBlocksInCache
+blockLoadDebounceMillis
+maxConcurrentDatasourceRequests
+
+cellSelection
+invalidEditValueMode
+singleClickEdit
+suppressClickEdit
+stopEditingWhenCellsLoseFocus
+undoRedoCellEditing
+undoRedoCellEditingLimit
+suppressClipboardPaste
+
+rowHeight
+headerHeight
+animateRows
 ```
 
-## 8. Layout/sizing cleanup
+This is an allowlisted native surface, not an unrestricted `GridOptions` passthrough. It should continue to expand by auditing applicable JSON-safe native options rather than by inventing app aliases.
 
-The previous `layout` and `sizing` wrapper objects have been removed. They added a second organization layer around values that already map directly to `ColDef`.
-
-Fields now carry the native leaves directly:
+### Runtime-owned even though React accepts them as props
 
 ```text
-initialHide
-initialPinned
-initialWidth
-initialFlex
-minWidth
-maxWidth
-resizable
+modules
+rowModelType
+serverSideDatasource
+columnDefs
+context
+getRowId callback
+events/callbacks
+GridApi refs
 ```
 
-The earlier custom `initialWidth XOR initialFlex` restriction was also removed. Follow AG Grid's native width/flex semantics instead of inventing a separate sizing rule.
+The first configurable runtime remains SSRM. `rowModelType` is architecture-owned rather than metadata-selected.
 
-Use `initial*` properties where the intent is initial state so later user/Grid State changes are not continuously overwritten.
+## 9. PR #42 / merged native-first SSRM editing reference
 
-## 9. Filtering
+PR #42 (`Spike: native-first SSRM editing`) was merged into `configurable-feature-grid` as merge commit `279fbfea85da85741b42dfa6e3cb034b36a92c51`.
 
-The previous field shape:
+Reference route:
 
 ```text
-filter: { filterOptions: [...] }
+/ssrm-native-editing
 ```
 
-was misleading because AG Grid `ColDef.filter` has different value semantics: it enables/selects a filter component.
+It intentionally leaves the existing `/ssrm` implementation unchanged. Use it to understand editing ownership; do not copy the whole Transaction spike into configurable code.
 
-Current normalized descriptor:
+### Native AG Grid owns
 
-```ts
-filtering?: {
-  filterOptions: readonly [...];
+```text
+normal cell editing
+Cell Selection
+Ctrl/Cmd+D Copy Range Down
+Ctrl/Cmd+Enter selected-range edit
+Fill Handle
+clipboard/paste behavior
+native editable filtering
+editor commit/validation lifecycle
+```
+
+### Shared/runtime infrastructure owns
+
+```text
+BASE + LOCAL only for genuinely dirty fields
+first BASE capture
+LOCAL restore after SSRM RowNode/store recreation
+revert-to-BASE cleanup
+dirty row/cell counts
+selected rows ∩ dirty rows
+safe save acknowledgement/rebase
+Discard draft cleanup + authoritative refresh
+```
+
+### Feature/business layer owns
+
+```text
+which fields are editable
+row/cell editable business policy
+validation rule selection/messages
+persistence mapping/endpoints
+row and selected Save/Discard presentation
+backend authority
+```
+
+## 10. Configurable editing consequences
+
+Do **not** introduce configurable copies of interactions AG Grid already owns:
+
+```text
+Apply Last Edit
+old current-page Flow 1 / Flow 2
+custom range-edit filtering
+custom Fill Handle replacement
+```
+
+Configure the native capability instead:
+
+```text
+gridOptions.cellSelection
+field.editable
+field.suppressPaste
+field.suppressFillHandle
+...
+```
+
+AG Grid's native Fill Handle/paste already skips non-editable cells. Application row/access policy should be composed into the native `editable` callback at compile/runtime time.
+
+## 11. Validation direction after PR #42
+
+The previous stable validation store remains part of the old concrete tracked-editing implementation, but it is **not automatically the configurable editing architecture**.
+
+The native-first spike proved:
+
+```text
+provided AG Grid editor
+→ runtime cellEditorParams.getValidationErrors
+
+custom React/MUI editor
+→ useGridCellEditor
+→ getValidationErrors / getValidationElement
+
+gridOptions.invalidEditValueMode = "block"
+→ invalid editor value stays in editor
+→ no dirty draft until a valid commit occurs
+```
+
+Future configurable validation should therefore describe declarative rule data. The compiler/editor implementation adapts those rules into AG Grid's native validation callbacks. Callback functions themselves never come from backend JSON.
+
+## 12. Lightweight draft state is not config
+
+The merged generic spike primitives are candidates for reusable configurable runtime composition:
+
+```text
+frontend/src/shared/grid/editing/gridDraftEditing.ts
+frontend/src/shared/grid/editing/useGridDraftEditing.ts
+```
+
+They are not metadata schemas.
+
+The state is deliberately finite:
+
+```text
+rowId
+└── dirty field
+    ├── baseValue
+    └── value
+```
+
+Do not add complete API-response/block snapshots or a React Query row/original-value cache merely for draft persistence.
+
+The spike deliberately omits the previous REMOTE/conflict reconciliation layer. Concurrency/version/conflict UX remains a separate later product decision.
+
+## 13. Deliberately unsupported native lifecycle: `readOnlyEdit`
+
+AG Grid `readOnlyEdit=true` changes normal editing from grid mutation/`cellValueChanged` to application-owned `cellEditRequest`.
+
+The merged spike and candidate draft observer are built around normal mutation + committed `cellValueChanged`. Therefore `readOnlyEdit` is not exposed in configurable grid options yet.
+
+This is the correct reason to omit a native option: it changes the selected editing architecture, not merely because the Transaction demo does not use it.
+
+## 14. Filtering remains a server-query descriptor
+
+`filtering` remains custom:
+
+```text
+filtering: {
+  filterOptions: [...]
 }
 ```
 
-Compiler meaning:
+because its important persisted meaning is which operators the active server adapter/backend supports, not only which filter component AG Grid can render.
+
+Compiler intent:
 
 ```text
-filtering descriptor
-→ enable appropriate AG Grid filter
+filtering
+→ appropriate native filter
 → filterOptions → filterParams.filterOptions
 ```
 
-Only server-query operators supported end to end by the active adapter/backend contract should be exposed.
+Do not expose unsupported operators only because AG Grid provides them.
 
-The existing server-backed grids prove shared filter UX such as Apply/Reset, `maxNumConditions: 1` and `closeOnApply: true`; filter defaults remain part of the upcoming grid-level design batch.
+## 15. `cellDataType`
 
-## 10. `cellDataType` native baseline
-
-The configurable proof uses SSRM, so `cellDataType` is set explicitly because AG Grid inference is Client-Side Row Model only.
-
-Current supported values:
+The normalized built-in AG Grid names now include:
 
 ```text
 text
 number
+bigint
 boolean
-date           → JavaScript Date
-dateString     → string date
-dateTime       → JavaScript Date
-dateTimeString → string date-time
+date
+dateString
+dateTime
+dateTimeString
+object
 ```
 
-Native parser/formatter/editor/renderer/filter behavior is the baseline. Do not require registry overrides when AG Grid already provides the needed behavior.
+SSRM requires explicit cell data types. The data adapter must materialise values in the representation AG Grid expects; for example raw JSON cannot directly transport JavaScript bigint.
 
-## 11. Formatter/renderer/editor/parser descriptors
-
-Executable code stays frontend-owned behind registries.
+## 16. Stable identity
 
 ```text
-formatter.key                 → registry → ColDef.valueFormatter
-renderer.key                  → registry → ColDef.cellRenderer
-renderer.cellRendererParams   → ColDef.cellRendererParams
-editor.key                    → registry → ColDef.cellEditor
-editor.cellEditorParams       → ColDef.cellEditorParams
-editor.cellEditorPopup        → ColDef.cellEditorPopup
-editor.cellEditorPopupPosition→ ColDef.cellEditorPopupPosition
-parser.key                    → registry → ColDef.valueParser
+field.colId
+→ ColDef.colId
+→ stable Grid State/API/logical column identity
+
+field.field
+→ ColDef.field
+→ current row/API value path
 ```
 
-Formatter/parser `params` remain application-specific because AG Grid has no direct `valueFormatterParams` / `valueParserParams` ColDef property.
+They may differ. Explicit `colId` prevents API field-path changes from silently changing logical column identity.
 
-## 12. Editing/value stages
+## 17. Data adapters and backend authority
 
-```text
-editing omitted → not editable
-editing present → potentially editable
-```
+`dataAdapterKey` resolves the frontend boundary for loading/saving/request-response mapping and backend-wire normalization.
 
-Presence must not compile to unconditional `editable: true`. Runtime editability composes access/authorization, row policy, tracked-edit conflict policy and other hard constraints.
+SSRM block loading remains datasource-owned; do not force TanStack Query into the datasource lifecycle for consistency.
 
-Keep these value stages distinct:
+Backend remains authoritative for security/access, business validation at persistence, server-query semantics and writes.
 
-```text
-1. authoritative API value
-2. effective value (API or LOCAL overlay)
-3. AG Grid cellDataType baseline
-4. optional formatted/rendered display
-5. editor candidate
-6. native/custom valueParser output = LOCAL draft
-7. validation
-8. save mapping → backend payload
-```
+## 18. Documentation and source comments
 
-## 13. Existing editing/security architecture to preserve
+Public config changes require:
 
-The configurable runtime must reuse the proven tracked-editing/validation/conflict mechanics rather than building a second metadata-specific system.
+1. useful JSDoc/IDE hover rationale in `configuration.types.ts`;
+2. curated reference updates under `docs/configurable-feature/`;
+3. progress/handoff updates when architecture direction changes;
+4. regenerated source-derived TypeDoc Markdown.
 
-Backend remains authoritative for:
-
-- accessible config projection;
-- field/row authorization;
-- masking/unmask capability and state;
-- server sort/filter/search semantics;
-- business validation;
-- save/action authorization and rejection;
-- authoritative data.
-
-Frontend consumes resolved access/config and provides UX; it does not duplicate backend authorization algorithms.
-
-## 14. Data adapters
-
-`dataAdapterKey` resolves the frontend adapter/service boundary for entity-specific transport concerns, including loading/saving/request-response mapping and any deliberate backend-wire normalization.
-
-SSRM block loading remains datasource-owned; do not force TanStack Query into datasource loading for consistency.
-
-## 15. Documentation
-
-Public configuration contracts require:
-
-1. useful JSDoc/IDE hover comments explaining responsibility and AG Grid mapping;
-2. curated Markdown under `docs/configurable-feature/`;
-3. source-generated TypeDoc Markdown under `docs/configurable-feature/generated/`.
-
-TypeDoc tooling is installed/configured. Regenerate after every public contract/JSDoc change:
+Regenerate with:
 
 ```bash
 npm run docs:configurable
 ```
 
-The portable text hierarchy in `docs/configurable-feature/type-hierarchy.md` remains the reliable visual reference; Mermaid is supplemental.
+Generated pages under `docs/configurable-feature/generated/` must not be hand-edited as the normal fix.
 
-## 16. Working rules
+## 19. Working branch / continuation
 
-Current design branch:
+Current configurable design branch:
 
-`configurable-feature-grid`
+```text
+configurable-feature-grid
+```
 
-Do not create another branch, open a PR or merge unless explicitly requested. Existing concrete grids remain untouched during the design experiment unless the user explicitly moves into implementation.
+Do not create another branch unless explicitly asked. Do not merge another PR without explicit approval.
 
-Use AG Grid 36.1 as the implementation reference. Native AG Grid first. No universal wrapper/giant `useGrid`, no Docker/unrelated infrastructure, and no console logging merely to inspect flow.
-
-## 17. Continuation
-
-Read `docs/configurable-feature-config-design-progress.md` for the latest exact checkpoint and next design batch.
+Read `docs/configurable-feature-config-design-progress.md` for the exact next batch.
