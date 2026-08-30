@@ -10,6 +10,7 @@ It is written so developers, reviewers, architects, and readers without the Type
 - [`configuration-reference.md`](configuration-reference.md) — current public interfaces, property semantics, constraints and compiler expectations.
 - [`type-hierarchy.md`](type-hierarchy.md) — quick visual type tree, **GitHub-rendered Mermaid diagram**, AG Grid mappings, configuration flow and registry/runtime classification.
 - [`documentation-standard.md`](documentation-standard.md) — required quality standard for JSDoc/IDE hover, curated docs and generated API/type documentation.
+- `generated/` — TypeDoc-generated Markdown API pages after `npm run docs:configurable` has been run and the generated output committed.
 
 ## New-chat continuation
 
@@ -32,10 +33,28 @@ A non-obvious property must explain its real responsibility, its AG Grid relatio
 
 The normalization boundary exists even when backend/storage property names currently match the normalized frontend/AG Grid-aligned names. Raw backend runtime data is still validated/normalized before compilation.
 
-## Generated docs status
+## Generated TypeDoc API
 
-A visible relationship diagram already exists in `type-hierarchy.md` using Mermaid plus a portable text fallback.
+TypeDoc and `typedoc-plugin-markdown` are installed as development dependencies. Configuration lives in repository-root `typedoc.json`.
 
-The planned generated API-doc tooling is **TypeDoc + Markdown output** so generated API pages can be browsed directly in GitHub. It is **not installed yet** on this branch. When added, `package.json` and `package-lock.json` must be updated together through npm; do not hand-edit the dependency lockfile.
+Generate the API reference with:
 
-Generated docs will supplement, not replace, the curated architecture/reference documents.
+```bash
+npm run docs:configurable
+```
+
+The command reads:
+
+```text
+frontend/src/shared/grid/configurable/configuration.types.ts
+```
+
+and writes GitHub-readable Markdown under:
+
+```text
+docs/configurable-feature/generated/
+```
+
+Generated Markdown is a checked-in documentation artifact. When the public configurable TypeScript contract changes, regenerate it, review the diff, and commit the generated output with the related source/docs change.
+
+The generated API pages supplement, not replace, the curated `concepts.md`, `configuration-reference.md` and `type-hierarchy.md`. The Mermaid relationship diagram remains the concise visual architecture view while TypeDoc provides source-derived API navigation and JSDoc details.
