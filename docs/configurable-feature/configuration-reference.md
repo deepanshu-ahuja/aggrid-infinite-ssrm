@@ -49,7 +49,7 @@ application/business concept
 → application name
 ```
 
-This distinction removed the previous custom `editing: { editor, parser }` and `renderer: { key }` wrappers.
+The allowlist is capability-driven, not demo-driven. Applicable JSON-safe native properties should be added with AG Grid names rather than hidden behind application aliases. A native property is excluded only for a concrete reason such as an executable value, incompatible SSRM semantics, an unsupported end-to-end capability, or a different runtime architecture.
 
 ## Three categories of configuration
 
@@ -61,6 +61,7 @@ Examples:
 
 ```text
 gridOptions.pagination
+gridOptions.rowSelection
 gridOptions.cellSelection
 gridOptions.invalidEditValueMode
 gridOptions.defaultColDef
@@ -95,6 +96,7 @@ getRowId callback
 GridApi refs
 event/lifecycle handlers
 native validation callbacks
+business-policy callbacks such as isRowSelectable
 ```
 
 Those values may be passed as React/AG Grid props at runtime, but they are not arbitrary persisted configuration.
@@ -150,7 +152,7 @@ Declarative path used by runtime code to build native executable `getRowId` beha
 
 Bounded native GridOptions-shaped configuration for the SSRM root.
 
-`defaultColDef` now lives inside `gridOptions` because that is where AG Grid defines it:
+`defaultColDef` lives inside `gridOptions` because that is where AG Grid defines it:
 
 ```text
 application configurable-SSRM defaults
@@ -174,39 +176,73 @@ final ColDef
 
 ## `ConfigurableSsrmGridOptions`
 
-Current reviewed native surface:
+The current reviewed native surface covers several coherent categories.
 
-```ts
-interface ConfigurableSsrmGridOptions {
-  defaultColDef?: ConfigurableDefaultColDef;
+```text
+column defaults
+→ defaultColDef
 
-  pagination?: ...;
-  paginationPageSize?: ...;
-  paginationPageSizeSelector?: ...;
+pagination
+→ pagination
+→ paginationAutoPageSize
+→ paginationPageSize
+→ paginationPageSizeSelector
+→ suppressPaginationPanel
 
-  cacheBlockSize?: ...;
-  maxBlocksInCache?: ...;
-  blockLoadDebounceMillis?: ...;
-  maxConcurrentDatasourceRequests?: ...;
+SSRM cache/loading
+→ cacheBlockSize
+→ maxBlocksInCache
+→ blockLoadDebounceMillis
+→ maxConcurrentDatasourceRequests
+→ serverSideInitialRowCount
+→ suppressServerSideFullWidthLoadingRow
 
-  cellSelection?: boolean | ConfigurableCellSelectionOptions;
-  invalidEditValueMode?: ...;
-  singleClickEdit?: ...;
-  suppressClickEdit?: ...;
-  stopEditingWhenCellsLoseFocus?: ...;
-  undoRedoCellEditing?: ...;
-  undoRedoCellEditingLimit?: ...;
-  suppressClipboardPaste?: ...;
+row selection
+→ rowSelection
 
-  rowHeight?: ...;
-  headerHeight?: ...;
-  animateRows?: ...;
-}
+cell selection / editing
+→ cellSelection
+→ invalidEditValueMode
+→ singleClickEdit
+→ suppressClickEdit
+→ enterNavigatesVertically
+→ enterNavigatesVerticallyAfterEdit
+→ stopEditingWhenCellsLoseFocus
+→ undoRedoCellEditing
+→ undoRedoCellEditingLimit
+→ suppressClipboardPaste
+
+column movement
+→ suppressMovableColumns
+→ suppressMoveWhenColumnDragging
+→ suppressColumnMoveAnimation
+→ suppressDragLeaveHidesColumns
+
+layout / presentation
+→ rowHeight
+→ rowBuffer
+→ headerHeight
+→ animateRows
+→ enableRtl
+
+tooltips
+→ enableBrowserTooltips
+→ tooltipShowDelay
+→ tooltipSwitchShowDelay
+→ tooltipHideDelay
+→ tooltipMouseTrack
+→ tooltipInteraction
+
+focus/accessibility
+→ suppressCellFocus
+→ suppressHeaderFocus
+→ enableCellTextSelection
+→ ensureDomOrder
 ```
 
-The pagination/cache properties are the same native properties already used by the repository's server-backed grid defaults.
+The pagination/cache properties extend the same native options already used by the repository's server-backed grid defaults.
 
-The editing-related properties were added after the merged native-first SSRM editing spike proved that these interactions should stay owned by AG Grid rather than being recreated in application controls.
+The editing-related properties follow the merged native-first SSRM editing spike: configure AG Grid's own capabilities instead of re-creating Apply Last Edit/current-page propagation mechanics.
 
 ### Not persisted despite being React grid props
 
@@ -229,6 +265,34 @@ GridApi
 
 The merged spike's draft adapter observes normal AG Grid mutations through `cellValueChanged`. Native `readOnlyEdit=true` changes that lifecycle to `cellEditRequest` and therefore represents a different runtime architecture. Do not expose it until the configurable runtime intentionally supports that lifecycle.
 
+### Grouping/tree/pivot-specific options
+
+The initial configurable runtime uses the repository's current flat SSRM contract. Grouping, tree data, aggregation and pivot request semantics are not yet supported end to end, so their native options are not added merely because AG Grid exposes them.
+
+## `ConfigurableSsrmRowSelectionOptions`
+
+Row selection remains native, but the normalized shape is narrowed to values that have valid flat-SSRM semantics.
+
+```text
+common
+→ mode: singleRow | multiRow
+→ checkboxes?: boolean
+→ hideDisabledCheckboxes?
+→ enableClickSelection?
+→ copySelectedRows?
+→ enableSelectionWithoutKeys?
+
+multiRow only
+→ groupSelects?: self
+→ selectAll?: all
+→ headerCheckbox?
+→ ctrlASelectsRows?
+```
+
+AG Grid's `isRowSelectable` callback remains runtime-owned because it enforces feature/business row policy.
+
+For SSRM, AG Grid documents `rowSelection.selectAll='filtered'` and `'currentPage'` as invalid; the grid behaves as `'all'`. Therefore the normalized SSRM config accepts only native `'all'`. The repository's All Filtered and Current Page operations remain explicit application semantics rather than being mislabeled as native SSRM `selectAll` configuration.
+
 ## `ConfigurableCellSelectionOptions`
 
 ```ts
@@ -248,7 +312,7 @@ interface ConfigurableCellSelectionOptions {
 
 The callback-based Fill Handle `setFillValue` option is intentionally absent because it is executable behavior.
 
-Native Cell Selection is the surface behind spreadsheet-like operations such as Cell Selection, Ctrl/Cmd+D, Ctrl/Cmd+Enter and Fill Handle editing. The configurable model should configure this native capability, not create separate application implementations of those commands.
+Native Cell Selection is the surface behind spreadsheet-like operations such as Cell Selection, Ctrl/Cmd+D, Ctrl/Cmd+Enter and Fill Handle editing. The configurable model configures this native capability rather than creating separate application implementations of those commands.
 
 ## `ConfigurableNativeColDefOptions`
 
@@ -265,6 +329,7 @@ sorting
 
 layout/sizing
 → initialHide
+→ lockVisible
 → initialPinned
 → initialWidth
 → initialFlex
@@ -277,23 +342,32 @@ layout/sizing
 → lockPosition
 → lockPinned
 
-text/header presentation
+text/header/tooltips/navigation
 → wrapText
 → autoHeight
 → wrapHeaderText
 → autoHeaderHeight
 → headerTooltip
 → tooltipField
+→ suppressNavigable (boolean branch only)
 
-editing
-→ editable (boolean persisted branch only)
+filter presentation
+→ floatingFilter
+→ suppressHeaderMenuButton
+→ suppressHeaderFilterButton
+→ suppressHeaderContextMenu
+→ suppressFloatingFilterButton
+
+editing/import/export
+→ editable (boolean branch only)
 → cellEditor
 → cellEditorParams
 → cellEditorPopup
 → cellEditorPopupPosition
 → singleClickEdit
 → useValueParserForImport
-→ suppressPaste (boolean persisted branch only)
+→ useValueFormatterForExport
+→ suppressPaste (boolean branch only)
 → suppressFillHandle
 
 rendering
@@ -303,9 +377,11 @@ rendering
 
 When an AG Grid property supports both a declarative and callback branch, only the safe declarative branch is exposed unless a separate frontend registry design is intentionally added.
 
+Stateful column properties such as current `hide`, `pinned`, `width`, `flex`, `sort` and `sortIndex` are not used as the declarative initial-config vocabulary. Their `initial*` counterparts seed new column state without repeatedly overwriting later user/Grid State changes.
+
 ## `ConfigurableDefaultColDef`
 
-`ConfigurableDefaultColDef` reuses the same reviewed native column surface.
+`ConfigurableDefaultColDef` is a type alias over the same reviewed native column surface.
 
 It does not mean arbitrary `ColDef` values can be persisted. Callback/component implementations remain frontend-owned.
 
@@ -391,11 +467,13 @@ field.filtering
 → field.filtering.filterOptions → filterParams.filterOptions
 ```
 
+Native filter presentation options such as `floatingFilter` can still remain native column properties. The compiler/runtime must reject contradictory combinations such as exposing filter-only presentation for a field whose normalized `filtering` capability is absent.
+
 Do not expose an operator merely because AG Grid can render it; the active data adapter/backend contract must support the same semantics.
 
 ## Native editor configuration
 
-There is no longer an `editing.editor` wrapper.
+There is no `editing.editor` wrapper.
 
 ```text
 editable                  → ColDef.editable after runtime policy composition
@@ -407,6 +485,7 @@ singleClickEdit           → ColDef.singleClickEdit
 suppressPaste             → ColDef.suppressPaste
 suppressFillHandle        → ColDef.suppressFillHandle
 useValueParserForImport   → ColDef.useValueParserForImport
+useValueFormatterForExport→ ColDef.useValueFormatterForExport
 ```
 
 `cellEditor` may be an AG Grid provided editor name such as `agNumberCellEditor` or a frontend-registered custom editor name. The normalizer/runtime must validate allowed custom names.
@@ -415,7 +494,7 @@ Static `cellEditorParams` are JSON-safe configuration. Runtime functions such as
 
 ## Native renderer configuration
 
-There is no longer a custom `renderer: { key }` wrapper.
+There is no custom `renderer: { key }` wrapper.
 
 ```text
 cellRenderer       → AG Grid provided/registered renderer name
