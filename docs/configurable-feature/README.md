@@ -6,20 +6,26 @@ It is written so developers, reviewers, architects, and readers without the Type
 
 ## Start here
 
-- [`concepts.md`](concepts.md) — plain-language meaning of the main configuration concepts.
-- [`configuration-reference.md`](configuration-reference.md) — current public interfaces, property semantics, constraints, and examples.
-- [`documentation-standard.md`](documentation-standard.md) — required quality standard for TypeScript JSDoc/IDE hover and the library-style reference.
+- [`concepts.md`](concepts.md) — plain-language meanings, normalization boundary and AG Grid alignment rules.
+- [`configuration-reference.md`](configuration-reference.md) — current public interfaces, property semantics, constraints and compiler expectations.
+- [`type-hierarchy.md`](type-hierarchy.md) — quick visual type tree, AG Grid mappings, configuration flow and registry/runtime classification.
+- [`documentation-standard.md`](documentation-standard.md) — required quality standard for JSDoc/IDE hover, curated docs and future generated API/type documentation.
 
-## Related design documents
+## New-chat continuation
 
-- `../configurable-feature-handoff.md` — primary architecture/design context.
-- `../configurable-feature-config-design-progress.md` — living design status, provisional decisions, and exact resume point.
+For ongoing design work, read these after the repository root `AGENTS.md` and current GitHub state:
+
+- `../configurable-feature-handoff.md` — primary architecture/background;
+- `../configurable-feature-config-design-progress.md` — **latest decisions, current branch checkpoint and exact resume point**. When an older illustrative name in the handoff differs from the progress/reference/source, the newer progress/reference/source wins.
+
+## Related planning
+
 - `../grid-backlog.md` — broader repository planning and sequencing.
 
 ## Documentation contract
 
-The TypeScript source provides useful JSDoc for IDE hover. These Markdown documents provide the deeper library-style explanation for readers who may not have source access.
+The TypeScript source provides useful JSDoc for IDE hover. These Markdown documents provide deeper explanation for readers who may not have source access.
 
-A non-obvious property must explain its real responsibility rather than merely repeat its name. Keep source JSDoc and the public configuration reference synchronized.
+A non-obvious property must explain its real responsibility, its AG Grid relationship where applicable, and any normalization/registry/runtime boundary that matters. Keep source JSDoc and the public configuration reference synchronized.
 
-Split documentation by coherent topic as the public surface grows. Do not create one oversized document or one file per small interface by default.
+Generated TypeDoc/type-relationship documentation is planned as an additional layer, not a replacement for these curated documents. The generated artifacts should follow the real TypeScript architecture rather than forcing the architecture to suit a diagramming tool.
