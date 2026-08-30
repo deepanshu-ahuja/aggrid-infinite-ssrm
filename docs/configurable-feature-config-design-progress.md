@@ -2,100 +2,27 @@
 
 ## Purpose
 
-This is the **living continuation file** for the interface-by-interface configuration design discussion on `configurable-feature-grid`.
+Living continuation file for the interface-by-interface configuration design on `configurable-feature-grid`. Use it when a chat/session changes so the next discussion resumes from the exact design point.
 
-Use it when a chat/session changes so the next discussion can resume from the exact design point without reconstructing decisions from conversation history.
+Primary architecture context remains `docs/configurable-feature-handoff.md`. Public library-style docs live under `docs/configurable-feature/`.
 
-This file is intentionally narrower than `docs/configurable-feature-handoff.md`.
+## Working rules for this design
 
-## Authority and reading order
+- Keep work on `configurable-feature-grid`; do not create another branch unless explicitly requested.
+- Design parent concepts first, then related child properties/interfaces in small coherent batches.
+- Preserve every important unresolved item here as **Provisional** or **Deferred**; do not rely on chat memory.
+- TypeScript source exposes finalized contracts only.
+- Public interfaces/non-obvious properties require useful JSDoc for IDE hover.
+- JSDoc describes only the real contract; no irrelevant comparisons/speculation.
+- Separate Markdown docs provide the deeper library-style explanation.
+- Group related source/docs; avoid one giant file and avoid one file per tiny interface.
+- Shared configuration contracts must be feature-, entity-, and row-model-neutral in shape. Concrete values and executable business behavior remain feature/entity owned.
 
-For this configurable-feature effort:
+## Implemented/finalized contracts
 
-1. read root `AGENTS.md` first for repository-wide working rules;
-2. treat `docs/configurable-feature-handoff.md` as the primary architecture/design context;
-3. use `docs/configurable-feature/` as the library-style configuration documentation for agreed public contracts;
-4. use this file for detailed discussion status, accepted/rejected/deferred decisions, and the exact resume point;
-5. use `docs/grid-backlog.md` for broader sequencing/status.
+Source: `frontend/src/shared/grid/configurable/configuration.types.ts`.
 
-PR #40 and older configurable-grid experiments remain reference-only when they conflict with the handoff.
-
-Do not treat an idea in this file as finalized unless it is explicitly marked **Finalized**.
-
-## Working branch
-
-All work for this effort remains on:
-
-```text
-configurable-feature-grid
-```
-
-Do not create another branch unless explicitly requested.
-
-## Discussion method
-
-Design the configuration **parent concept first, then its child properties/interfaces**.
-
-For each interface:
-
-1. Explain its purpose in plain language.
-2. Review each property individually.
-3. For each property, explain only what is useful for understanding the real contract, including where relevant:
-   - why it exists;
-   - who provides it;
-   - who consumes it;
-   - required versus optional;
-   - default/fallback;
-   - a short example when the example materially improves understanding.
-4. Challenge whether the property/interface is needed at all.
-5. Mark the decision as Finalized, Deferred, or Rejected.
-6. Move to the next small group only after the current one is understood.
-
-Do not dump the complete schema at once.
-
-## Documentation and source-organization requirements
-
-The public configuration API requires two documentation layers:
-
-- **JSDoc in TypeScript** for concise IDE/hover documentation;
-- **library-style Markdown documentation** under `docs/configurable-feature/` for developers, architects, reviewers, or readers who do not have the source file open.
-
-JSDoc rules:
-
-- describe the contract that actually exists;
-- do not repeat the property name in sentence form;
-- do not add comparisons with APIs or concepts that are not part of the property;
-- do not add future/speculative behavior to hover documentation;
-- add an example only when it makes the real contract easier to understand.
-
-Documentation/file-organization rules:
-
-- do not grow one giant documentation file indefinitely;
-- split documentation by coherent topic as the public surface grows;
-- do not create one source file per interface by default;
-- group closely related contracts together, and split when responsibilities become meaningfully different.
-
-## Shared configuration ownership
-
-The main public configuration contracts are intended to be reusable by configurable grid/table features.
-
-A contract belongs in shared configurable-grid code only when its **shape** remains useful regardless of:
-
-- the business feature;
-- the entity/data context;
-- Client, Infinite, or SSRM row model choice.
-
-Concrete values and executable business behavior remain feature/entity owned. Examples include concrete feature keys, entity keys, adapters, request/save mappers, business actions, and business validation choices.
-
-Row-model-specific mechanics remain in their existing row-model/shared-mechanics boundaries rather than being added to generic business configuration merely for consistency.
-
-## Interface review 1: `FeatureDefinition`
-
-### Purpose
-
-`FeatureDefinition` is the shared top-level configuration contract for one configurable business feature.
-
-Current agreed design shape:
+### `FeatureDefinition`
 
 ```ts
 interface FeatureDefinition<
@@ -107,129 +34,81 @@ interface FeatureDefinition<
 }
 ```
 
-This is currently a **design contract**. TypeScript source is intentionally not being added yet because `EntityDefinition` has no finalized members; adding a placeholder/empty production interface would create misleading code.
+Finalized:
+- `featureKey` is required and generic over a string key.
+- `entities` is the required entity-definition map.
+- Entity identity is the `entities` record key.
+- Separate `supportedEntities` is rejected as duplicate information.
+- `EntityDefinition` does not duplicate identity with an `entityKey` member.
 
-### `featureKey`
-
-Purpose: stable programmatic identity of the feature definition.
-
-Example:
-
-```ts
-featureKey: "review"
-```
-
-The shared contract uses a generic string key so each feature can narrow its own key without requiring one central union of every application feature.
-
-**Decision: Finalized — required.**
-
-### `entities`
-
-Purpose: entity configurations available within the feature, keyed by their stable entity identifier.
-
-Example:
+### `EntityDefinition`
 
 ```ts
-entities: {
-  loan: loanDefinition,
-  finance: financeDefinition,
+interface EntityDefinition {
+  labelKey: string;
+  dataAdapterKey: string;
+  rowId: RowIdDefinition;
 }
 ```
 
-The record key is the entity identity used to select a definition.
+Finalized:
+- `labelKey` is required.
+- Use a full explicit translation key, e.g. `review.entities.loan.label`; do not derive it automatically from feature/entity identity.
+- `dataAdapterKey` is required and resolves the registered frontend data/API adapter for that feature/entity.
+- A data adapter covers loading/saving and request/response mapping required by those data operations; it is not a bucket for unrelated entity utilities.
+- `rowId` is required.
 
-**Decision: Finalized — keep `entities` as the entity-definition map.**
-
-### `supportedEntities`
-
-Earlier discussion considered a separate property such as:
-
-```ts
-supportedEntities: ["loan", "finance"]
-```
-
-Once entity definitions are keyed under `entities`, that separate list duplicates the same identity set.
-
-**Decision: Rejected — do not add `supportedEntities`.**
-
-## Interface review 2: `EntityDefinition`
-
-### Purpose
-
-`EntityDefinition` is the shared contract describing one entity/data context inside a configurable feature.
-
-For the Review example, `loan` and `finance` each resolve to an `EntityDefinition` value through `FeatureDefinition.entities`.
-
-### Entity identity
-
-The entity's stable identity is the key in the `entities` record:
+### `RowIdDefinition`
 
 ```ts
-entities: {
-  loan: loanDefinition,
+interface RowIdDefinition {
+  path: string;
 }
 ```
 
-A second `entityKey: "loan"` property inside `loanDefinition` would duplicate the same identity and permit inconsistent values.
+Finalized:
+- `path` identifies the stable unique ID in the API row.
+- Common case is `id`.
+- Dot notation such as `loan.id` is supported for nested API shapes.
+- No implicit `id` default; the configuration stays explicit.
 
-**Decision: Finalized — entity identity is the `entities` record key. Do not add a duplicate `entityKey` member to `EntityDefinition`.**
+## Provisional / must be revisited
 
-### Remaining shape
+These items are intentionally preserved so a new chat does not lose them:
 
-No actual `EntityDefinition` property has been finalized yet.
+- `EntityDefinition.fields: FieldDefinition[]` is the intended next major entity member. Array form is preferred because configured default column order matters. Do not add it to source until `FieldDefinition` has a real agreed shape.
+- Revisit strong generic typing of `dataAdapterKey` when the data-adapter registry is designed.
+- Revisit whether translation keys should be strongly typed when translation infrastructure/types are designed.
+- Row-ID accessor/resolver support should be added only if a real entity cannot expose stable identity through a simple field path.
+- Translation resources should be feature-oriented rather than one giant global file; exact physical i18n file/module layout waits for translation infrastructure.
+- Easy concept documentation is required and should grow only as concepts are actually finalized. Current glossary is `docs/configurable-feature/concepts.md`.
 
-**Decision: Deferred — review the first real entity property next.**
+## Deferred configuration areas
 
-## Finalized decisions
+Review one by one; do not infer final shapes from earlier chat examples:
 
-- Public configuration shapes are shared when they are feature-, entity-, and row-model-neutral.
-- Concrete business values and executable business behavior remain feature/entity owned.
-- Documentation is split into JSDoc plus separate library-style Markdown documentation.
-- Documentation/source files are grouped by coherent responsibility rather than one giant file or one file per interface.
-- JSDoc describes only the real contract and uses examples only when useful.
-- `FeatureDefinition` is a shared generic contract.
-- `FeatureDefinition.featureKey` is required and generic over a string key.
-- `FeatureDefinition.entities` maps stable entity keys to entity definitions.
-- A separate `supportedEntities` list is not used.
-- `EntityDefinition` is a shared contract.
-- Entity identity is the `entities` record key; `EntityDefinition` does not duplicate it with an `entityKey` property.
-
-## Deferred / not yet finalized
-
-- First real property of `EntityDefinition`.
-- Datasource/data-adapter key naming and placement.
-- Row identity contract.
-- Routing/view manifest shape.
-- Resolved access shape.
-- Field definitions.
+- `FieldDefinition` and field identity/binding.
 - Renderer/editor/formatter/parser/normalizer/accessor registries.
-- Validation declaration shape.
-- Actions.
-- Masking/access capabilities.
+- Datasource/data-adapter registry contract and operations.
 - Query/request/save mapping.
-- Translation configuration.
+- Validation declarations.
+- Actions/business operations.
+- Resolved access/security/masking.
+- Routing/view manifest.
+- Page-level configuration.
+- Translation infrastructure and fallbacks.
 - User preferences/Grid State reconciliation.
 - Configuration versioning and configuration validation.
-- Exact final top-level configuration envelope.
+- Exact top-level configuration envelope.
 
-None of the deferred items should be assumed from earlier chat examples; review them one by one.
+## CI / push cadence
 
-## CI / push cadence note
-
-During this design phase, batch several related interface decisions before ordinary pushes where practical. An explicit request to push sooner overrides that batching preference.
-
-There is currently no open PR for this branch. When a PR is opened while work is still limited to configuration design/types/docs, the Playwright/browser regression job may be temporarily paused to avoid repeated expensive browser runs. Keep the normal non-browser checks. Restore Playwright before relying on the PR for runtime/grid integration changes where real-browser coverage is materially needed.
-
-Do not claim browser validation for code that has not actually run it.
+Batch several related decisions before ordinary pushes where practical; explicit user request to push sooner overrides this. There is currently no open PR. If a PR is opened during config-design/types/docs work, Playwright/browser regression may be temporarily paused while normal non-browser checks remain; restore Playwright before runtime/grid integration where browser coverage is materially needed.
 
 ## Exact resume point
 
-**Next discussion: the first real property of `EntityDefinition`.**
+Next major interface: **`FieldDefinition`**.
 
-Start with the data ownership question:
+Start by identifying the smallest coherent field batch, likely field identity/binding and display label, then continue through related properties without stopping after every single key.
 
-> After selecting the `loan` or `finance` entity definition, how should that definition identify the frontend data/service adapter that loads and saves that entity's data?
-
-Discuss the need and naming (`dataAdapterKey`, `dataSourceKey`, or another bounded name) before adding the property.
-
-Do not jump ahead into fields, renderers, editors, routing, masking, Grid State, or the rest of the schema until that property is understood and decided.
+Remember that `EntityDefinition.fields: FieldDefinition[]` is already the provisional intended parent connection and must be finalized/added once `FieldDefinition` has enough real shape.

@@ -2,20 +2,21 @@
 
 This directory is the library-style documentation home for the configurable feature/grid configuration model.
 
-It is written to be useful without requiring the reader to inspect TypeScript source or reconstruct design decisions from pull requests or chat history.
+It is written so developers, reviewers, architects, and readers without the TypeScript source open can understand the public configuration model.
 
 ## Start here
 
-- [`configuration-reference.md`](configuration-reference.md) — public configuration contracts and property semantics that have been agreed so far.
+- [`concepts.md`](concepts.md) — plain-language meaning of the main configuration concepts.
+- [`configuration-reference.md`](configuration-reference.md) — agreed public interfaces and property semantics.
 
 ## Related design documents
 
-- `../configurable-feature-handoff.md` — primary architecture/design context for the configurable feature effort.
-- `../configurable-feature-config-design-progress.md` — living interface-by-interface design status and exact resume point.
+- `../configurable-feature-handoff.md` — primary architecture/design context.
+- `../configurable-feature-config-design-progress.md` — living design status, provisional decisions, and exact resume point.
 - `../grid-backlog.md` — broader repository planning and sequencing.
 
 ## Documentation contract
 
-As the public configuration surface grows, documentation should be split by coherent topic rather than accumulated in one oversized file. Likely future topics include access/security, adapters/mapping, fields/editing, and worked examples, but those documents should be created only when their contracts are actually agreed.
+The source code provides concise JSDoc for IDE hover. These Markdown documents provide the deeper library-style explanation.
 
-The source code will provide concise JSDoc for IDE hover. These Markdown documents provide the deeper reference for developers, reviewers, architects, and readers who may not have the source open.
+Split documentation by coherent topic as the public surface grows. Do not create one oversized document or one file per small interface by default.
