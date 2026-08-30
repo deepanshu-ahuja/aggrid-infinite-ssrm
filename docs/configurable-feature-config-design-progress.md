@@ -9,7 +9,7 @@ Primary architecture context remains `docs/configurable-feature-handoff.md`. Pub
 ## Working rules for this design
 
 - Keep work on `configurable-feature-grid`; do not create another branch unless explicitly requested.
-- Design parent concepts first, then related child properties/interfaces in small coherent batches.
+- Design parent concepts first, then related child properties/interfaces in coherent batches rather than stopping after every property.
 - Preserve every important unresolved item here as **Provisional** or **Deferred**; do not rely on chat memory.
 - TypeScript source exposes finalized contracts only.
 - Public interfaces/non-obvious properties require useful JSDoc for IDE hover.
@@ -17,6 +17,8 @@ Primary architecture context remains `docs/configurable-feature-handoff.md`. Pub
 - Separate Markdown docs provide the deeper library-style explanation.
 - Group related source/docs; avoid one giant file and avoid one file per tiny interface.
 - Shared configuration contracts must be feature-, entity-, and row-model-neutral in shape. Concrete values and executable business behavior remain feature/entity owned.
+- Frontend-authored configuration should use strong generic/type narrowing where it improves safety without making the public API unusable.
+- Backend JSON remains runtime data even when it represents the same logical contract. TypeScript generics do not replace runtime configuration validation.
 
 ### Durable documentation-quality rule
 
@@ -33,7 +35,33 @@ The standard is intentionally stronger than merely requiring a comment:
 
 Do not accept weak comments that merely restate names such as "key of the adapter" when the developer still would not know what that adapter is responsible for.
 
-## Implemented/finalized contracts
+## Overall design coverage snapshot
+
+This is a progress map, not a promise that every future shape is already known.
+
+```text
+FeatureDefinition                    DONE (source + docs)
+EntityDefinition                     PARTIAL, core + fields connection done
+RowIdDefinition                      DONE (source + docs)
+FieldDefinition core                 DONE (source + docs)
+  identity / API binding / label     DONE
+  semantic data type                 DONE
+  sortable capability                DONE
+  filter capability/operators        DONE
+Field presentation/defaults          NOT YET DESIGNED
+Formatting/rendering                 NOT YET DESIGNED
+Editing/editor/value conversion      NOT YET DESIGNED
+Validation declarations              NOT YET DESIGNED
+Server sort/filter/search mapping    NOT YET DESIGNED
+Access/security/masking              NOT YET DESIGNED
+Data-adapter registry contract       NOT YET DESIGNED
+Actions/business operations          NOT YET DESIGNED
+Grid State/preferences reconciliation NOT YET DESIGNED
+Config validation/versioning         NOT YET DESIGNED
+Final runtime/compiler composition   NOT YET DESIGNED
+```
+
+## Implemented/finalized type contracts
 
 Source: `frontend/src/shared/grid/configurable/configuration.types.ts`.
 
@@ -50,6 +78,7 @@ interface FeatureDefinition<
 ```
 
 Finalized:
+
 - `featureKey` is required and generic over a string key.
 - `entities` is the required entity-definition map.
 - Entity identity is the `entities` record key.
@@ -58,20 +87,30 @@ Finalized:
 
 ### `EntityDefinition`
 
+Current source shape now includes the field collection:
+
 ```ts
-interface EntityDefinition {
-  labelKey: string;
+interface EntityDefinition<
+  TTranslationKey extends string = string,
+  TFieldDefinition extends ConfigurableFieldDefinition<TTranslationKey> =
+    ConfigurableFieldDefinition<TTranslationKey>,
+> {
+  labelKey: TTranslationKey;
   dataAdapterKey: string;
   rowId: RowIdDefinition;
+  fields: readonly TFieldDefinition[];
 }
 ```
 
 Finalized:
-- `labelKey` is required.
+
+- `labelKey` is required and is now generic so frontend-owned feature definitions can narrow it to valid translation keys.
 - Use a full explicit translation key, e.g. `review.entities.loan.label`; do not derive it automatically from feature/entity identity.
 - `dataAdapterKey` is required and resolves the registered frontend data/API adapter for that feature/entity.
 - A data adapter covers loading/saving and request/response mapping required by those data operations; it is not a bucket for unrelated entity utilities.
 - `rowId` is required.
+- `fields` is required and is a readonly array.
+- Field array order represents configured default column order; stable field identity comes from each field's `id`, not from array position.
 
 ### `RowIdDefinition`
 
@@ -82,96 +121,208 @@ interface RowIdDefinition {
 ```
 
 Finalized:
+
 - `path` identifies the stable unique ID in the API row.
 - Common case is `id`.
 - Dot notation such as `loan.id` is supported for nested API shapes.
 - No implicit `id` default; the configuration stays explicit.
 
-## Current design proposal: `FieldDefinition`
+## `FieldDefinition` core — finalized
 
-This is the exact point reached in the design discussion. **Nothing in this section is finalized yet unless explicitly promoted later.** Do not add it to TypeScript source merely because it is recorded here.
+The initial field contract is now source-backed rather than provisional.
 
-Current proposed first shape:
+Conceptual shape:
 
 ```ts
-interface FieldDefinition {
-  id: string;
-  field: string;
-  labelKey: string;
+interface FieldDefinition<
+  TFieldId extends string = string,
+  TFieldPath extends string = string,
+  TTranslationKey extends string = string,
+  TDataType extends FieldDataType = FieldDataType,
+  TAdditionalFilterOperator extends string = never,
+> {
+  id: TFieldId;
+  field: TFieldPath;
+  labelKey: TTranslationKey;
+  dataType: TDataType;
+  sortable?: boolean;
+  filter?: FieldFilterDefinition<
+    FilterOperatorForDataType<TDataType> | TAdditionalFilterOperator
+  >;
 }
 ```
 
-Proposed meaning:
+### `id`
 
-- `id`: stable configuration identity for the field/column. It should remain stable even if the API property path changes. This identity may later be referenced by Grid State/preferences, access rules, validation, field lookup, and other configuration relationships.
-- `field`: path in the API row containing the field value. Common case is a direct property such as `amount`; dot notation such as `loan.amount` should support nested API row shapes.
-- `labelKey`: full explicit translation key used to resolve the displayed field/column label, following the same explicit-translation-key approach already finalized for `EntityDefinition.labelKey`.
+Finalized:
 
-Important distinction under discussion:
+- required stable configuration identity for the field/column;
+- intentionally independent of the API row path;
+- generic so feature-owned types can narrow valid field IDs;
+- intended to remain stable when API response paths change and to become the safe identity referenced by later field-related configuration.
+
+### `field`
+
+Finalized:
+
+- required path to the value in the API row;
+- direct property (`amount`) is the common case;
+- dot notation (`financials.amount`) supports nested response shapes;
+- generic so a typed frontend feature can narrow it to valid row-path strings instead of accepting every string;
+- backend JSON still requires runtime validation and cannot gain compile-time safety merely from the TypeScript contract.
+
+Important distinction:
 
 ```text
 id
 → stable configuration identity
 
 field
-→ location of the actual value in the API row
+→ API row value location
 ```
 
-Example only for understanding the proposal:
+### `labelKey`
+
+Finalized:
+
+- required full explicit translation key for the field/column label;
+- generic so frontend-owned definitions can narrow it to a valid translation-key type;
+- do not derive it automatically from feature/entity/field identity.
+
+### `dataType`
+
+Finalized required union:
 
 ```ts
-{
-  id: "loanAmount",
-  field: "financials.amount",
-  labelKey: "review.fields.loanAmount.label",
+type FieldDataType = "text" | "number" | "boolean" | "date" | "dateTime";
+```
+
+Purpose:
+
+- communicates the semantic value category of the field;
+- provides the shared base filter-operator vocabulary appropriate to the field type;
+- does not by itself finalize formatter/editor/validation behavior, which are still separate design areas.
+
+### `sortable`
+
+Finalized:
+
+- optional boolean;
+- omitted means the shared sortable default (`true`), matching the existing `baseDefaultColDef`;
+- explicit `false` disables sorting for the field.
+
+### `filter`
+
+Finalized capability shape:
+
+```ts
+interface FieldFilterDefinition<TOperator extends string = FilterOperator> {
+  operators: readonly [TOperator, ...TOperator[]];
 }
 ```
 
-The proposal intentionally allows `id` and `field` to differ so backend/API shape can evolve without automatically changing stable configuration identity.
+Semantics:
 
-### Intended parent connection
+- no separate `filterable` boolean;
+- `filter` omitted means the field is not filterable;
+- `filter` present means filtering is available;
+- `operators` is required and non-empty and is the exact list of filter choices allowed for the field.
 
-Still provisional:
+This avoids contradictory duplicate configuration such as `filterable: false` plus a populated filter object.
 
-```ts
-interface EntityDefinition {
-  // existing finalized members...
-  fields: FieldDefinition[];
-}
+### Shared filter operators
+
+The base names align with the repository's existing shared server-backed filter vocabulary.
+
+Text:
+
+```text
+contains, equals, notEqual, startsWith, endsWith
 ```
 
-Array form is currently preferred because array order naturally represents configured default column order while `FieldDefinition.id` supplies stable field identity. Do not add this member to source until the `FieldDefinition` contract is actually agreed.
+Number:
 
-### Field areas still to design
+```text
+equals, notEqual, greaterThan, greaterThanOrEqual,
+lessThan, lessThanOrEqual
+```
 
-These are not optional reminders; they are the remaining field-design surface that future chats must continue reviewing rather than forgetting:
+Date/date-time:
 
-- value/data type;
-- sort capability/configuration;
-- filter capability/configuration;
-- searchability where the product needs it;
-- default visibility/presentation and other column-level defaults that truly belong in public configuration;
-- formatter/display-value behavior;
-- editor/editability and editor selection;
-- parser/normalizer/value conversion stages where required;
-- validation declarations;
-- server sort/filter/search keys when API/query field names differ from displayed/API-row paths;
-- access/security/masking integration;
-- accessor/resolver support only if a real field cannot be represented by a simple row path;
-- request/save mapping for fields whose read and write shapes differ.
+```text
+equals, notEqual, lessThan, greaterThan
+```
 
-Do not assume final property names or nested shapes for these areas from chat examples. Review them in coherent batches and record every accepted/rejected/deferred decision here.
+Boolean base semantics:
+
+```text
+equals, notEqual
+```
+
+`FilterOperatorForDataType<TDataType>` selects the shared operator union appropriate for the semantic type.
+
+### Feature-specific filter operators
+
+Finalized extensibility rule:
+
+- a field can list a subset of the shared type-appropriate operators;
+- a feature can add typed operator keys through `TAdditionalFilterOperator` when a real business-specific filter semantic exists;
+- a custom operator string is only configuration identity; it must later resolve through a bounded frontend/query mapping and matching backend semantics;
+- never accept executable JavaScript/functions from backend JSON configuration.
+
+Example concept only:
+
+```ts
+type ReviewExtraFilterOperator = "requiresReview";
+```
+
+The exact custom-operator registry/query-mapper contract remains deferred until the filtering/query infrastructure is designed.
+
+## TypeScript typing versus backend JSON
+
+This is a durable architecture rule:
+
+```text
+frontend-owned definitions
+→ use generic/type narrowing where useful
+→ compile-time checking for field IDs, row paths, translation keys and custom operator keys
+
+backend JSON metadata
+→ ordinary runtime values
+→ validate against configuration schema + registries/capabilities
+→ only then compile/resolve into trusted grid inputs
+```
+
+Do not weaken every public TypeScript property to an unconstrained `string` merely because metadata can also arrive from JSON. Do not pretend TypeScript generics validate runtime JSON either.
 
 ## Provisional / must be revisited
 
 These items are intentionally preserved so a new chat does not lose them:
 
-- `EntityDefinition.fields: FieldDefinition[]` is the intended next major entity member, but remains provisional until `FieldDefinition` is agreed.
 - Revisit strong generic typing of `dataAdapterKey` when the data-adapter registry is designed.
-- Revisit whether translation keys should be strongly typed when translation infrastructure/types are designed.
+- Row-ID path typing could be narrowed in frontend-owned definitions if the later row-type/path design makes that useful without generic overload; current source remains `string`.
 - Row-ID accessor/resolver support should be added only if a real entity cannot expose stable identity through a simple field path.
-- Translation resources should be feature-oriented rather than one giant global file; exact physical i18n file/module layout waits for translation infrastructure.
+- Exact translation resource/module layout still waits for translation infrastructure; resources should remain feature-oriented rather than one giant global file.
+- Runtime configuration validation/schema is mandatory before backend JSON becomes trusted resolved configuration; exact validation library/schema/versioning is not yet designed.
+- Filter custom-operator registry/query mapping is still required before feature-specific operator keys can execute real semantics.
 - Easy concept documentation is required and should grow only as concepts are actually finalized. Current glossary is `docs/configurable-feature/concepts.md`.
+
+## Field areas still to design
+
+Do not forget or silently collapse these into the current core:
+
+- default visibility and presentation controls that truly belong in public config;
+- width/min/max width and other column sizing defaults where appropriate;
+- formatter/display-value behavior;
+- renderer selection and renderer registry contract;
+- editor/editability and editor registry contract;
+- parser/normalizer/value-conversion stages where required;
+- validation declarations;
+- searchability where the product needs it;
+- server sort/filter/search keys when query/API field names differ from displayed/API-row paths;
+- request/save mapping for fields whose read and write shapes differ;
+- access/security/masking integration;
+- accessor/resolver support only if a real field cannot be represented by a simple row path.
 
 ## Documentation tooling requirement
 
@@ -202,8 +353,8 @@ Review one by one; do not infer final shapes from earlier chat examples:
 - Page-level configuration.
 - Translation infrastructure and fallbacks.
 - User preferences/Grid State reconciliation.
-- Configuration versioning and configuration validation.
-- Exact top-level configuration envelope.
+- Configuration versioning and runtime configuration validation.
+- Exact top-level configuration envelope/runtime compiler.
 
 ## CI / push cadence
 
@@ -211,18 +362,17 @@ Batch several related decisions before ordinary pushes where practical; explicit
 
 ## Exact resume point
 
-Resume at **`FieldDefinition`**.
+The **core `FieldDefinition` contract is now finalized and added to source/docs**.
 
-The current proposal is:
+Resume with the next coherent field batch rather than reopening already-settled identity/filter questions unless a concrete issue is found.
 
-```ts
-interface FieldDefinition {
-  id: string;
-  field: string;
-  labelKey: string;
-}
-```
+Recommended next sequence:
 
-It has been explained but **has not yet been explicitly approved/finalized**. First confirm/challenge this initial identity/binding/label group, then continue through the remaining field areas in coherent batches rather than stopping after every single property.
+1. field presentation/defaults: visibility plus width/min/max width and whether these belong directly on `FieldDefinition` or in a bounded presentation child object;
+2. formatter/display behavior and renderer selection/registries;
+3. editing/editor plus parser/normalizer/value-conversion boundaries;
+4. validation declarations;
+5. server sort/filter/search mapping and request/save field mapping;
+6. access/security/masking integration.
 
-When `FieldDefinition` has enough finalized shape, add it to `configuration.types.ts`, add `EntityDefinition.fields: FieldDefinition[]`, provide proper JSDoc following `documentation-standard.md`, update `configuration-reference.md`, update `concepts.md` if needed, and update this continuation file.
+Keep each batch substantial enough to make progress, record unresolved decisions here, and update source + JSDoc + reference + concepts together whenever a contract is finalized.
