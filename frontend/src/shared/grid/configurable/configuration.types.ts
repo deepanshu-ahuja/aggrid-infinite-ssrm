@@ -138,10 +138,10 @@ export type FieldPinnedPosition = Extract<
  * JSON-safe native `ColDef` properties that the configurable contract may carry directly.
  *
  * These properties intentionally keep AG Grid names because their normalized values have the same
- * meaning as AG Grid. Function/callback branches are deliberately removed where a native property is
- * a union of declarative and executable forms. Frontend runtime policy may still further restrict a
- * native capability; for example `editable: true` makes the column eligible for editing while the
- * compiled `editable` callback can additionally enforce current row/access policy.
+ * meaning as AG Grid. Function/callback branches are removed where a native property is a union of
+ * declarative and executable forms. Runtime policy may still further restrict a native capability;
+ * for example `editable: true` makes the column eligible for editing while the compiled AG Grid
+ * callback can additionally enforce current row/access policy.
  *
  * Registered custom editors/renderers are represented by their AG Grid component names. Executable
  * component implementations remain frontend-owned and are registered by runtime infrastructure.
@@ -161,6 +161,8 @@ export interface ConfigurableNativeColDefOptions<
 
   /** Initial hidden state; seeds new column state. */
   initialHide?: ColDef['initialHide'];
+  /** Prevent users from changing this column's visibility through the UI. */
+  lockVisible?: ColDef['lockVisible'];
   /** Initial pinned side; seeds new column state. */
   initialPinned?: FieldPinnedPosition;
   /** Initial width in pixels; seeds new column state. */
@@ -196,13 +198,26 @@ export interface ConfigurableNativeColDefOptions<
   headerTooltip?: ColDef['headerTooltip'];
   /** Row-data field used by AG Grid as the cell tooltip value. */
   tooltipField?: ColDef['tooltipField'];
+  /** Static branch of native keyboard navigation suppression for the column. */
+  suppressNavigable?: boolean;
+
+  /** Show the field's normal filter state/control in an AG Grid floating-filter row. */
+  floatingFilter?: ColDef['floatingFilter'];
+  /** Hide the normal column-menu button for this header. */
+  suppressHeaderMenuButton?: ColDef['suppressHeaderMenuButton'];
+  /** Hide the header filter button for this column. */
+  suppressHeaderFilterButton?: ColDef['suppressHeaderFilterButton'];
+  /** Disable opening the column menu from header right-click. */
+  suppressHeaderContextMenu?: ColDef['suppressHeaderContextMenu'];
+  /** Hide the button that opens the parent filter from a floating filter. */
+  suppressFloatingFilterButton?: ColDef['suppressFloatingFilterButton'];
 
   /**
    * Native column editing eligibility.
    *
    * Only the declarative boolean branch is persisted. `true` does not bypass application row/access
    * policy: the compiler may turn it into an AG Grid `editable` callback that combines this permission
-   * with the current authoritative business rules.
+   * with current authoritative business rules.
    */
   editable?: boolean;
 
@@ -230,6 +245,8 @@ export interface ConfigurableNativeColDefOptions<
   singleClickEdit?: ColDef['singleClickEdit'];
   /** Whether import/paste should apply this column's resolved value parser. */
   useValueParserForImport?: ColDef['useValueParserForImport'];
+  /** Whether export/copy/fill should use this column's resolved value formatter. */
+  useValueFormatterForExport?: ColDef['useValueFormatterForExport'];
   /** Static branch of AG Grid `suppressPaste`; callbacks remain frontend-owned. */
   suppressPaste?: boolean;
   /** Prevent Fill Handle updates for this column. Non-editable cells are already skipped natively. */
@@ -244,17 +261,16 @@ export interface ConfigurableNativeColDefOptions<
 /**
  * Bounded JSON-safe AG Grid `defaultColDef` used by configurable entities.
  *
- * This reuses the same native declarative surface as individual fields. It intentionally does not
+ * This reuses the reviewed native declarative surface used by fields. It intentionally does not
  * accept executable callbacks, component implementations or arbitrary `ColDef` objects.
  */
-export interface ConfigurableDefaultColDef
-  extends ConfigurableNativeColDefOptions<string, string> {}
+export type ConfigurableDefaultColDef = ConfigurableNativeColDefOptions<string, string>;
 
 /**
  * JSON-safe Cell Selection configuration supported by the configurable SSRM grid.
  *
  * The names match AG Grid `cellSelection`. The callback-based Fill Handle `setFillValue` option is
- * intentionally absent; custom executable fill behavior would require a separately reviewed frontend
+ * intentionally absent; custom executable fill behavior requires a separately reviewed frontend
  * registry capability rather than backend-supplied JavaScript.
  */
 export interface ConfigurableCellSelectionOptions {
@@ -283,18 +299,57 @@ export type ConfigurableCellSelectionHandle =
       suppressClearOnFillReduction?: boolean;
     };
 
+interface ConfigurableRowSelectionCommonOptions {
+  /** Static branch of AG Grid checkbox rendering; per-row callback policy remains runtime-owned. */
+  checkboxes?: boolean;
+  /** Hide checkboxes disabled by the runtime `isRowSelectable` business-policy callback. */
+  hideDisabledCheckboxes?: boolean;
+  /** Native row-click/keyboard selection behavior. */
+  enableClickSelection?: boolean | 'enableDeselection' | 'enableSelection';
+  /** Copy a selected row rather than only its focused cell when native clipboard copy is used. */
+  copySelectedRows?: boolean;
+  /** Allow touch/click multi-selection without requiring Ctrl/Cmd. */
+  enableSelectionWithoutKeys?: boolean;
+}
+
+/**
+ * JSON-safe native row-selection configuration valid for the flat configurable SSRM model.
+ *
+ * The callback `isRowSelectable` remains runtime-owned because it enforces feature/business policy.
+ * SSRM treats `selectAll: 'filtered' | 'currentPage'` as invalid and falls back to `'all'`, so those
+ * values are deliberately not accepted here. The repository's All Filtered / Current Page semantics
+ * remain explicit application operations rather than misleading native configuration.
+ */
+export type ConfigurableSsrmRowSelectionOptions = ConfigurableRowSelectionCommonOptions &
+  (
+    | {
+        mode: 'singleRow';
+      }
+    | {
+        mode: 'multiRow';
+        /** Flat SSRM selection state; grouped descendant selection requires a different contract. */
+        groupSelects?: 'self';
+        /** Only native SSRM-valid header select-all scope. */
+        selectAll?: 'all';
+        /** Show AG Grid's header select-all checkbox. */
+        headerCheckbox?: boolean;
+        /** Allow Ctrl/Cmd+A to select rows when Cell Selection is also enabled. */
+        ctrlASelectsRows?: boolean;
+      }
+  );
+
 /**
  * Bounded native AG Grid options for the configurable SSRM root.
  *
  * This is an allowlisted JSON-safe subset of `GridOptions`, not a parallel grid API. Application-wide
- * defaults are merged with entity overrides before the runtime supplies the resolved values to
+ * defaults are merged with entity overrides before the runtime supplies resolved values to
  * `AgGridReact`. Executable callbacks/events, `serverSideDatasource`, `context`, `columnDefs`, GridApi
  * references and React `modules` remain runtime-owned.
  *
- * Editing options here intentionally include the native capabilities proved by the merged SSRM native
- * editing spike: Cell Selection/Fill Handle, normal clipboard-driven editing and AG Grid validation.
- * The old custom Apply Last Edit/current-page bulk-edit controls are not configurable substitutes for
- * those native operations.
+ * The allowlist is capability-driven: applicable declarative native options should retain their AG
+ * Grid names instead of being reinvented. A native option is excluded only when it is executable,
+ * changes the selected runtime architecture, is incompatible with flat SSRM semantics, or belongs to
+ * a capability whose end-to-end contract is not supported yet.
  */
 export interface ConfigurableSsrmGridOptions {
   /** Native AG Grid column defaults after application defaults are merged. */
@@ -302,10 +357,14 @@ export interface ConfigurableSsrmGridOptions {
 
   /** Enable native AG Grid pagination. */
   pagination?: GridOptions['pagination'];
+  /** Size the current page automatically from available vertical space. */
+  paginationAutoPageSize?: GridOptions['paginationAutoPageSize'];
   /** Number of rows displayed per pagination page. */
   paginationPageSize?: GridOptions['paginationPageSize'];
   /** Native page-size selector configuration. */
   paginationPageSizeSelector?: GridOptions['paginationPageSizeSelector'];
+  /** Hide AG Grid's built-in pagination panel while retaining pagination behavior. */
+  suppressPaginationPanel?: GridOptions['suppressPaginationPanel'];
 
   /** SSRM rows requested per server-side cache block. */
   cacheBlockSize?: GridOptions['cacheBlockSize'];
@@ -315,12 +374,19 @@ export interface ConfigurableSsrmGridOptions {
   blockLoadDebounceMillis?: GridOptions['blockLoadDebounceMillis'];
   /** Maximum simultaneous datasource requests. */
   maxConcurrentDatasourceRequests?: GridOptions['maxConcurrentDatasourceRequests'];
+  /** Initial number of SSRM loading rows represented at the root level. */
+  serverSideInitialRowCount?: GridOptions['serverSideInitialRowCount'];
+  /** Use per-cell loading instead of SSRM's full-width loading row. */
+  suppressServerSideFullWidthLoadingRow?: GridOptions['suppressServerSideFullWidthLoadingRow'];
+
+  /** Native row selection for the flat SSRM model; runtime injects `isRowSelectable`. */
+  rowSelection?: ConfigurableSsrmRowSelectionOptions;
 
   /**
    * Native AG Grid Cell Selection configuration.
    *
-   * This enables the selection surface used by native Ctrl/Cmd+D, Ctrl/Cmd+Enter and Fill Handle
-   * editing. Required AG Grid Enterprise modules are runtime/bundle infrastructure, not JSON config.
+   * This is the selection surface used by native Ctrl/Cmd+D, Ctrl/Cmd+Enter and Fill Handle editing.
+   * Required AG Grid Enterprise modules are runtime/bundle infrastructure, not JSON config.
    */
   cellSelection?: boolean | ConfigurableCellSelectionOptions;
 
@@ -330,6 +396,10 @@ export interface ConfigurableSsrmGridOptions {
   singleClickEdit?: GridOptions['singleClickEdit'];
   /** Disable click/double-click edit entry while retaining other native edit entry points. */
   suppressClickEdit?: GridOptions['suppressClickEdit'];
+  /** Move focus down on Enter when the focused cell is not editing. */
+  enterNavigatesVertically?: GridOptions['enterNavigatesVertically'];
+  /** Move focus down after Enter commits the active editor. */
+  enterNavigatesVerticallyAfterEdit?: GridOptions['enterNavigatesVerticallyAfterEdit'];
   /** Commit/stop the active edit when focus leaves the grid. */
   stopEditingWhenCellsLoseFocus?: GridOptions['stopEditingWhenCellsLoseFocus'];
   /** Enable AG Grid's native undo/redo stack for cell edits, paste and Fill Handle changes. */
@@ -339,12 +409,47 @@ export interface ConfigurableSsrmGridOptions {
   /** Disable clipboard paste for the entire grid. */
   suppressClipboardPaste?: GridOptions['suppressClipboardPaste'];
 
+  /** Prevent all columns from being moved by users. */
+  suppressMovableColumns?: GridOptions['suppressMovableColumns'];
+  /** Show the target position while dragging and move only when the drag completes. */
+  suppressMoveWhenColumnDragging?: GridOptions['suppressMoveWhenColumnDragging'];
+  /** Disable AG Grid's column-moving animation. */
+  suppressColumnMoveAnimation?: GridOptions['suppressColumnMoveAnimation'];
+  /** Prevent dragging a column outside the grid from hiding it. */
+  suppressDragLeaveHidesColumns?: GridOptions['suppressDragLeaveHidesColumns'];
+
   /** Native fixed row height when the table chooses one. */
   rowHeight?: GridOptions['rowHeight'];
+  /** Number of extra rows AG Grid renders outside the visible viewport. */
+  rowBuffer?: GridOptions['rowBuffer'];
   /** Native header-row height. */
   headerHeight?: GridOptions['headerHeight'];
   /** Native row animation toggle. */
   animateRows?: GridOptions['animateRows'];
+  /** Use right-to-left grid layout. */
+  enableRtl?: GridOptions['enableRtl'];
+
+  /** Use browser-native title tooltips instead of AG Grid rich tooltips. */
+  enableBrowserTooltips?: GridOptions['enableBrowserTooltips'];
+  /** Delay before a rich AG Grid tooltip is shown. */
+  tooltipShowDelay?: GridOptions['tooltipShowDelay'];
+  /** Delay when switching directly between tooltip-enabled elements. */
+  tooltipSwitchShowDelay?: GridOptions['tooltipSwitchShowDelay'];
+  /** Delay before a rich AG Grid tooltip is hidden. */
+  tooltipHideDelay?: GridOptions['tooltipHideDelay'];
+  /** Make rich tooltips follow the mouse pointer. */
+  tooltipMouseTrack?: GridOptions['tooltipMouseTrack'];
+  /** Allow interaction with rich tooltip content. */
+  tooltipInteraction?: GridOptions['tooltipInteraction'];
+
+  /** Disable focus navigation into grid cells. */
+  suppressCellFocus?: GridOptions['suppressCellFocus'];
+  /** Disable focus navigation into grid headers. */
+  suppressHeaderFocus?: GridOptions['suppressHeaderFocus'];
+  /** Allow native browser text selection inside cells. */
+  enableCellTextSelection?: GridOptions['enableCellTextSelection'];
+  /** Keep rendered row/cell DOM order aligned with visual order for accessibility needs. */
+  ensureDomOrder?: GridOptions['ensureDomOrder'];
 }
 
 /**
