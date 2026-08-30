@@ -8,10 +8,19 @@ Use it when a chat/session changes so the next discussion can resume from the ex
 
 This file is intentionally narrower than `docs/configurable-feature-handoff.md`.
 
-- `docs/configurable-feature-handoff.md` remains the primary architecture/design context.
-- This file records the **current detailed configuration-shape discussion**, including accepted decisions, deferred decisions, rejected ideas, and the next interface to review.
-- PR #40 and older configurable-grid experiments remain reference-only when they conflict with the handoff.
-- Do not treat an idea in this file as finalized unless it is explicitly marked **Finalized**.
+## Authority and reading order
+
+For this configurable-feature effort:
+
+1. read root `AGENTS.md` first for repository-wide working rules;
+2. treat `docs/configurable-feature-handoff.md` as the primary architecture/design context;
+3. use `docs/configurable-feature/` as the library-style configuration documentation for agreed public contracts;
+4. use this file for detailed discussion status, accepted/rejected/deferred decisions, and the exact resume point;
+5. use `docs/grid-backlog.md` for broader sequencing/status.
+
+PR #40 and older configurable-grid experiments remain reference-only when they conflict with the handoff.
+
+Do not treat an idea in this file as finalized unless it is explicitly marked **Finalized**.
 
 ## Working branch
 
@@ -25,87 +34,84 @@ Do not create another branch unless explicitly requested.
 
 ## Discussion method
 
-We will design the configuration **molecule -> atom in discussion**, while implementation can later be **atom -> molecule**.
+Design the configuration **parent concept first, then its child properties/interfaces**.
 
-For each parent interface:
+For each interface:
 
-1. Explain the interface's single purpose in plain language.
-2. Review every property individually.
-3. For each property, answer where relevant:
-   - Why does it exist?
-   - Who provides it?
-   - Who consumes it?
-   - Is it required or optional?
-   - What is the default/fallback?
-   - Is a short example useful?
+1. Explain its purpose in plain language.
+2. Review each property individually.
+3. For each property, explain only what is useful for understanding the real contract, including where relevant:
+   - why it exists;
+   - who provides it;
+   - who consumes it;
+   - required versus optional;
+   - default/fallback;
+   - a short example when the example materially improves understanding.
 4. Challenge whether the property/interface is needed at all.
 5. Mark the decision as Finalized, Deferred, or Rejected.
-6. Only then move to the next small group.
+6. Move to the next small group only after the current one is understood.
 
 Do not dump the complete schema at once.
 
-## Documentation and code quality requirement
+## Documentation and source-organization requirements
 
-When interfaces are eventually implemented:
+The public configuration API requires two documentation layers:
 
-- Public configuration interfaces and non-obvious properties must have useful JSDoc so VS Code hover explains their purpose.
-- Avoid comments that merely repeat the property name.
-- Important distinctions, ownership boundaries, defaults/fallbacks, or dangerous assumptions should receive richer comments and examples where useful.
-- A central configuration reference document should explain the full public configuration model interface-by-interface.
-- JSDoc should be the concise developer-hover view; reference documentation should provide the deeper explanation. Avoid maintaining two identical walls of text.
+- **JSDoc in TypeScript** for concise IDE/hover documentation;
+- **library-style Markdown documentation** under `docs/configurable-feature/` for developers, architects, reviewers, or readers who do not have the source file open.
 
-Example of the desired JSDoc quality:
+JSDoc rules:
 
-```ts
-/**
- * Stable business entity represented by this feature configuration.
- *
- * Identifies the data context, such as `loan` or `finance`.
- * It does not select an API endpoint; API behavior is resolved separately
- * through the configured data adapter.
- */
-entityKey: EntityKey;
-```
+- describe the contract that actually exists;
+- do not repeat the property name in sentence form;
+- do not add comparisons with APIs or concepts that are not part of the property;
+- do not add future/speculative behavior to hover documentation;
+- add an example only when it makes the real contract easier to understand.
 
-## Confirmed architectural framing
+Documentation/file-organization rules:
 
-The configurable unit is a **business feature/page plus an entity context**, not merely a generic grid.
+- do not grow one giant documentation file indefinitely;
+- split documentation by coherent topic as the public surface grows;
+- do not create one source file per interface by default;
+- group closely related contracts together, and split when responsibilities become meaningfully different.
 
-Examples:
+## Shared configuration ownership
 
-```text
-Review + Loan
-Review + Finance
+The main public configuration contracts are intended to be reusable by configurable grid/table features.
 
-Future example:
-Correction + Loan
-Correction + Finance
-```
+A contract belongs in shared configurable-grid code only when its **shape** remains useful regardless of:
 
-`Review` is the feature. `Loan` and `Finance` are entity/data contexts.
+- the business feature;
+- the entity/data context;
+- Client, Infinite, or SSRM row model choice.
 
-The same entity may participate in multiple features with different fields, actions, validation, access, and page behavior.
+Concrete values and executable business behavior remain feature/entity owned. Examples include concrete feature keys, entity keys, adapters, request/save mappers, business actions, and business validation choices.
 
-Configuration must remain JSON-safe. Executable behavior stays in bounded frontend code/registries/adapters. The initial proof remains SSRM-first and must not refactor the existing Client, Infinite, or SSRM Transaction grids.
+Row-model-specific mechanics remain in their existing row-model/shared-mechanics boundaries rather than being added to generic business configuration merely for consistency.
 
 ## Interface review 1: `FeatureDefinition`
 
 ### Purpose
 
-`FeatureDefinition` identifies **which business feature is being configured**.
+`FeatureDefinition` is the shared top-level configuration contract for one configurable business feature.
 
-Current minimal conceptual shape under discussion:
+Current agreed design shape:
 
 ```ts
-interface FeatureDefinition {
-  featureKey: FeatureKey;
-  supportedEntities: EntityKey[];
+interface FeatureDefinition<
+  TFeatureKey extends string = string,
+  TEntityKey extends string = string,
+> {
+  featureKey: TFeatureKey;
+  entities: Record<TEntityKey, EntityDefinition>;
 }
 ```
 
-The shape is intentionally minimal. Earlier ideas such as title, route, page definition, versions, actions, and other configuration have **not** been assigned to this interface yet. We will place them only after reviewing the relevant concepts.
+This is currently a **design contract**. TypeScript source is intentionally not being added yet because `EntityDefinition` has no finalized members; adding a placeholder/empty production interface would create misleading code.
 
 ### `featureKey`
+
+Purpose: stable programmatic identity of the feature definition.
 
 Example:
 
@@ -113,88 +119,86 @@ Example:
 featureKey: "review"
 ```
 
-Purpose:
+The shared contract uses a generic string key so each feature can narrow its own key without requiring one central union of every application feature.
 
-- Identifies the business feature/capability.
-- Does not identify the entity.
-- Does not select the backend endpoint or data adapter.
+**Decision: Finalized — required.**
 
-Example distinction:
+### `entities`
 
-```text
-review   -> feature
-loan     -> entity
-finance  -> entity
+Purpose: entity configurations available within the feature, keyed by their stable entity identifier.
+
+Example:
+
+```ts
+entities: {
+  loan: loanDefinition,
+  finance: financeDefinition,
+}
 ```
 
-**Decision: Finalized — keep `featureKey`.**
+The record key is the entity identity used to select a definition.
+
+**Decision: Finalized — keep `entities` as the entity-definition map.**
 
 ### `supportedEntities`
 
-Example:
+Earlier discussion considered a separate property such as:
 
 ```ts
 supportedEntities: ["loan", "finance"]
 ```
 
-Potential purpose:
+Once entity definitions are keyed under `entities`, that separate list duplicates the same identity set.
 
-- Declares which entity/data contexts the feature supports in principle.
-- Does not mean the current user is authorized for every listed entity.
-- Does not mean the current page/session is currently using every listed entity.
+**Decision: Rejected — do not add `supportedEntities`.**
 
-Those are separate concepts:
+## Interface review 2: `EntityDefinition`
 
-```text
-Feature supports: Loan + Finance
-User may access: Loan only
-Current context: Loan
-```
+### Purpose
 
-However, this property may become duplicate information if `FeatureDefinition` later contains entity definitions keyed by entity, for example:
+`EntityDefinition` is the shared contract describing one entity/data context inside a configurable feature.
+
+For the Review example, `loan` and `finance` each resolve to an `EntityDefinition` value through `FeatureDefinition.entities`.
+
+### Entity identity
+
+The entity's stable identity is the key in the `entities` record:
 
 ```ts
 entities: {
-  loan: ...,
-  finance: ...,
+  loan: loanDefinition,
 }
 ```
 
-In that design, supported entities could be inferred from the entity-definition keys.
+A second `entityKey: "loan"` property inside `loanDefinition` would duplicate the same identity and permit inconsistent values.
 
-**Decision: Deferred — do not finalize `supportedEntities` until `EntityDefinition` is designed.**
+**Decision: Finalized — entity identity is the `entities` record key. Do not add a duplicate `entityKey` member to `EntityDefinition`.**
 
-## Important terminology separation already agreed
+### Remaining shape
 
-Do not collapse these concepts:
+No actual `EntityDefinition` property has been finalized yet.
 
-```text
-Feature identity
-Entity identity/context
-Resolved user access/authorization
-Current session/entity choice
-User Grid State/preferences
-Runtime row/grid state
-Datasource/service adapter identity
-```
+**Decision: Deferred — review the first real entity property next.**
 
-For example, `entityKey: "loan"` should identify the Loan business/data context. A separate adapter/data-source key may later identify the executable frontend adapter used to load/save Loan data. Whether that separate key is needed and exactly where it belongs still needs interface-by-interface review.
+## Finalized decisions
 
-## Current status
+- Public configuration shapes are shared when they are feature-, entity-, and row-model-neutral.
+- Concrete business values and executable business behavior remain feature/entity owned.
+- Documentation is split into JSDoc plus separate library-style Markdown documentation.
+- Documentation/source files are grouped by coherent responsibility rather than one giant file or one file per interface.
+- JSDoc describes only the real contract and uses examples only when useful.
+- `FeatureDefinition` is a shared generic contract.
+- `FeatureDefinition.featureKey` is required and generic over a string key.
+- `FeatureDefinition.entities` maps stable entity keys to entity definitions.
+- A separate `supportedEntities` list is not used.
+- `EntityDefinition` is a shared contract.
+- Entity identity is the `entities` record key; `EntityDefinition` does not duplicate it with an `entityKey` property.
 
-### Finalized
+## Deferred / not yet finalized
 
-- Discussion proceeds parent interface first, then child interfaces/properties.
-- Every property is explained and challenged before acceptance.
-- Configuration APIs will receive useful JSDoc and separate reference documentation.
-- `FeatureDefinition.featureKey` is required.
-- Feature identity and entity identity are separate concepts.
-
-### Deferred / not yet finalized
-
-- `FeatureDefinition.supportedEntities`.
-- Exact `EntityDefinition` shape.
-- Datasource/data-adapter keys and placement.
+- First real property of `EntityDefinition`.
+- Datasource/data-adapter key naming and placement.
+- Row identity contract.
 - Routing/view manifest shape.
 - Resolved access shape.
 - Field definitions.
@@ -208,18 +212,24 @@ For example, `entityKey: "loan"` should identify the Loan business/data context.
 - Configuration versioning and configuration validation.
 - Exact final top-level configuration envelope.
 
-None of the deferred items should be assumed from earlier chat examples; they must be reviewed one by one.
+None of the deferred items should be assumed from earlier chat examples; review them one by one.
+
+## CI / push cadence note
+
+During this design phase, batch several related interface decisions before ordinary pushes where practical. An explicit request to push sooner overrides that batching preference.
+
+There is currently no open PR for this branch. When a PR is opened while work is still limited to configuration design/types/docs, the Playwright/browser regression job may be temporarily paused to avoid repeated expensive browser runs. Keep the normal non-browser checks. Restore Playwright before relying on the PR for runtime/grid integration changes where real-browser coverage is materially needed.
+
+Do not claim browser validation for code that has not actually run it.
 
 ## Exact resume point
 
-**Next interface to discuss: `EntityDefinition`.**
+**Next discussion: the first real property of `EntityDefinition`.**
 
-Start by explaining only its purpose in plain language and then propose the smallest useful shape.
+Start with the data ownership question:
 
-The first question it must answer is the user's original concern:
+> After selecting the `loan` or `finance` entity definition, how should that definition identify the frontend data/service adapter that loads and saves that entity's data?
 
-> How do we explicitly say that this Review feature is operating on Loan data versus Finance data?
+Discuss the need and naming (`dataAdapterKey`, `dataSourceKey`, or another bounded name) before adding the property.
 
-While reviewing `EntityDefinition`, also decide whether `FeatureDefinition.supportedEntities` is useful or redundant.
-
-Do not jump ahead into field definitions, renderers, editors, mappers, routing, masking, Grid State, or the rest of the schema until this interface is understood and reviewed.
+Do not jump ahead into fields, renderers, editors, routing, masking, Grid State, or the rest of the schema until that property is understood and decided.
