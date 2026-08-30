@@ -1,4 +1,4 @@
-{
+  {
   "$schema": "https://typedoc.org/schema.json",
   "name": "Configurable Feature API",
   "entryPoints": [
