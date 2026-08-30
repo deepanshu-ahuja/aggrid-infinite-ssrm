@@ -1,11 +1,10 @@
 # Configurable Feature Type Hierarchy and AG Grid Mapping
 
-This is the quick visual map for the public configurable-feature contracts in
-`frontend/src/shared/grid/configurable/configuration.types.ts`.
+Quick visual map for `frontend/src/shared/grid/configurable/configuration.types.ts`.
 
-It is intentionally hand-maintained while the contract is still being designed. Generated TypeDoc / type-relationship diagrams can be added once the registry, validation, access and runtime/compiler contracts are stable enough that generated output will be useful rather than noisy.
+The hand-maintained diagram stays useful because it explains ownership and compiler meaning. Generated TypeDoc/type-relationship output can sit beside it once the runtime/registry contracts are added.
 
-## Type hierarchy
+## Current type hierarchy
 
 ```text
 FeatureDefinition
@@ -15,10 +14,10 @@ FeatureDefinition
     ├── rowId: RowIdDefinition
     │   └── path
     ├── fieldDefaults?: FieldDefaultsDefinition
-    │   ├── sortable?
+    │   ├── sortable?                       ← ColDef['sortable']
     │   └── layout?: FieldLayoutDefinition
-    │       ├── initialVisible?
-    │       ├── initialPinned?
+    │       ├── initialHide?                 ← ColDef['initialHide']
+    │       ├── initialPinned?               ← ColDef['initialPinned']
     │       └── sizing?: FieldSizingDefinition
     │           ├── initialWidth? XOR initialFlex?
     │           ├── minWidth?
@@ -28,10 +27,10 @@ FeatureDefinition
         ├── id
         ├── field
         ├── labelKey
-        ├── dataType
-        ├── sortable?
+        ├── cellDataType                    ← ColDef.cellDataType-compatible
+        ├── sortable?                       ← ColDef.sortable
         ├── filter?: FieldFilterDefinition
-        │   └── operators[]
+        │   └── filterOptions[]              ← AG Grid filterParams.filterOptions naming
         ├── layout?: FieldLayoutDefinition
         ├── formatter?: FieldFormatterDefinition
         │   ├── key
@@ -50,67 +49,113 @@ FeatureDefinition
                 └── params?
 ```
 
+## End-to-end configuration boundary
+
+```text
+frontend-supported config model
+        ↓
+may be stored/returned using backend/database representation
+        ↓
+configuration adapter / normalization
+        ↓
+validated normalized config
+        ↓
+compiler + registries
+        ↓
+final AG Grid options / columns / callbacks / components
+```
+
+Raw backend configuration never goes straight into `AgGridReact`. If backend/storage names differ later, normalize them once at the boundary. A backend property that the deployed frontend does not read/normalize/compile has no effect.
+
+## AG Grid alignment rule
+
+```text
+same AG Grid concept + same semantics
+→ keep AG Grid property name
+→ reuse/derive AG Grid type where practical
+→ merge/pass through instead of pointless one-to-one remapping
+
+executable AG Grid concept
+→ JSON-safe key in config
+→ frontend registry
+→ implementation typed with the real AG Grid callback/component type
+
+runtime/compiler infrastructure
+→ frontend creates it
+→ not arbitrary persisted config
+```
+
+Examples already aligned directly:
+
+```text
+cellDataType
+sortable
+filterOptions
+initialHide
+initialPinned
+initialWidth
+initialFlex
+minWidth
+maxWidth
+resizable
+```
+
+Examples that remain our concepts:
+
+```text
+featureKey
+dataAdapterKey
+fieldDefaults
+registry key/params descriptors
+access/masking
+server query/save mapping
+```
+
 ## Native-first compiler flow
 
 ```text
-configuration
-    ↓
-frontend compiler / bounded registries
-    ↓
-AG Grid GridOptions / ColDef
-```
-
-The compiler must use AG Grid itself wherever AG Grid already owns the required primitive. Registry-backed behavior is an override/extension, not the default answer to every field requirement.
-
-```text
-FieldDefinition.dataType
-        ↓ explicit mapping (required for SSRM)
+field.cellDataType
+        ↓ explicit SSRM value
 AG Grid ColDef.cellDataType
         ↓
-AG Grid native type behavior
-(parser / formatter / editor / renderer / filter defaults where provided)
+AG Grid native parser / formatter / editor / renderer / filter behavior
         ↓
-field-level custom config overrides only when needed
+custom configured overrides only where required
 ```
 
-AG Grid data-type inference is Client-Side Row Model only. The configurable SSRM compiler therefore sets `cellDataType` explicitly.
-
-## Supported `dataType` mapping
-
-The current public values intentionally map directly to the matching AG Grid cell-data-type names:
+Current built-in values:
 
 ```text
-text           → cellDataType: "text"
-number         → cellDataType: "number"
-boolean        → cellDataType: "boolean"
-date           → cellDataType: "date"           (JavaScript Date value)
-dateString     → cellDataType: "dateString"     (string date value)
-dateTime       → cellDataType: "dateTime"       (JavaScript Date value)
-dateTimeString → cellDataType: "dateTimeString" (string date-time value)
+text
+number
+boolean
+date           → JavaScript Date
+dateString     → string date
+dateTime       → JavaScript Date
+dateTimeString → string date-time
 ```
-
-Do not use `date` for an ISO string merely because the value is semantically a date. AG Grid distinguishes the value representation. A JSON API date such as `"2026-08-30"` normally uses `dateString` unless the frontend adapter deliberately converts it to a JavaScript `Date` first.
 
 ## Field-to-AG-Grid mapping
 
 ```text
 entity.fieldDefaults
-    → bounded compiler mapping
-    → AG Grid defaultColDef (on top of shared baseDefaultColDef)
+    → bounded compiler/default merge
+    → AG Grid defaultColDef
 
 entity.fields[]
-    → one compiled AG Grid ColDef per field
+    → one compiled ColDef per field
 ```
 
 ```text
 field.id                         → ColDef.colId
 field.field                      → ColDef.field
 field.labelKey                   → translated ColDef.headerName
-field.dataType                   → ColDef.cellDataType
+field.cellDataType               → ColDef.cellDataType
 field.sortable                   → ColDef.sortable
 field.filter                     → ColDef.filter + filterParams
+filter.filterOptions             → filterParams.filterOptions
 filter omitted                   → ColDef.filter = false
-layout.initialVisible            → inverse of ColDef.initialHide
+layout.initialHide               → ColDef.initialHide
 layout.initialPinned             → ColDef.initialPinned
 layout.sizing.initialWidth       → ColDef.initialWidth
 layout.sizing.initialFlex        → ColDef.initialFlex
@@ -128,90 +173,85 @@ editing.editor.popupPosition     → ColDef.cellEditorPopupPosition
 editing.parser.key               → parser registry → ColDef.valueParser
 ```
 
-## What `params` means
+## Table/grid-level configuration direction
 
-`params` always means **extra declarative configuration**, not a replacement for the runtime information AG Grid already supplies.
+The runtime schema must not be limited to only the handful of AG Grid options used in today's Transaction demo.
 
-### Renderer
+Preferred future structure:
 
 ```text
-configuration renderer.params
-        ↓ direct native mapping
-AG Grid cellRendererParams
+frontend/application defaults
         +
-AG Grid normal renderer props
-(value, valueFormatted, data, node, column, colDef, api, ...)
+normalized entity-level supported AG Grid config
         ↓
-registered renderer component
-```
-
-Do not put row data, current value, GridApi or other normal AG Grid runtime values into configuration params.
-
-### Editor
-
-```text
-configuration editor.params
-        ↓ direct native mapping
-AG Grid cellEditorParams
+resolved declarative SSRM options
         +
-AG Grid normal editor props
-(value, data, node, column, onValueChange, stopEditing, parseValue, formatValue, ...)
+runtime-owned options
+        +
+compiled columnDefs/defaultColDef
         ↓
-provided or registered custom editor/input
+AgGridReact
 ```
 
-Custom inputs are supported. A registry key may resolve to a React/MUI/domain editor when AG Grid's provided editor is not sufficient. If the native editor selected by `cellDataType` is sufficient, omit `editor` instead of creating a wrapper.
+A broad reviewed JSON-safe AG Grid surface may be supported using native names/types. Do not expose every executable/runtime property merely because it exists in `GridOptions`.
 
-### Formatter and parser
+## Registries must use AG Grid implementation types
 
-AG Grid has callback params for `valueFormatter` / `valueParser`, but there is no `valueFormatterParams` or `valueParserParams` column property analogous to `cellRendererParams` / `cellEditorParams`.
+A registry is not permission to invent another callback API.
 
-Therefore our compiler combines the normal AG Grid callback params with the extra declarative config:
+Conceptually:
 
 ```text
-AG Grid ValueFormatterParams + formatter.params
-    → registered formatter
-
-AG Grid ValueParserParams + parser.params
-    → registered parser
+config key: "openLoan"
+        ↓
+cell-click registry
+        ↓
+implementation typed as AG Grid's onCellClicked callback type
 ```
 
-A custom React editor also receives AG Grid's `parseValue()` / `formatValue()` utilities, which invoke the column's configured parser/formatter.
+Likewise formatter/parser/editor/renderer registries should resolve to AG Grid-compatible implementation types/components. Their configured params may add application-specific declarative input, but their grid-facing signatures remain AG Grid-native where practical.
 
-## Editing/value flow
+## Params
+
+```text
+renderer.params → cellRendererParams
+editor.params   → cellEditorParams
+```
+
+AG Grid still supplies normal runtime props such as `value`, `data`, `node`, `column` and `api`.
+
+For formatter/parser, the compiler combines configured JSON-safe params with AG Grid's normal callback params because there is no native `valueFormatterParams` / `valueParserParams` ColDef property.
+
+## Value/edit flow
 
 ```text
 authoritative API value
         ↓
 effective grid value
         ↓
-AG Grid cellDataType baseline behavior
+cellDataType baseline
         ↓
-optional custom formatter / renderer
+optional formatter / renderer
         ↓
-editor (native or custom)
+provided or custom editor
         ↓
-optional custom parser override
+native/custom valueParser
         ↓
 LOCAL draft
         ↓
 tracked editing + validation
         ↓
-save mapping / backend payload   [designed later]
+save mapping / backend payload   [later]
 ```
 
-Important: omitting a custom parser does **not** mean "no parsing". The `valueParser` supplied by the AG Grid cell data type may still apply. Likewise, omitting a custom renderer does not mean plain text in every case; for example AG Grid's boolean cell data type supplies checkbox rendering.
-
-## Design guardrail
-
-For every new public configuration property, documentation and source JSDoc must answer:
+## Design checklist for every new property
 
 ```text
-1. What does the property mean in our configuration?
-2. Does AG Grid already provide the required capability natively?
-3. What exact GridOptions / ColDef / callback / component property does it map to?
-4. What runtime information does AG Grid already supply?
-5. What extra information, if any, must our configuration provide?
+1. Is this actually configurable product/application behavior?
+2. Does AG Grid already expose the same concept?
+3. If yes, can we keep its name and type?
+4. Is the value JSON-safe declarative data, executable behavior, or runtime infrastructure?
+5. If executable, what key/registry resolves it and what AG Grid type should that implementation use?
+6. If backend/storage shape differs, where is it normalized once?
+7. What exact final GridOptions / ColDef / callback/component receives it?
 ```
-
-Do not add a configuration property with no real compiler/resolver path, and do not add a registry merely to reproduce a native AG Grid feature.
