@@ -13,6 +13,7 @@
     "format:check": "prettier --check .",
     "test": "vitest",
     "test:run": "vitest run",
+    "docs:configurable": "typedoc --options typedoc.json",
     "backend:check": "python3 backend/manage.py check",
     "backend:test": "python3 backend/manage.py test apps.transactions",
     "e2e:install": "cd tests/browser && npm install && npm run install:chromium",
