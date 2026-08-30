@@ -207,7 +207,7 @@ The grid-level native option:
 invalidEditValueMode: "block"
 ```
 
-can then prevent invalid editor input from committing/d becoming a dirty draft.
+can then prevent invalid editor input from committing and becoming a dirty draft.
 
 ## Lightweight draft editing is runtime infrastructure
 
