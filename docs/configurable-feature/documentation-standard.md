@@ -2,10 +2,11 @@
 
 This document defines the documentation quality required for the configurable feature/grid public API.
 
-The goal is that a developer can understand a configuration interface in either of two ways:
+The goal is that a developer can understand a configuration interface in multiple complementary ways:
 
 1. hover the TypeScript interface/property in an IDE and get a useful explanation immediately;
-2. read the library-style Markdown reference without needing the source file or prior chat/design history.
+2. read the library-style Markdown reference without needing the source file or prior chat/design history;
+3. once the contract tree is large enough, use generated searchable API/type documentation and a generated visual relationship hierarchy derived from the TypeScript source.
 
 ## JSDoc / IDE hover standard
 
@@ -79,6 +80,20 @@ For each property, document the relevant parts of:
 
 Do not force every heading into the same template when a field is trivial, but do not leave a non-obvious field with only a one-line definition.
 
+## Generated API and hierarchy documentation
+
+Generated documentation is an additional layer, not a replacement for JSDoc or the curated Markdown reference.
+
+Once the configuration contract tree is substantial enough to benefit from it:
+
+- use **TypeDoc** or an equivalent TypeScript API-documentation generator for searchable generated interface/type documentation and hierarchy navigation;
+- use **TsUML2 or an equivalent TypeScript relationship-diagram generator** to generate an SVG/visual representation of interface composition and relationships;
+- generate these artifacts from the TypeScript source as much as practical so they stay synchronized with the real public contract;
+- expose the relationship hierarchy alongside the detailed interface/reference content where the documentation UI supports a useful side-by-side layout;
+- keep a generated/maintained hierarchy artifact under the configurable-feature documentation once the tooling is introduced.
+
+The TypeScript architecture must never be changed merely to make a documentation/diagram tool produce prettier output. If a tool cannot represent the real relationships accurately, change or supplement the tool instead.
+
 ## Keep source and reference synchronized
 
 When a public configuration contract changes:
@@ -87,6 +102,7 @@ When a public configuration contract changes:
 2. update its JSDoc/hover documentation;
 3. update `configuration-reference.md`;
 4. update `concepts.md` when a new public concept needs a plain-language explanation;
-5. update the design-progress handoff when the change finalizes, rejects, defers, or preserves a decision for later.
+5. update the design-progress handoff when the change finalizes, rejects, defers, or preserves a decision for later;
+6. once generated docs/diagrams exist, regenerate or update them as part of the same contract change.
 
 A documented option must correspond to the actual current public contract. Provisional design remains in the design-progress document until it is finalized.
