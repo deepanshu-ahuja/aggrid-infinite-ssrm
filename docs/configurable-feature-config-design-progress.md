@@ -368,22 +368,36 @@ Frontend consumes resolved configuration/access and provides UX; it does not dup
 
 ## Generated documentation status
 
-`docs/configurable-feature/type-hierarchy.md` now contains both:
+`docs/configurable-feature/type-hierarchy.md` contains both:
 
 - portable text hierarchy;
 - GitHub-rendered Mermaid relationship diagram.
 
-Planned source-generated API docs:
+Source-generated API tooling is now configured:
 
 ```text
-TypeDoc
+TypeDoc 0.28.x
 +
-typedoc-plugin-markdown (or compatible Markdown renderer)
+typedoc-plugin-markdown 4.x
++
+typedoc.json
++
+npm run docs:configurable
 ```
 
-This tooling is **not installed yet** on this branch. Adding it requires `package.json` and a correctly npm-generated `package-lock.json` update together. Do not hand-edit the lockfile. The current execution container has no npm/GitHub network access, so dependency installation was deliberately not left half-complete.
+Generation flow:
 
-Generated docs will supplement—not replace—the curated hierarchy/reference.
+```text
+frontend/src/shared/grid/configurable/configuration.types.ts
+        ↓
+npm run docs:configurable
+        ↓
+docs/configurable-feature/generated/
+```
+
+The dependencies are present in `package.json` and `package-lock.json`. The npm script and `typedoc.json` are committed on `configurable-feature-grid`.
+
+The generated output directory is created by the command; after generation, review and commit the Markdown output. Generated docs supplement—not replace—the curated hierarchy/reference.
 
 ## Overall coverage snapshot
 
@@ -401,11 +415,12 @@ editing/editor/parser                         DONE
 AG Grid naming/type guardrail                 DONE
 backend/store → normalize → compile boundary  DONE DIRECTION
 visible text + Mermaid hierarchy              DONE
+TypeDoc + Markdown tooling                    CONFIGURED
+first generated TypeDoc output                PENDING npm run docs:configurable
 broad SSRM declarative GridOptions surface    NEXT
 app/entity grid-option merge rules            NEXT
 filter defaults/table-level filter behavior   NEXT
 registry key→params→AG Grid impl typing        NEXT/RELATED
-TypeDoc generated API docs                    PLANNED, NOT INSTALLED
 validation declarations                       AFTER ABOVE
 server sort/filter/search mapping              NOT YET DESIGNED
 read/write/save mapping                        NOT YET DESIGNED
@@ -430,7 +445,7 @@ Resume with one coherent **grid-level/native configuration + normalization/regis
 5. classify supported native declarative vs executable configurable vs runtime-owned AG Grid properties;
 6. design registry typing so outputs use real AG Grid callback/component/property types and key-specific params can later be strongly typed;
 7. keep backend/storage normalization as a mandatory boundary even when names currently match;
-8. add TypeDoc + Markdown generation when an npm-capable environment can update `package-lock.json` correctly.
+8. regenerate TypeDoc with `npm run docs:configurable` whenever the public configurable contract/JSDoc changes.
 
 Then continue with:
 
@@ -442,6 +457,4 @@ Then continue with:
 
 ## Validation/testing status
 
-The latest changes are source-contract/docs-only connector writes.
-
-Do **not** claim full repository lint/typecheck/test passed for this checkpoint; those commands were not run after the latest changes.
+The latest changes include source/docs/tooling configuration. Do **not** claim full repository lint/typecheck/test passed for this checkpoint unless those commands are actually run after the current branch head.
