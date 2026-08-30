@@ -1,28 +1,20 @@
 # Configurable Feature Configuration Reference
 
-This document describes the public TypeScript contracts currently defined for configurable business features containing a grid/table.
+Public reference for contracts in `frontend/src/shared/grid/configurable/configuration.types.ts`.
 
-Source: `frontend/src/shared/grid/configurable/configuration.types.ts`.
-
-The configurable runtime/compiler is not wired yet. Compiler mappings described here are requirements for that runtime, not a claim that the configurable grid already exists.
+The configurable runtime/compiler is not wired yet. Compiler mappings described here are requirements for that runtime. Backend configuration is runtime JSON and must be validated before use; executable functions/components remain frontend-owned.
 
 ## Configuration flow
 
 ```text
-shared baseDefaultColDef
-        +
-EntityDefinition.fieldDefaults
-        ↓
-AG Grid defaultColDef
+shared baseDefaultColDef + entity.fieldDefaults
+                    ↓
+            AG Grid defaultColDef
 
-EntityDefinition.fields[]
-        ↓
-compiled AG Grid columnDefs[]
+entity.fields[] → compiled AG Grid columnDefs[]
 ```
 
-AG Grid column definitions naturally override matching properties from `defaultColDef`. The configurable layer should use that native precedence rather than inventing a second general-purpose merge engine.
-
-Backend-provided configuration remains runtime JSON data and must be validated before compilation. Executable functions and React components never come from backend metadata.
+Native AG Grid `ColDef` precedence handles normal field-over-default overrides.
 
 ## `FeatureDefinition`
 
@@ -36,16 +28,12 @@ interface FeatureDefinition<
 }
 ```
 
-`featureKey` is the stable programmatic identity of the business feature, for example `"review"`. `entities` is keyed by stable entity identity, so `EntityDefinition` does not duplicate an `entityKey` member.
+`featureKey` is stable feature identity. `entities` is keyed by stable entity identity, so entity identity is not duplicated inside `EntityDefinition`.
 
 ## `EntityDefinition`
 
 ```ts
-interface EntityDefinition<
-  TTranslationKey extends string = string,
-  TFieldDefinition extends ConfigurableFieldDefinition<TTranslationKey> =
-    ConfigurableFieldDefinition<TTranslationKey>,
-> {
+interface EntityDefinition<...> {
   labelKey: TTranslationKey;
   dataAdapterKey: string;
   rowId: RowIdDefinition;
@@ -54,29 +42,13 @@ interface EntityDefinition<
 }
 ```
 
-### `labelKey`
+- `labelKey`: required full translation key for the entity label.
+- `dataAdapterKey`: required key resolving the feature/entity data adapter for loading, saving and request/response mapping.
+- `rowId`: required stable business-row identity definition.
+- `fieldDefaults`: optional bounded common field config compiled into AG Grid `defaultColDef` on top of shared defaults.
+- `fields`: required ordered field list; order is initial column order, while field `id` is stable identity.
 
-Required full translation key for the displayed entity label, for example `review.entities.loan.label`. Frontend-owned definitions may narrow the generic to valid translation keys; backend JSON still requires runtime validation.
-
-### `dataAdapterKey`
-
-Required key resolving the frontend data adapter for this feature/entity. The adapter owns loading/saving plus request/response mapping needed by those data operations. It is not a bucket for unrelated business actions.
-
-### `rowId`
-
-Required definition of stable business-row identity.
-
-### `fieldDefaults`
-
-Optional defaults shared by configured fields in this entity. These values are compiled on top of the repository's shared `baseDefaultColDef` and passed through AG Grid `defaultColDef`.
-
-An individual `FieldDefinition` compiles into its own `ColDef`; where it supplies the same property, AG Grid's normal column-definition precedence wins.
-
-This contract intentionally exposes only configurable defaults that have been designed and have clean default/override semantics. It is not an alias for AG Grid `ColDef` and does not imply that every AG Grid column property can be placed here.
-
-### `fields`
-
-Required ordered field list. Array order is the initial column order; stable identity comes from each field's `id`, not array position.
+`fieldDefaults` is not an unrestricted AG Grid `ColDef`; only deliberately supported configurable options belong there.
 
 ## `RowIdDefinition`
 
@@ -86,7 +58,7 @@ interface RowIdDefinition {
 }
 ```
 
-`path` is required and identifies the stable unique ID in each API row. Direct `id` is the common case; dot notation such as `loan.id` supports nested response shapes. There is no implicit `id` default.
+`path` is explicit, supports dot notation, and has no implicit `id` default.
 
 ## `FieldDefinition`
 
@@ -99,95 +71,67 @@ interface FieldDefinition<
   TAdditionalFilterOperator extends string = never,
   TFormatterKey extends string = string,
   TRendererKey extends string = string,
+  TEditingDefinition extends FieldEditingDefinition = FieldEditingDefinition,
 > {
   id: TFieldId;
   field: TFieldPath;
   labelKey: TTranslationKey;
   dataType: TDataType;
   sortable?: boolean;
-  filter?: FieldFilterDefinition<
-    FilterOperatorForDataType<TDataType> | TAdditionalFilterOperator
-  >;
+  filter?: FieldFilterDefinition<...>;
   layout?: FieldLayoutDefinition;
   formatter?: FieldFormatterDefinition<TFormatterKey>;
   renderer?: FieldRendererDefinition<TRendererKey>;
+  editing?: TEditingDefinition;
 }
 ```
 
-### `id`
+### Identity/binding
 
-Required stable configuration identity for the field/column, such as `loanAmount`. It is deliberately independent of the API row path so references to this configured field can remain stable if the backend response shape changes.
+`id` is stable configuration identity. `field` is the API row value path. They intentionally may differ. Frontend types may narrow valid paths; backend JSON still requires runtime validation.
 
-### `field`
+### Label/type
 
-Required API row path containing the field value, such as `amount` or `financials.amount`. Frontend-owned config may narrow this generic to valid row-path strings.
-
-### `labelKey`
-
-Required full translation key for the column heading, for example `review.fields.loanAmount.label`.
-
-### `dataType`
-
-Required semantic value category:
+`labelKey` is a full explicit translation key. `dataType` is one of:
 
 ```ts
 "text" | "number" | "boolean" | "date" | "dateTime"
 ```
 
-It supplies the type-appropriate shared filter vocabulary. It does not by itself choose a custom formatter, renderer, editor or validator.
+`dataType` provides semantic value category and the shared filter vocabulary; it does not automatically choose custom formatter/editor/validator behavior.
 
 ### `sortable`
 
-Optional. Omission means inherit the resolved AG Grid `defaultColDef`: configurable `fieldDefaults.sortable` when supplied, otherwise the shared grid default. Supplying a value on the field overrides that default through normal AG Grid precedence.
+Optional. Omission inherits the resolved AG Grid `defaultColDef`; an individual value overrides the corresponding default natively.
 
-### `filter`
+## Filtering
 
-Optional capability object. There is no separate `filterable` boolean.
-
-```text
-filter omitted
-→ this field is not filterable
-
-filter present
-→ field is filterable with exactly the configured operators
+```ts
+interface FieldFilterDefinition<TOperator extends string = FilterOperator> {
+  operators: readonly [TOperator, ...TOperator[]];
+}
 ```
 
-The operator list is required and non-empty.
-
-## Filter operators
-
-Shared operator vocabulary currently follows the repository's existing server-backed Simple Filter contract.
-
-Text:
-
 ```text
-contains, equals, notEqual, startsWith, endsWith
+filter omitted → not filterable
+filter present → filterable with exactly the configured non-empty operator list
 ```
 
-Number:
+No duplicate `filterable` boolean.
+
+Shared operators:
 
 ```text
-equals, notEqual, greaterThan, greaterThanOrEqual,
-lessThan, lessThanOrEqual
+text:    contains, equals, notEqual, startsWith, endsWith
+number:  equals, notEqual, greaterThan, greaterThanOrEqual,
+         lessThan, lessThanOrEqual
+date:    equals, notEqual, lessThan, greaterThan
+boolean: equals, notEqual
 ```
 
-Date/date-time:
+Feature-specific operator keys may extend these, but require bounded frontend/query mapping plus matching backend semantics.
 
-```text
-equals, notEqual, lessThan, greaterThan
-```
-
-Boolean:
-
-```text
-equals, notEqual
-```
-
-Feature-specific operators can extend the shared vocabulary through `TAdditionalFilterOperator`, but each custom key must eventually resolve through a bounded query/operator registry and matching backend semantics. A string key is configuration identity, not executable behavior.
-
-## Field layout and sizing
-
-### `FieldLayoutDefinition`
+## Layout/sizing
 
 ```ts
 interface FieldLayoutDefinition {
@@ -197,30 +141,19 @@ interface FieldLayoutDefinition {
 }
 ```
 
-These are initial-state values, not permanent enforcement rules.
-
 Compiler mapping:
 
 ```text
 initialVisible → inverse of AG Grid initialHide
 initialPinned  → AG Grid initialPinned
+initialWidth   → AG Grid initialWidth
+initialFlex    → AG Grid initialFlex
+minWidth       → AG Grid minWidth
+maxWidth       → AG Grid maxWidth
+resizable      → AG Grid resizable
 ```
 
-Using AG Grid's `initial*` column properties seeds initial state without repeatedly overwriting later user/Grid-State choices when column definitions are rebuilt.
-
-### `FieldSizingDefinition`
-
-A field may declare either `initialWidth` or `initialFlex`, never both. The TypeScript union prevents that combination for frontend-authored definitions; runtime validation must reject the same invalid combination in backend JSON.
-
-```text
-initialWidth → AG Grid initialWidth
-initialFlex  → AG Grid initialFlex
-minWidth     → AG Grid minWidth
-maxWidth     → AG Grid maxWidth
-resizable    → AG Grid resizable
-```
-
-`minWidth`/`maxWidth` remain continuing constraints and may bound flex sizing. Numeric validation must reject invalid values such as non-positive width/flex or `minWidth > maxWidth`.
+`initialWidth` and `initialFlex` are mutually exclusive. Runtime validation must reject the same invalid combination that TypeScript rejects. Initial settings seed column state; they do not continuously override later Grid State/user choices. `minWidth`, `maxWidth`, `resizable` remain continuing constraints.
 
 ## `FieldDefaultsDefinition`
 
@@ -231,27 +164,11 @@ interface FieldDefaultsDefinition {
 }
 ```
 
-`fieldDefaults` is the configurable equivalent of “common settings for these configured fields”; it compiles into AG Grid `defaultColDef`, but it is not itself named `defaultColDef` because it is not AG Grid's unrestricted `ColDef` contract.
+These settings compile into `defaultColDef` on top of shared defaults. Individual fields compile into `columnDefs` and naturally override matching properties.
 
-Example:
+Not every field property is automatically defaultable. A defaulted behavior needs clean inheritance and clean explicit override/disable semantics.
 
-```ts
-fieldDefaults: {
-  sortable: true,
-  layout: {
-    sizing: {
-      minWidth: 140,
-      resizable: true,
-    },
-  },
-}
-```
-
-An individual field can then override the relevant setting in its own definition.
-
-## Formatter contract
-
-### `FieldFormatterDefinition`
+## Formatter
 
 ```ts
 interface FieldFormatterDefinition<TFormatterKey extends string = string> {
@@ -260,40 +177,15 @@ interface FieldFormatterDefinition<TFormatterKey extends string = string> {
 }
 ```
 
-A formatter is for value presentation. Configuration supplies a stable registry key and optional JSON-safe parameters; it never supplies a JavaScript function.
-
-Example:
-
-```ts
-formatter: {
-  key: "currency",
-  params: {
-    currencyField: "currency",
-  },
-}
-```
-
-Conceptual compiler flow:
+A formatter is registered frontend value-presentation behavior. Backend config supplies only key + JSON-safe params.
 
 ```text
-formatter.key + formatter.params
-        ↓
-frontend formatter registry
-        ↓
-resolved safe formatter function
-        ↓
-AG Grid valueFormatter
+formatter key/params → formatter registry → resolved function → AG Grid valueFormatter
 ```
 
-The formatter must not mutate the row or redefine the raw business value used for editing/saving. Server sorting/filtering continues to use its query mapping rather than formatted display text.
+It does not mutate raw row data, redefine edit/save values or redefine server sort/filter semantics. AG Grid can apply `valueFormatter` to clipboard/export, so configurable export integration must preserve the intended policy deliberately.
 
-AG Grid can use `valueFormatter` for clipboard/CSV/Excel output depending grid/export configuration. The configurable runtime must preserve the project's intended export policy deliberately rather than assuming formatting is visible-cell-only.
-
-No explicit custom formatter means the compiler does not add one for the field; normal AG Grid/cell-data-type behavior can still apply.
-
-## Renderer contract
-
-### `FieldRendererDefinition`
+## Renderer
 
 ```ts
 interface FieldRendererDefinition<TRendererKey extends string = string> {
@@ -302,82 +194,151 @@ interface FieldRendererDefinition<TRendererKey extends string = string> {
 }
 ```
 
-A renderer selects richer cell UI such as a status chip, link-like interaction, or another bounded presentation component. Backend metadata contains only the renderer key and declarative JSON-safe params; the React component stays frontend-owned.
+A renderer selects richer frontend cell UI.
 
-Example:
+```text
+renderer key → renderer registry → React component → AG Grid cellRenderer
+renderer params → registered renderer input / cellRendererParams
+```
+
+No renderer means normal AG Grid rendering. Formatter and renderer may coexist; a renderer can use both raw and formatted values. Plain text formatting should use a formatter rather than a renderer.
+
+## Editing
+
+### Capability semantics
+
+```text
+editing omitted
+→ field is not editable
+
+editing present
+→ field is eligible/potentially editable
+→ actual row/cell editability still must satisfy runtime policy
+```
+
+Presence of `editing` must **not** compile to unconditional `editable: true`. The compiler's AG Grid `editable` callback must compose:
+
+- current resolved authorization/access;
+- feature/entity row-edit eligibility policy;
+- tracked-editing conflict rules;
+- any other current hard runtime constraint.
+
+This preserves the existing architecture where the feature decides which fields/rows may edit while shared editing owns change tracking, reconciliation, conflict handling and lifecycle.
+
+### `FieldEditingDefinition`
 
 ```ts
-renderer: {
-  key: "statusChip",
+interface FieldEditingDefinition<
+  TEditorKey extends string = string,
+  TParserKey extends string = string,
+> {
+  editor?: FieldEditorDefinition<TEditorKey>;
+  parser?: FieldValueParserDefinition<TParserKey>;
 }
 ```
 
-Conceptual compiler flow:
+An empty editing object is valid:
 
-```text
-renderer.key
-    ↓
-frontend renderer registry
-    ↓
-React renderer component
-    ↓
-AG Grid cellRenderer
-
-renderer.params
-    ↓
-AG Grid cellRendererParams / registered renderer input
+```ts
+editing: {}
 ```
 
-No renderer means normal AG Grid cell rendering.
+and means the field is editable using the editor AG Grid selects from the semantic data type, subject to runtime editability policy.
 
-### Formatter + renderer together
+### `FieldEditorDefinition`
 
-They are not mutually exclusive. AG Grid renderer params can expose both raw and formatted values, so a renderer may deliberately render a formatter's output.
+Custom editors are registry-selected; configuration never carries React components/functions.
 
-```text
-raw value
-   ↓
-formatter (optional) → formatted value
-   ↓
-renderer (optional) can use raw and/or formatted value
+```ts
+editor: {
+  key: "transactionDate",
+  params: { /* JSON-safe */ },
+  popup: true,
+  popupPosition: "under",
+}
 ```
 
-Do not use a renderer merely to format plain text when a formatter is sufficient. Conversely, do not force rich React UI into a formatter.
-
-The existing Transactions grid demonstrates the distinction: amount/date use `valueFormatter`, while Status uses a React `cellRenderer`.
-
-## JSON-safe params
-
-Formatter/renderer parameters use the recursive `ConfigurationJsonValue`/`ConfigurationJsonObject` types. They may contain JSON primitives, arrays and nested objects, but never functions, class instances or React elements.
-
-The future registry/runtime validation layer must validate not only that a key exists but also that its parameter shape is accepted by that registered behavior.
-
-## Strong typing vs runtime JSON
+Compiler mapping:
 
 ```text
-frontend-authored config
-→ generics can narrow field IDs, row paths, translation keys,
-  custom filter keys, formatter keys and renderer keys
-
-backend JSON config
-→ runtime values
-→ schema + registry/capability validation
-→ trusted resolved configuration
-→ compiler
+editor.key    → frontend editor registry → AG Grid cellEditor
+editor.params → AG Grid cellEditorParams / registered editor input
+popup         → AG Grid cellEditorPopup
+popupPosition → AG Grid cellEditorPopupPosition
 ```
 
-TypeScript does not validate backend JSON. Runtime validation is mandatory.
+Popup position is valid only when `popup: true`; TypeScript and runtime validation must enforce this. Supported positions are `over` and `under`.
 
-## Boundaries still intentionally separate
+When `editor` is omitted, use AG Grid's data-type-selected provided editor where suitable instead of registering trivial wrappers merely to reproduce native behavior.
 
-Formatter/renderer configuration does not finalize:
+### `FieldValueParserDefinition`
 
-- editing/editor selection;
-- parser/normalizer/value conversion;
+```ts
+interface FieldValueParserDefinition<TParserKey extends string = string> {
+  key: TParserKey;
+  params?: ConfigurationJsonObject;
+}
+```
+
+Parser purpose:
+
+```text
+editor/import candidate
+        ↓
+registered parser
+        ↓
+local draft value
+```
+
+The compiler maps it to AG Grid `valueParser`. It is **not** the backend save-payload mapper.
+
+If no parser is configured, the editor-produced value becomes the local draft unchanged.
+
+AG Grid can reuse `valueParser` for clipboard/fill/import-style operations depending grid configuration. That behavior must be deliberate in the configurable runtime.
+
+### Value stages
+
+Keep these stages distinct:
+
+```text
+1. authoritative API row value
+2. effective grid value (authoritative or LOCAL draft overlay)
+3. formatted display value
+4. editor-produced candidate
+5. parser output = LOCAL draft value
+6. validation of LOCAL draft
+7. save mapping → backend payload        [designed later]
+```
+
+Do not collapse these into one "value" concept.
+
+### Stable editing identity
+
+Configurable tracked-editing state must key edits/conflicts/validation by `FieldDefinition.id`, not by the API path. The compiler/adaptor reads/writes through `FieldDefinition.field` (or a later bounded accessor) while stable state references use `id`.
+
+The existing Transactions implementation can use property names directly because its editable field names and row properties happen to match; the reusable configurable design must not depend on that coincidence.
+
+### Parser vs normalizer
+
+`valueParser` only covers the AG Grid editor/import candidate path. Programmatic bulk/current-page edits can bypass it. Therefore this contract does **not** pretend parser is a universal normalizer. If a real requirement needs canonicalization across every local edit source, design a separate normalization stage later and route every edit source through it explicitly.
+
+## JSON-safe parameters
+
+`ConfigurationJsonValue`/`ConfigurationJsonObject` allow JSON primitives, arrays and nested objects only. Registered formatter/renderer/editor/parser infrastructure must validate both key existence and the allowed parameter schema for that key.
+
+## Strong frontend typing vs runtime JSON
+
+Frontend definitions may narrow field IDs, row paths, translation keys, extra filter keys, formatter/renderer keys, and the editing-definition type. Backend JSON remains runtime data and requires schema + registry validation before compilation.
+
+## Separate future contracts
+
+Still separate from the contracts above:
+
 - validation declarations;
-- server sort/filter/search field mapping;
-- request/save mapping;
-- access/masking rules;
-- action columns or other non-data business operations.
-
-Those are separate contracts and should not be smuggled into renderer params merely because a renderer is executable on the frontend.
+- server sort/filter/search key mapping and searchability;
+- save/request mapping;
+- access/masking resolution;
+- action/business-operation columns;
+- exact registry implementations;
+- runtime config versioning/validation;
+- final compiler composition.
