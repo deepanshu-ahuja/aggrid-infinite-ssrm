@@ -1,8 +1,6 @@
 # Configurable Feature Concepts
 
-This page gives the short, plain-language meaning of configuration terms before the detailed interface reference.
-
-## Current concepts
+Plain-language meanings for the public configuration concepts already designed.
 
 ```text
 Feature definition
@@ -12,97 +10,89 @@ Entity definition
 → configuration for one data context inside a feature, such as Loan or Finance.
 
 Data adapter
-→ frontend data/API boundary used for loading, saving, and the request/response mapping required by those operations.
+→ frontend data/API boundary for loading, saving, and request/response mapping needed by those operations.
 
 Row identity
-→ field/path in an API row that contains the stable unique ID for that business record.
-
-Field defaults
-→ optional entity-level defaults for fields. They compile into AG Grid `defaultColDef` on top of the shared grid defaults; individual fields override matching defaults through normal AG Grid column-definition precedence.
+→ API row field/path containing the stable business-record ID.
 
 Field definition
-→ configuration for one field/column, including stable identity, API row path, label, semantic data type, sorting/filtering capability, and optional layout/sizing.
+→ configuration for one data field/column.
 
 Field ID
-→ stable configuration identity for a field. It is not the same thing as the API row path.
+→ stable configuration identity, separate from the API row path.
 
 Field path
-→ location of the actual field value in the API row, such as `amount` or `financials.amount`.
+→ actual value location in the API row, e.g. `amount` or `financials.amount`.
 
 Translation key
-→ reference used to resolve displayed text such as an entity or field label.
+→ reference used to resolve displayed text.
 
 Field data type
-→ semantic value category such as text, number, boolean, date, or date-time. It determines the shared base filter-operator vocabulary appropriate for the field.
+→ semantic value category: text, number, boolean, date, or date-time.
 
-Field filter
-→ optional configuration that makes a field filterable and lists every operator the user may apply to that field.
-
-Filter operator
-→ stable data key describing one allowed filter operation, such as `contains`, `equals`, or `greaterThan`. A feature-specific operator needs a registered query/backend meaning; the string itself is not executable behavior.
+Field defaults
+→ common configurable settings for an entity's fields; compiled into AG Grid `defaultColDef` on top of shared grid defaults.
 
 Field layout
-→ initial visibility, initial pinning, and sizing behavior for a field. Initial values seed column state; they do not keep forcing the state after user/Grid State changes.
+→ initial visibility/pinning/sizing plus continuing size constraints.
+
+Initial field setting
+→ seeds column state when created; it does not keep overwriting later user/Grid-State changes.
+
+Field filter
+→ optional field filtering capability plus the exact allowed operators.
+
+Filter operator
+→ stable key for an allowed filter operation such as `contains`, `equals`, or `greaterThan`.
+
+Formatter
+→ registered value-presentation behavior selected by a key; compiled to AG Grid `valueFormatter`.
+
+Renderer
+→ registered rich cell UI selected by a key; compiled to AG Grid `cellRenderer`.
+
+Configuration params
+→ JSON-safe data passed to registered behavior; executable functions/components stay frontend-owned.
 ```
 
-## Default-column relationship
-
-The configurable design intentionally follows AG Grid's own `defaultColDef` + `columnDefs` model:
+## Default relationship
 
 ```text
 shared baseDefaultColDef
         +
 entity.fieldDefaults
         ↓
-resolved AG Grid defaultColDef
-
-entity.fields[]
+AG Grid defaultColDef
         ↓
-AG Grid columnDefs[]
-
-columnDefs value for a property
-→ overrides the corresponding defaultColDef value
+individual compiled field ColDef overrides matching defaults
 ```
 
-Example:
+`fieldDefaults` is not an unrestricted AG Grid `ColDef`; it exposes only supported configurable options.
+
+## Example
+
+```ts
+{
+  id: "loanAmount",
+  field: "financials.amount",
+  labelKey: "review.fields.loanAmount.label",
+  dataType: "number",
+  filter: { operators: ["equals", "greaterThan", "lessThan"] },
+  layout: {
+    sizing: { initialWidth: 180, minWidth: 140, maxWidth: 300 },
+  },
+  formatter: {
+    key: "currency",
+    params: { currencyField: "currency" },
+  },
+}
+```
 
 ```text
-shared baseDefaultColDef
-  minWidth: 120
-  resizable: true
-  sortable: true
-
-entity.fieldDefaults
-  layout.sizing.minWidth: 140
-
-Loan Amount field
-  sortable: false
-  layout.sizing.minWidth: 180
-
-resolved behavior
-  Loan Amount minWidth: 180
-  Loan Amount resizable: true
-  Loan Amount sortable: false
+field.id   → stable configuration identity
+field.field → API row value location
+formatter  → value presentation
+renderer   → richer cell UI
 ```
 
-## Initial layout naming
-
-The public field layout uses `initial*` names because these values describe initial column state:
-
-```text
-layout.initialVisible
-→ AG Grid initialHide (inverse boolean)
-
-layout.initialPinned
-→ AG Grid initialPinned
-
-layout.sizing.initialWidth
-→ AG Grid initialWidth
-
-layout.sizing.initialFlex
-→ AG Grid initialFlex
-```
-
-`initialWidth` and `initialFlex` are mutually exclusive. Frontend-authored TypeScript prevents both at once; backend JSON must be rejected by runtime configuration validation if it contains an invalid combination.
-
-More terms are added here only when their contracts are actually designed. Renderer/editor/validation/action/access details should not be documented as settled concepts before their interfaces are reviewed.
+Formatter/renderer are separate from editing, validation, business actions, access control, server query mapping, and save mapping.

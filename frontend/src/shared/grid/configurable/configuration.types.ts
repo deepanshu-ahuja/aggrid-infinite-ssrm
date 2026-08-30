@@ -8,22 +8,25 @@ export interface FeatureDefinition<
   TFeatureKey extends string = string,
   TEntityKey extends string = string,
 > {
-  /**
-   * Stable programmatic identifier for this feature definition.
-   *
-   * @example
-   * "review"
-   */
+  /** Stable programmatic identifier for this feature definition. @example "review" */
   featureKey: TFeatureKey;
 
-  /**
-   * Entity definitions available to the feature, keyed by their stable entity identifier.
-   * Each record value contains the configuration for that entity/data context.
-   *
-   * @example
-   * { loan: loanDefinition, finance: financeDefinition }
-   */
+  /** Entity definitions keyed by their stable entity identifier. */
   entities: Record<TEntityKey, EntityDefinition>;
+}
+
+/** JSON-safe primitive allowed in declarative configuration parameters. */
+export type ConfigurationJsonPrimitive = string | number | boolean | null;
+
+/** JSON-safe value allowed in declarative configuration parameters. */
+export type ConfigurationJsonValue =
+  | ConfigurationJsonPrimitive
+  | readonly ConfigurationJsonValue[]
+  | { readonly [key: string]: ConfigurationJsonValue };
+
+/** JSON-safe object passed to registered configurable behaviors. */
+export interface ConfigurationJsonObject {
+  readonly [key: string]: ConfigurationJsonValue;
 }
 
 /** Semantic value categories understood by configurable field definitions. */
@@ -78,13 +81,7 @@ export type FilterOperatorForDataType<TDataType extends FieldDataType> =
  * complete set of choices exposed for that field. The list must contain at least one operator.
  */
 export interface FieldFilterDefinition<TOperator extends string = FilterOperator> {
-  /**
-   * Operators the user is allowed to apply to this field.
-   *
-   * A concrete feature can narrow this list to a subset of the shared operators or extend the
-   * field definition with additional registered operator keys when feature-specific semantics are
-   * required.
-   */
+  /** Operators the user is allowed to apply to this field. */
   operators: readonly [TOperator, ...TOperator[]];
 }
 
@@ -97,88 +94,57 @@ export type FieldPinnedPosition = 'left' | 'right';
  * These map to normal AG Grid column constraints rather than user-state defaults.
  */
 export interface FieldSizingConstraintsDefinition {
-  /**
-   * Minimum column width in pixels.
-   *
-   * When omitted, the field inherits the resolved default-column minimum width.
-   */
+  /** Minimum column width in pixels; omitted values inherit the resolved default column setting. */
   minWidth?: number;
 
   /** Maximum column width in pixels. Omit when no field-specific maximum is required. */
   maxWidth?: number;
 
-  /**
-   * Whether the user can manually resize the column.
-   *
-   * When omitted, the field inherits the resolved default-column setting.
-   */
+  /** Whether the user can manually resize the column; omitted values inherit the default. */
   resizable?: boolean;
 }
 
 /**
- * Initial sizing for one field plus the constraints that continue to apply afterwards.
+ * Initial sizing for one field plus constraints that continue to apply afterwards.
  *
- * A field can start with either a fixed width or a flex weight, never both. Frontend-authored
- * definitions get that rule from this union; backend JSON must enforce the same rule during runtime
- * configuration validation.
+ * A field can start with either a fixed width or a flex weight, never both. Backend JSON must
+ * enforce the same rule during runtime configuration validation.
  */
 export type FieldSizingDefinition =
   | (FieldSizingConstraintsDefinition & {
-      /**
-       * Initial fixed width in pixels.
-       *
-       * The compiler maps this directly to AG Grid `initialWidth`.
-       */
+      /** Initial fixed width in pixels; compiled to AG Grid `initialWidth`. */
       initialWidth?: number;
-
-      /** A fixed-width field cannot also declare an initial flex weight. */
       initialFlex?: never;
     })
   | (FieldSizingConstraintsDefinition & {
-      /** A flex-sized field cannot also declare an initial fixed width. */
       initialWidth?: never;
-
-      /**
-       * Initial flex weight used to share remaining grid width with other flex columns.
-       *
-       * The compiler maps this directly to AG Grid `initialFlex`; `minWidth` and `maxWidth` can
-       * still bound the flex result.
-       */
+      /** Initial flex weight; compiled to AG Grid `initialFlex`. */
       initialFlex?: number;
     });
 
 /**
  * Initial layout configuration for one field.
  *
- * Initial values seed AG Grid column state. They are not authorization rules and do not keep
- * forcing the value after Grid State/user interaction changes the column.
+ * Initial values seed AG Grid column state. They do not keep forcing the value after Grid State or
+ * user interaction changes the column.
  */
 export interface FieldLayoutDefinition {
-  /**
-   * Whether the column is visible when first created.
-   *
-   * Omit for the normal visible default. The compiler maps this to AG Grid `initialHide` by
-   * negating the value.
-   */
+  /** Whether the column is visible when first created; compiled to the inverse of `initialHide`. */
   initialVisible?: boolean;
 
-  /**
-   * Side on which the column is pinned when first created.
-   *
-   * Omit for an initially unpinned column. The compiler maps this to AG Grid `initialPinned`.
-   */
+  /** Side on which the column is pinned when first created; compiled to `initialPinned`. */
   initialPinned?: FieldPinnedPosition;
 
-  /** Optional initial sizing and persistent width/resizing constraints for this field. */
+  /** Optional initial sizing and persistent width/resizing constraints. */
   sizing?: FieldSizingDefinition;
 }
 
 /**
  * Configurable defaults applied to every field in one entity before individual field definitions.
  *
- * The configurable compiler adds these values to the shared AG Grid `baseDefaultColDef` and passes
- * the result through AG Grid's `defaultColDef`. Individual compiled column definitions then rely on
- * AG Grid's normal precedence: a column value overrides the same default-column value.
+ * The compiler adds these values to the shared AG Grid `baseDefaultColDef` and passes the result as
+ * AG Grid `defaultColDef`. Individual compiled columns rely on AG Grid's normal precedence: a
+ * column value overrides the corresponding default-column value.
  */
 export interface FieldDefaultsDefinition {
   /** Default sortable setting inherited by fields that do not specify `sortable`. */
@@ -189,11 +155,38 @@ export interface FieldDefaultsDefinition {
 }
 
 /**
+ * Selects a registered frontend value formatter for one field.
+ *
+ * Configuration carries only a stable registry key and optional JSON-safe parameters. The compiler
+ * resolves executable formatting behavior on the frontend and maps it to AG Grid `valueFormatter`.
+ */
+export interface FieldFormatterDefinition<TFormatterKey extends string = string> {
+  /** Stable key of the registered formatter implementation. @example "currency" */
+  key: TFormatterKey;
+
+  /** Optional declarative parameters interpreted and validated by the registered formatter. */
+  params?: ConfigurationJsonObject;
+}
+
+/**
+ * Selects a registered frontend cell renderer for one field.
+ *
+ * Configuration never carries React components/functions. The compiler resolves the key to a
+ * frontend renderer and maps optional JSON-safe parameters into its AG Grid renderer parameters.
+ */
+export interface FieldRendererDefinition<TRendererKey extends string = string> {
+  /** Stable key of the registered renderer implementation. @example "statusChip" */
+  key: TRendererKey;
+
+  /** Optional declarative parameters interpreted and validated by the registered renderer. */
+  params?: ConfigurationJsonObject;
+}
+
+/**
  * Reusable configuration for one field/column exposed by an entity.
  *
- * The generic parameters allow frontend-owned definitions to narrow stable field IDs, API row
- * paths, translation keys, data types, and any additional registered filter operators without
- * weakening the shared JSON-compatible contract to arbitrary untyped values.
+ * Formatter and renderer keys remain declarative identities. Backend JSON is runtime data and must
+ * be validated against the allowed registries before compilation.
  */
 export interface FieldDefinition<
   TFieldId extends string = string,
@@ -201,77 +194,53 @@ export interface FieldDefinition<
   TTranslationKey extends string = string,
   TDataType extends FieldDataType = FieldDataType,
   TAdditionalFilterOperator extends string = never,
+  TFormatterKey extends string = string,
+  TRendererKey extends string = string,
 > {
-  /**
-   * Stable configuration identity for the field.
-   *
-   * This identity is independent of the API row path so configuration references can remain stable
-   * when the backend response shape changes.
-   *
-   * @example
-   * "loanAmount"
-   */
+  /** Stable configuration identity independent of the API row path. @example "loanAmount" */
   id: TFieldId;
 
-  /**
-   * Path in the API row that contains the field's value.
-   *
-   * Dot notation is supported for nested response shapes. A concrete frontend definition can
-   * narrow this generic to the valid field-path strings for its row type.
-   *
-   * @example
-   * "amount"
-   *
-   * @example
-   * "financials.amount"
-   */
+  /** API row path containing the field value. Dot notation supports nested response shapes. */
   field: TFieldPath;
 
-  /**
-   * Full translation key used to resolve the field/column label displayed by the UI.
-   *
-   * A concrete feature can narrow this generic to its valid translation-key type.
-   *
-   * @example
-   * "review.fields.loanAmount.label"
-   */
+  /** Full translation key used to resolve the field/column label. */
   labelKey: TTranslationKey;
 
-  /**
-   * Semantic type of the field value.
-   *
-   * The type determines the shared filter-operator vocabulary available to this field before any
-   * explicitly registered feature-specific operators are added.
-   */
+  /** Semantic type of the field value. */
   dataType: TDataType;
 
   /**
-   * Whether users can sort by this field.
-   *
-   * When omitted, the field inherits the resolved `defaultColDef` value: configurable
-   * `fieldDefaults.sortable` when supplied, otherwise the shared grid default.
+   * Whether users can sort by this field. Omitted values inherit the resolved `defaultColDef`.
    */
   sortable?: boolean;
 
   /**
-   * Filtering configuration for the field.
-   *
-   * Omit this property when the field is not filterable. When present, `operators` defines the
-   * exact operator choices allowed for the field. Additional operator keys must resolve through
-   * the feature's bounded filter/query mapping rather than being treated as arbitrary executable
-   * behavior from configuration.
+   * Filtering configuration. Omit when the field is not filterable; when present, the operator
+   * list is the exact set of filter choices allowed for the field.
    */
   filter?: FieldFilterDefinition<
     FilterOperatorForDataType<TDataType> | TAdditionalFilterOperator
   >;
 
-  /**
-   * Optional initial layout and sizing configuration for this field.
-   *
-   * Any property supplied here overrides the corresponding default-column value through AG Grid's
-   * normal `ColDef` versus `defaultColDef` precedence.
-   */
+  /** Optional initial layout and sizing; supplied values override corresponding defaults. */
   layout?: FieldLayoutDefinition;
+
+  /**
+   * Optional registered display formatter.
+   *
+   * Formatting does not change the raw row value or business save/filter/sort meaning. The runtime
+   * must separately preserve any intended clipboard/export behavior because AG Grid can use
+   * `valueFormatter` for those surfaces.
+   */
+  formatter?: FieldFormatterDefinition<TFormatterKey>;
+
+  /**
+   * Optional registered rich cell renderer.
+   *
+   * Omit to use normal AG Grid cell rendering. A renderer may coexist with a formatter and can use
+   * both the raw value and AG Grid's formatted value.
+   */
+  renderer?: FieldRendererDefinition<TRendererKey>;
 }
 
 type ConfigurableFieldDefinition<TTranslationKey extends string = string> = FieldDefinition<
@@ -279,71 +248,38 @@ type ConfigurableFieldDefinition<TTranslationKey extends string = string> = Fiel
   string,
   TTranslationKey,
   FieldDataType,
+  string,
+  string,
   string
 >;
 
-/**
- * Reusable configuration for one entity/data context inside a configurable feature.
- */
+/** Reusable configuration for one entity/data context inside a configurable feature. */
 export interface EntityDefinition<
   TTranslationKey extends string = string,
   TFieldDefinition extends ConfigurableFieldDefinition<TTranslationKey> = ConfigurableFieldDefinition<TTranslationKey>,
 > {
-  /**
-   * Full translation key used to resolve the entity label displayed by the UI.
-   *
-   * A concrete feature can narrow this generic to its valid translation-key type.
-   *
-   * @example
-   * "review.entities.loan.label"
-   */
+  /** Full translation key used to resolve the entity label. */
   labelKey: TTranslationKey;
 
   /**
-   * Key of the registered frontend data adapter used for this entity's data operations.
-   *
-   * The resolved adapter provides the feature/entity-specific boundary for loading rows,
-   * saving changes, and mapping grid requests and API responses to the backend contract.
-   *
-   * @example
-   * "reviewLoan"
+   * Key of the registered frontend data adapter used for loading/saving and API/grid mapping.
    */
   dataAdapterKey: string;
 
-  /**
-   * Defines how the stable unique identifier is read from every API row for this entity.
-   * The identifier lets grid-related state consistently refer to the same business record.
-   */
+  /** Defines how the stable unique business-row identifier is read from every API row. */
   rowId: RowIdDefinition;
 
   /**
-   * Optional configurable defaults for fields in this entity.
-   *
-   * These compile into AG Grid `defaultColDef` on top of the shared grid defaults. Individual field
-   * definitions compile into `columnDefs` and naturally override matching default values.
+   * Optional configurable defaults compiled into AG Grid `defaultColDef` on top of shared defaults.
    */
   fieldDefaults?: FieldDefaultsDefinition;
 
-  /**
-   * Fields available for this entity in their configured initial column order.
-   *
-   * Each field has its own stable `id`, so array position controls initial presentation order while
-   * identity remains independent of position.
-   */
+  /** Fields available for the entity in their configured initial column order. */
   fields: readonly TFieldDefinition[];
 }
 
 /** Defines how to locate an entity row's stable unique identifier in the API row shape. */
 export interface RowIdDefinition {
-  /**
-   * Field path in each API row that contains the stable unique identifier for that
-   * business record. Dot notation is supported for nested API row shapes.
-   *
-   * @example
-   * "id"
-   *
-   * @example
-   * "loan.id"
-   */
+  /** Field path containing the stable business-row identifier; dot notation is supported. */
   path: string;
 }
