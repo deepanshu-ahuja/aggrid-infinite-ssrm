@@ -1,75 +1,106 @@
 # Configurable Feature Type Hierarchy and AG Grid Mapping
 
-Quick visual map for `frontend/src/shared/grid/configurable/configuration.types.ts`.
+Quick architecture/type map for `frontend/src/shared/grid/configurable/configuration.types.ts`.
 
-The curated hierarchy stays useful because it explains ownership and compiler meaning, not just TypeScript inheritance. Keep the portable text view and the rendered Mermaid view together.
+The text hierarchy is the portable source of truth for this visual document. Mermaid remains supplemental because not every viewer renders it.
 
-## Current type hierarchy
+## Current hierarchy
 
 ```text
 FeatureDefinition
+├── featureKey
 └── entities: Record<entityKey, EntityDefinition>
-    ├── labelKey
-    ├── dataAdapterKey
-    ├── rowId: RowIdDefinition
-    │   └── path
-    ├── fieldDefaults?: FieldDefaultsDefinition
-    │   ├── sortable?                       ← ColDef['sortable']
-    │   └── layout?: FieldLayoutDefinition
-    │       ├── initialHide?                 ← ColDef['initialHide']
-    │       ├── initialPinned?               ← ColDef['initialPinned']
-    │       └── sizing?: FieldSizingDefinition
-    │           ├── initialWidth? XOR initialFlex?
-    │           ├── minWidth?
-    │           ├── maxWidth?
-    │           └── resizable?
-    └── fields: FieldDefinition[]
-        ├── id
-        ├── field
+    │
+    │  entityKey is the business/config identity
+    │  e.g. "transaction", "loan", "finance"
+    │
+    └── EntityDefinition
         ├── labelKey
-        ├── cellDataType                    ← ColDef.cellDataType-compatible
-        ├── sortable?                       ← ColDef.sortable
-        ├── filter?: FieldFilterDefinition
-        │   └── filterOptions[]              ← AG Grid filterParams.filterOptions
-        ├── layout?: FieldLayoutDefinition
-        ├── formatter?: FieldFormatterDefinition
-        │   ├── key
-        │   └── params?
-        ├── renderer?: FieldRendererDefinition
-        │   ├── key
-        │   └── params?
-        └── editing?: FieldEditingDefinition
-            ├── editor?: FieldEditorDefinition
-            │   ├── key
-            │   ├── params?
-            │   ├── popup?
-            │   └── popupPosition?
-            └── parser?: FieldValueParserDefinition
-                ├── key
-                └── params?
+        ├── dataAdapterKey
+        ├── rowId: RowIdDefinition
+        │   └── path
+        ├── defaultColDef?: ConfigurableDefaultColDef
+        │   ├── sortable?          ← ColDef.sortable
+        │   ├── initialHide?       ← ColDef.initialHide
+        │   ├── initialPinned?     ← ColDef.initialPinned
+        │   ├── initialWidth?      ← ColDef.initialWidth
+        │   ├── initialFlex?       ← ColDef.initialFlex
+        │   ├── minWidth?          ← ColDef.minWidth
+        │   ├── maxWidth?          ← ColDef.maxWidth
+        │   └── resizable?         ← ColDef.resizable
+        └── fields: FieldDefinition[]
+            ├── colId              ← ColDef.colId
+            ├── field              ← ColDef.field
+            ├── labelKey           → translated ColDef.headerName
+            ├── cellDataType       ← ColDef.cellDataType
+            ├── sortable?          ← ColDef.sortable
+            ├── filtering?: FieldFilteringDefinition
+            │   └── filterOptions  → filterParams.filterOptions
+            ├── initialHide?       ← ColDef.initialHide
+            ├── initialPinned?     ← ColDef.initialPinned
+            ├── initialWidth?      ← ColDef.initialWidth
+            ├── initialFlex?       ← ColDef.initialFlex
+            ├── minWidth?          ← ColDef.minWidth
+            ├── maxWidth?          ← ColDef.maxWidth
+            ├── resizable?         ← ColDef.resizable
+            ├── formatter?: FieldFormatterDefinition
+            │   ├── key            → formatter registry
+            │   └── params?
+            ├── renderer?: FieldRendererDefinition
+            │   ├── key            → renderer registry
+            │   └── cellRendererParams? ← ColDef.cellRendererParams
+            └── editing?: FieldEditingDefinition
+                ├── editor?: FieldEditorDefinition
+                │   ├── key                     → editor registry
+                │   ├── cellEditorParams?       ← ColDef.cellEditorParams
+                │   ├── cellEditorPopup?        ← ColDef.cellEditorPopup
+                │   └── cellEditorPopupPosition?← ColDef.cellEditorPopupPosition
+                └── parser?: FieldValueParserDefinition
+                    ├── key            → parser registry
+                    └── params?
 ```
 
-## Rendered relationship view
+## What the generics do — and do not do
 
-GitHub renders this Mermaid diagram directly. The text hierarchy above remains the portable fallback.
+A generated TypeDoc heading such as:
+
+```text
+EntityDefinition<TLabelKey, TFieldDefinition>
+```
+
+does **not** mean Transaction/Loan identity comes from those generic parameters.
+
+```text
+FeatureDefinition.entities record key
+→ entity business/config identity
+→ "transaction" / "loan" / "finance"
+
+EntityDefinition<TLabelKey, TFieldDefinition>
+→ only narrows allowed label keys and field shape
+→ remains reusable and business-agnostic
+```
+
+Conceptually:
+
+```text
+Review Feature
+├── "transaction" → EntityDefinition<...>
+└── "loan"        → EntityDefinition<...>
+```
+
+## Supplemental Mermaid relationship view
 
 ```mermaid
 flowchart TD
-    F[FeatureDefinition] --> E[EntityDefinition]
+    F[FeatureDefinition] -->|entities record key = entity identity| E[EntityDefinition]
     E --> R[RowIdDefinition]
-    E --> FD[FieldDefaultsDefinition]
-    E --> FL[FieldDefinition array]
+    E --> D[ConfigurableDefaultColDef]
+    E --> FD[FieldDefinition array]
 
-    FD --> L1[FieldLayoutDefinition]
-    L1 --> S1[FieldSizingDefinition]
-
-    FL --> FF[FieldFilterDefinition]
-    FL --> L2[FieldLayoutDefinition]
-    FL --> FM[FieldFormatterDefinition]
-    FL --> FR[FieldRendererDefinition]
-    FL --> ED[FieldEditingDefinition]
-
-    L2 --> S2[FieldSizingDefinition]
+    FD --> FIL[FieldFilteringDefinition]
+    FD --> FM[FieldFormatterDefinition]
+    FD --> FR[FieldRendererDefinition]
+    FD --> ED[FieldEditingDefinition]
     ED --> CE[FieldEditorDefinition]
     ED --> VP[FieldValueParserDefinition]
 
@@ -83,54 +114,142 @@ flowchart TD
     REG3 --> CED[AG Grid cellEditor]
     REG4 --> VPR[AG Grid valueParser]
 
-    FL --> CD[compiled AG Grid ColDef]
-    FD --> DCD[resolved AG Grid defaultColDef]
+    D --> DCD[AG Grid defaultColDef]
+    FD --> CD[compiled AG Grid ColDef]
 ```
 
-## End-to-end configuration boundary
+## Normalization boundary
 
 ```text
-frontend-supported config model
+backend/database representation
         ↓
-may be stored/returned using backend/database representation
+validate + normalize/adapt ALWAYS
         ↓
-configuration adapter / normalization
-        ↓
-validated normalized config
+normalized frontend configuration
         ↓
 compiler + registries
         ↓
-final AG Grid options / columns / callbacks / components
+final AG Grid GridOptions / ColDef / callbacks / components
 ```
 
-**The normalization boundary remains even when backend/storage names currently match the normalized frontend names.** In that case normalization may be close to an identity transform, but runtime data is still validated/normalized before compilation.
+Normalization remains even when backend/storage names currently equal normalized frontend names.
 
-Raw backend configuration never goes straight into `AgGridReact`. If backend/storage names differ later, normalize them once at the boundary. A backend property that the deployed frontend does not read/normalize/compile has no effect.
-
-## AG Grid alignment rule
+Examples:
 
 ```text
-same AG Grid concept + same semantics
-→ keep AG Grid property name
-→ reuse/derive AG Grid type where practical
-→ merge/pass through instead of pointless rename-and-map code
+backend sends "defaultColDef"
+→ validator/normalizer accepts it
+→ normalized defaultColDef
 
-executable AG Grid concept
-→ JSON-safe key in config
-→ frontend registry
-→ implementation typed with real AG Grid callback/component/property type
+backend later sends "columnDefaults"
+→ normalizer maps it
+→ normalized defaultColDef
 
-runtime/compiler infrastructure
-→ frontend creates it
-→ not arbitrary persisted config
+compiler does not care which backend key was used
 ```
 
-Examples already aligned directly:
+Raw backend JSON is never spread directly into `AgGridReact`.
+
+## Naming rule
 
 ```text
+same AG Grid concept + same value semantics
+→ use AG Grid name
+→ reuse/derive AG Grid type
+
+same final AG Grid destination but persisted value differs
+→ keep explicit application descriptor name
+→ resolve/map once in compiler
+```
+
+### Direct native names now used
+
+```text
+colId
+field
 cellDataType
 sortable
+defaultColDef
+initialHide
+initialPinned
+initialWidth
+initialFlex
+minWidth
+maxWidth
+resizable
 filterOptions
+cellRendererParams
+cellEditorParams
+cellEditorPopup
+cellEditorPopupPosition
+```
+
+### Custom names that remain intentionally
+
+```text
+featureKey
+entities
+labelKey
+dataAdapterKey
+rowId
+filtering
+formatter
+renderer
+editing
+registry key/custom params descriptors
+```
+
+For example, `formatter` remains custom because `{ key, params }` is not an AG Grid `valueFormatter` function. `rowId` remains custom because `{ path }` is not the executable AG Grid `getRowId` callback.
+
+## Field-to-AG-Grid mapping
+
+```text
+field.colId                         → ColDef.colId
+field.field                         → ColDef.field
+field.labelKey                      → translation → ColDef.headerName
+field.cellDataType                  → ColDef.cellDataType
+field.sortable                      → ColDef.sortable
+field.initialHide                   → ColDef.initialHide
+field.initialPinned                 → ColDef.initialPinned
+field.initialWidth                  → ColDef.initialWidth
+field.initialFlex                   → ColDef.initialFlex
+field.minWidth                      → ColDef.minWidth
+field.maxWidth                      → ColDef.maxWidth
+field.resizable                     → ColDef.resizable
+field.filtering                     → ColDef.filter + filterParams
+field.filtering.filterOptions       → filterParams.filterOptions
+field.formatter.key                 → registry → ColDef.valueFormatter
+field.renderer.key                  → registry → ColDef.cellRenderer
+field.renderer.cellRendererParams   → ColDef.cellRendererParams
+field.editing presence              → composed ColDef.editable callback
+field.editing.editor.key            → registry → ColDef.cellEditor
+editor.cellEditorParams             → ColDef.cellEditorParams
+editor.cellEditorPopup              → ColDef.cellEditorPopup
+editor.cellEditorPopupPosition      → ColDef.cellEditorPopupPosition
+field.editing.parser.key            → registry → ColDef.valueParser
+```
+
+## Stable column identity vs value path
+
+```text
+colId
+→ stable AG Grid Column ID
+→ Grid State / API identity
+→ application edit/conflict/validation identity
+
+field
+→ current API row value path
+```
+
+They may differ. Requiring explicit `colId` prevents a backend field-path rename from silently changing saved column identity.
+
+## Native column-state initialization
+
+The old `layout` and `sizing` wrapper objects have been removed. They added organization but no separate AG Grid semantics.
+
+Direct native leaves now represent the configuration:
+
+```text
 initialHide
 initialPinned
 initialWidth
@@ -140,164 +259,47 @@ maxWidth
 resizable
 ```
 
-Examples that remain our concepts:
+The `initial*` attributes seed a new column; they are not meant to continuously overwrite later user/Grid State changes. The contract follows AG Grid's native width/flex behavior rather than imposing a separate custom XOR model.
+
+## Filtering is deliberately not called `filter`
+
+The persisted application descriptor is:
 
 ```text
-featureKey
-dataAdapterKey
-fieldDefaults
-registry key/params descriptors
-access/masking
-server query/save mapping
+filtering: {
+  filterOptions: [...]
+}
 ```
 
-## Native-first compiler flow
+because AG Grid `ColDef.filter` has different value semantics: it enables/selects the filter component. The compiler performs the deliberate translation:
 
 ```text
-field.cellDataType
-        ↓ explicit SSRM value
-AG Grid ColDef.cellDataType
-        ↓
-AG Grid native parser / formatter / editor / renderer / filter behavior
-        ↓
-custom configured overrides only where required
+filtering descriptor
+→ ColDef.filter
++ filterParams.filterOptions
 ```
 
-Current built-in values:
+This is an example where using an AG Grid property name would be misleading, so an application name is correct.
+
+## Registries stay AG-Grid-typed
+
+A registry key is configuration; the resolved implementation should still use AG Grid's real function/component contract where practical.
 
 ```text
-text
-number
-boolean
-date           → JavaScript Date
-dateString     → string date
-dateTime       → JavaScript Date
-dateTimeString → string date-time
-```
-
-## Field-to-AG-Grid mapping
-
-```text
-entity.fieldDefaults
-    → bounded compiler/default merge
-    → AG Grid defaultColDef
-
-entity.fields[]
-    → one compiled ColDef per field
-```
-
-```text
-field.id                         → ColDef.colId
-field.field                      → ColDef.field
-field.labelKey                   → translated ColDef.headerName
-field.cellDataType               → ColDef.cellDataType
-field.sortable                   → ColDef.sortable
-field.filter                     → ColDef.filter + filterParams
-filter.filterOptions             → filterParams.filterOptions
-filter omitted                   → ColDef.filter = false
-layout.initialHide               → ColDef.initialHide
-layout.initialPinned             → ColDef.initialPinned
-layout.sizing.initialWidth       → ColDef.initialWidth
-layout.sizing.initialFlex        → ColDef.initialFlex
-layout.sizing.minWidth           → ColDef.minWidth
-layout.sizing.maxWidth           → ColDef.maxWidth
-layout.sizing.resizable          → ColDef.resizable
-formatter.key                    → formatter registry → ColDef.valueFormatter
-renderer.key                     → renderer registry → ColDef.cellRenderer
-renderer.params                  → ColDef.cellRendererParams
-editing presence                 → composed ColDef.editable callback
-editing.editor.key               → editor registry → ColDef.cellEditor
-editing.editor.params            → ColDef.cellEditorParams
-editing.editor.popup             → ColDef.cellEditorPopup
-editing.editor.popupPosition     → ColDef.cellEditorPopupPosition
-editing.parser.key               → parser registry → ColDef.valueParser
-```
-
-## Table/grid-level configuration direction
-
-The runtime schema must not be limited to only the handful of AG Grid options used in today's Transaction demo.
-
-Preferred future structure:
-
-```text
-frontend/application defaults
-        +
-normalized entity-level supported AG Grid config
-        ↓
-resolved declarative SSRM options
-        +
-runtime-owned options
-        +
-compiled columnDefs/defaultColDef
-        ↓
-AgGridReact
-```
-
-A broad reviewed JSON-safe AG Grid surface may be supported using native names/types. Do not expose every executable/runtime property merely because it exists in `GridOptions`.
-
-## Registries must use AG Grid implementation types
-
-A registry is not permission to invent another callback API.
-
-Conceptually:
-
-```text
-config key: "openLoan"
-        ↓
-cell-click registry
-        ↓
-implementation typed as AG Grid's onCellClicked callback type
-```
-
-Likewise formatter/parser/editor/renderer registries should resolve to AG Grid-compatible implementation types/components. Their configured params may add application-specific declarative input, but their grid-facing signatures remain AG Grid-native where practical.
-
-## Params
-
-```text
-renderer.params → cellRendererParams
-editor.params   → cellEditorParams
-```
-
-AG Grid still supplies normal runtime props such as `value`, `data`, `node`, `column` and `api`.
-
-For formatter/parser, the compiler combines configured JSON-safe params with AG Grid's normal callback params because there is no native `valueFormatterParams` / `valueParserParams` ColDef property.
-
-## Value/edit flow
-
-```text
-authoritative API value
-        ↓
-effective grid value
-        ↓
-cellDataType baseline
-        ↓
-optional formatter / renderer
-        ↓
-provided or custom editor
-        ↓
-native/custom valueParser
-        ↓
-LOCAL draft
-        ↓
-tracked editing + validation
-        ↓
-save mapping / backend payload   [later]
+config key
+→ frontend registry
+→ AG Grid-compatible implementation
+→ native AG Grid property
 ```
 
 ## Generated API docs
 
-The intended generated-docs tooling is **TypeDoc + Markdown output** so generated API pages can be read directly in GitHub. It is not installed yet on this branch because adding a dev dependency requires a reproducibly generated `package-lock.json`; do not hand-edit the lockfile.
+TypeDoc + `typedoc-plugin-markdown` are configured through root `typedoc.json` and:
 
-The curated hierarchy in this file remains even after generated docs are introduced because it explains architecture/ownership that a generated API tree does not.
-
-## Design checklist for every new property
-
-```text
-1. Is this actually configurable product/application behavior?
-2. Does AG Grid already expose the same concept?
-3. If yes, can we keep its name and type?
-4. Is the value JSON-safe declarative data, executable behavior, or runtime infrastructure?
-5. If executable, what key/registry resolves it and what AG Grid type should that implementation use?
-6. If backend/storage shape differs, where is it normalized once?
-7. What exact final GridOptions / ColDef / callback/component receives it?
+```bash
+npm run docs:configurable
 ```
+
+The generated API pages under `docs/configurable-feature/generated/` are source-derived detail pages. They complement this curated relationship map; they do not replace it.
+
+Whenever `configuration.types.ts` or its JSDoc changes, regenerate the TypeDoc output before treating the generated pages as current.
