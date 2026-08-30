@@ -59,9 +59,7 @@ export type FilterOperator =
   | DateFilterOperator
   | BooleanFilterOperator;
 
-/**
- * Resolves the shared filter-operator vocabulary appropriate for a semantic field type.
- */
+/** Resolves the shared filter-operator vocabulary appropriate for a semantic field type. */
 export type FilterOperatorForDataType<TDataType extends FieldDataType> =
   TDataType extends 'text'
     ? TextFilterOperator
@@ -96,14 +94,13 @@ export type FieldPinnedPosition = 'left' | 'right';
 /**
  * Sizing constraints that continue to apply after the column is created.
  *
- * These are not user-state defaults: the configurable compiler maps them to normal AG Grid column
- * constraints so they remain authoritative while the column exists.
+ * These map to normal AG Grid column constraints rather than user-state defaults.
  */
 export interface FieldSizingConstraintsDefinition {
   /**
    * Minimum column width in pixels.
    *
-   * When omitted, the configurable grid inherits the shared grid minimum-width behavior.
+   * When omitted, the field inherits the resolved default-column minimum width.
    */
   minWidth?: number;
 
@@ -113,7 +110,7 @@ export interface FieldSizingConstraintsDefinition {
   /**
    * Whether the user can manually resize the column.
    *
-   * When omitted, resizing remains enabled by the shared grid default.
+   * When omitted, the field inherits the resolved default-column setting.
    */
   resizable?: boolean;
 }
@@ -130,53 +127,65 @@ export type FieldSizingDefinition =
       /**
        * Initial fixed width in pixels.
        *
-       * The compiler maps this to AG Grid `initialWidth` so later user-resized/Grid-State width is
-       * not overwritten merely because column definitions are rebuilt.
+       * The compiler maps this directly to AG Grid `initialWidth`.
        */
-      defaultWidth?: number;
+      initialWidth?: number;
 
       /** A fixed-width field cannot also declare an initial flex weight. */
-      defaultFlex?: never;
+      initialFlex?: never;
     })
   | (FieldSizingConstraintsDefinition & {
       /** A flex-sized field cannot also declare an initial fixed width. */
-      defaultWidth?: never;
+      initialWidth?: never;
 
       /**
        * Initial flex weight used to share remaining grid width with other flex columns.
        *
-       * The compiler maps this to AG Grid `initialFlex`; `minWidth` and `maxWidth` can still bound
-       * the flex result.
+       * The compiler maps this directly to AG Grid `initialFlex`; `minWidth` and `maxWidth` can
+       * still bound the flex result.
        */
-      defaultFlex?: number;
+      initialFlex?: number;
     });
 
 /**
- * Initial layout/default-state configuration for one field.
+ * Initial layout configuration for one field.
  *
- * These values establish the starting column state. They are intentionally separate from hard
- * sizing constraints so later persisted Grid State can restore user choices such as visibility,
- * pinning, width, and flex without column-definition refreshes resetting those choices.
+ * Initial values seed AG Grid column state. They are not authorization rules and do not keep
+ * forcing the value after Grid State/user interaction changes the column.
  */
 export interface FieldLayoutDefinition {
   /**
    * Whether the column is visible when first created.
    *
-   * Omit for the normal visible default. The compiler maps this to AG Grid `initialHide` rather than
-   * the stateful `hide` property so persisted user visibility can be restored later.
+   * Omit for the normal visible default. The compiler maps this to AG Grid `initialHide` by
+   * negating the value.
    */
-  defaultVisible?: boolean;
+  initialVisible?: boolean;
 
   /**
    * Side on which the column is pinned when first created.
    *
-   * Omit for an initially unpinned column. The compiler maps this to AG Grid `initialPinned` so a
-   * user's later pin/unpin state is not reset when column definitions are updated.
+   * Omit for an initially unpinned column. The compiler maps this to AG Grid `initialPinned`.
    */
-  defaultPinned?: FieldPinnedPosition;
+  initialPinned?: FieldPinnedPosition;
 
   /** Optional initial sizing and persistent width/resizing constraints for this field. */
   sizing?: FieldSizingDefinition;
+}
+
+/**
+ * Configurable defaults applied to every field in one entity before individual field definitions.
+ *
+ * The configurable compiler adds these values to the shared AG Grid `baseDefaultColDef` and passes
+ * the result through AG Grid's `defaultColDef`. Individual compiled column definitions then rely on
+ * AG Grid's normal precedence: a column value overrides the same default-column value.
+ */
+export interface FieldDefaultsDefinition {
+  /** Default sortable setting inherited by fields that do not specify `sortable`. */
+  sortable?: boolean;
+
+  /** Default layout/sizing settings inherited by fields that do not override them. */
+  layout?: FieldLayoutDefinition;
 }
 
 /**
@@ -239,7 +248,8 @@ export interface FieldDefinition<
   /**
    * Whether users can sort by this field.
    *
-   * When omitted, the configurable compiler should use the shared sortable default (`true`).
+   * When omitted, the field inherits the resolved `defaultColDef` value: configurable
+   * `fieldDefaults.sortable` when supplied, otherwise the shared grid default.
    */
   sortable?: boolean;
 
@@ -256,11 +266,10 @@ export interface FieldDefinition<
   >;
 
   /**
-   * Optional initial layout and sizing configuration for the field.
+   * Optional initial layout and sizing configuration for this field.
    *
-   * Layout values are defaults, not authorization rules. Persisted user Grid State may later
-   * override them, while hard current constraints such as access/masking will be resolved
-   * separately when that contract is designed.
+   * Any property supplied here overrides the corresponding default-column value through AG Grid's
+   * normal `ColDef` versus `defaultColDef` precedence.
    */
   layout?: FieldLayoutDefinition;
 }
@@ -308,17 +317,23 @@ export interface EntityDefinition<
   rowId: RowIdDefinition;
 
   /**
-   * Fields available for this entity in their configured default column order.
+   * Optional configurable defaults for fields in this entity.
    *
-   * Each field has its own stable `id`, so array position controls default presentation order while
+   * These compile into AG Grid `defaultColDef` on top of the shared grid defaults. Individual field
+   * definitions compile into `columnDefs` and naturally override matching default values.
+   */
+  fieldDefaults?: FieldDefaultsDefinition;
+
+  /**
+   * Fields available for this entity in their configured initial column order.
+   *
+   * Each field has its own stable `id`, so array position controls initial presentation order while
    * identity remains independent of position.
    */
   fields: readonly TFieldDefinition[];
 }
 
-/**
- * Defines how to locate an entity row's stable unique identifier in the API row shape.
- */
+/** Defines how to locate an entity row's stable unique identifier in the API row shape. */
 export interface RowIdDefinition {
   /**
    * Field path in each API row that contains the stable unique identifier for that

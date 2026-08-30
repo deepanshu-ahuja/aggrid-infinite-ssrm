@@ -2,68 +2,52 @@
 
 ## Purpose
 
-Living continuation file for interface-by-interface configurable-feature design on `configurable-feature-grid`. A new chat/session should read this file after `AGENTS.md` and `docs/configurable-feature-handoff.md` so it can resume from the exact current point without relying on chat memory.
+Living continuation file for the interface-by-interface configuration design on `configurable-feature-grid`. Use it when a chat/session changes so the next discussion resumes from the exact design point.
 
-Public library-style docs live under `docs/configurable-feature/`.
+Primary architecture context remains `docs/configurable-feature-handoff.md`. Public library-style docs live under `docs/configurable-feature/`.
 
-## Working rules
+## Working rules for this design
 
 - Keep work on `configurable-feature-grid`; do not create another branch unless explicitly requested.
-- Design related interfaces/properties in coherent batches rather than stopping after every key.
-- Preserve every important unresolved idea here as **Provisional** or **Deferred**.
-- TypeScript source contains sufficiently finalized public contracts only.
-- Public interfaces/non-obvious properties require useful JSDoc/IDE hover documentation.
-- Keep TypeScript/JSDoc, `configuration-reference.md`, `concepts.md` where relevant, and this progress file synchronized.
-- Shared configuration shapes stay feature-, entity-, and row-model-neutral; concrete values and executable business behavior stay feature/entity owned.
-- Frontend-authored configuration should use useful generic/type narrowing rather than weakening everything to unconstrained `string`.
-- Backend JSON remains runtime data and must be validated before becoming trusted/resolved configuration.
-- Field-level public properties need a deliberate compiler/resolver path into AG Grid or a bounded frontend registry. Do not add metadata that has no implementable meaning.
-- Do not expose the whole AG Grid `ColDef` API as our public configuration. Add only stable product-level needs.
+- Design parent concepts first, then related child properties/interfaces in coherent batches.
+- Preserve every important unresolved item here as **Provisional** or **Deferred**; do not rely on chat memory.
+- TypeScript source exposes finalized contracts only.
+- Public interfaces/non-obvious properties require useful JSDoc for IDE hover.
+- Follow `docs/configurable-feature/documentation-standard.md` for source/docs synchronization.
+- Shared configuration contracts must be feature-, entity-, and row-model-neutral in shape. Concrete values and executable business behavior remain feature/entity owned.
+- Frontend-authored configuration should use strong generic/type narrowing where it improves safety without making the public API unusable.
+- Backend JSON remains runtime data. TypeScript generics do not replace runtime configuration validation.
+- Prefer native AG Grid semantics where they already solve the problem. The configurable layer should compile into AG Grid rather than recreate AG Grid behavior unnecessarily.
 
-Documentation quality follows `docs/configurable-feature/documentation-standard.md`.
-
-## Repository state at this checkpoint
-
-- Working branch: `configurable-feature-grid`.
-- Before this batch, branch head was `87f3f853b7a7b71915c67bd3d49cd76dc89e5fea` (`feat: define configurable field core contract`).
-- `main` was `0ab2c5f1e79a868c96209899b223bc6aafdc97e2`, merge of PR #41.
-- `grid-foundation` was `92abc3b988c6ba30026ed9af42dc1f18db90ff31`.
-- No open PR existed when this batch started.
-- Latest repository CI visible at that point was the successful `main` push run for `0ab2c5f1...`.
-
-Re-inspect GitHub before future implementation; these SHAs are only a checkpoint record.
-
-## Overall design coverage
+## Overall design coverage snapshot
 
 ```text
 FeatureDefinition                     DONE (source + docs)
-EntityDefinition                      PARTIAL, core + fields connection done
+EntityDefinition                      PARTIAL, core + field defaults/fields done
 RowIdDefinition                       DONE (source + docs)
 FieldDefinition core                  DONE (source + docs)
   identity / API binding / label      DONE
   semantic data type                  DONE
   sortable capability                 DONE
   filter capability/operators         DONE
-Field layout/defaults                 DONE (source + docs)
-  default visibility                  DONE
-  initial pinning                     DONE
-  fixed/flex sizing                   DONE
+Field defaults/defaultColDef mapping  DONE (source + docs)
+Field presentation/layout             DONE (source + docs)
+  initial visibility/pinning          DONE
+  initial width/flex                  DONE
   min/max/resizable constraints       DONE
-Formatting/display                    NEXT
-Renderer registry/selection           NOT YET DESIGNED
+Formatting/rendering                  NOT YET DESIGNED
 Editing/editor/value conversion       NOT YET DESIGNED
 Validation declarations               NOT YET DESIGNED
 Server sort/filter/search mapping     NOT YET DESIGNED
-Request/save field mapping            NOT YET DESIGNED
 Access/security/masking               NOT YET DESIGNED
 Data-adapter registry contract        NOT YET DESIGNED
 Actions/business operations           NOT YET DESIGNED
-Grid State/preferences reconciliation PARTIAL PRINCIPLES ONLY
-Config validation/versioning          REQUIRED, SHAPE NOT YET DESIGNED
-Final runtime/compiler composition    NOT YET IMPLEMENTED
+Grid State/preferences reconciliation PARTIAL semantics established, full contract not designed
+Config validation/versioning          NOT YET DESIGNED
+Final runtime/compiler composition    NOT YET DESIGNED
 ```
 
-## Finalized contracts
+## Finalized core contracts
 
 Source: `frontend/src/shared/grid/configurable/configuration.types.ts`.
 
@@ -83,7 +67,9 @@ Finalized:
 
 - `featureKey` is required and generic over a string key.
 - `entities` is the required entity-definition map.
-- Entity identity is the record key; no duplicate `entityKey` or `supportedEntities` list.
+- Entity identity is the `entities` record key.
+- Separate `supportedEntities` is rejected as duplicate information.
+- `EntityDefinition` does not duplicate identity with an `entityKey` member.
 
 ### `EntityDefinition`
 
@@ -96,16 +82,19 @@ interface EntityDefinition<
   labelKey: TTranslationKey;
   dataAdapterKey: string;
   rowId: RowIdDefinition;
+  fieldDefaults?: FieldDefaultsDefinition;
   fields: readonly TFieldDefinition[];
 }
 ```
 
 Finalized:
 
-- `labelKey` is a full explicit translation key and can be narrowed by frontend-owned types.
-- `dataAdapterKey` resolves the feature/entity frontend data/API adapter for loading/saving and required request/response mapping.
+- `labelKey` is required, explicit, and generic so frontend-owned feature definitions can narrow valid translation keys.
+- `dataAdapterKey` is required and resolves the registered frontend data/API adapter for that feature/entity.
 - `rowId` is required.
-- `fields` is a readonly array; array order supplies default column order while each field owns stable identity.
+- `fieldDefaults` is optional and compiles into AG Grid `defaultColDef` on top of the shared `baseDefaultColDef`.
+- `fields` is required and readonly.
+- Field array order represents initial column order; stable field identity comes from each field's `id`.
 
 ### `RowIdDefinition`
 
@@ -117,9 +106,8 @@ interface RowIdDefinition {
 
 Finalized:
 
-- explicit path to the stable business ID in the API row;
-- common case `id`;
-- dot notation such as `loan.id` supported;
+- common case is `id`;
+- nested dot notation is supported;
 - no implicit default.
 
 ## `FieldDefinition` core — finalized
@@ -144,13 +132,15 @@ interface FieldDefinition<
 }
 ```
 
-### Identity/binding/label
+### Identity / binding / translation
 
-- `id` is stable configuration identity and should eventually compile to AG Grid `colId`.
-- `field` is the API-row value path; direct properties and dot notation are supported.
-- `labelKey` is the full explicit translation key for the displayed field label.
-- `id` and `field` are intentionally separate so API response shape can change without automatically changing stable configuration identity.
-- Frontend definitions may narrow IDs/paths/translation keys; backend JSON still requires runtime validation.
+Finalized:
+
+- `id` is the stable configuration identity and is intentionally independent of API path.
+- `field` is the API row path; dot notation is supported.
+- `labelKey` is a full explicit translation key.
+- frontend-owned config can narrow these with useful generic types;
+- backend JSON still requires runtime validation.
 
 ### `dataType`
 
@@ -158,231 +148,243 @@ interface FieldDefinition<
 type FieldDataType = "text" | "number" | "boolean" | "date" | "dateTime";
 ```
 
-- semantic field value category;
-- selects type-appropriate shared filter operators;
-- current AG Grid v36.1 also has matching built-in cell data types, so the future compiler can map these categories into `cellDataType` where appropriate;
-- formatter/editor overrides remain separate contracts.
+Finalized semantic value category. It currently determines the shared filter-operator vocabulary; it does not itself settle formatter/editor/validation behavior.
 
 ### `sortable`
 
-- optional boolean;
-- omitted means shared sortable default `true`;
-- explicit `false` disables sorting.
+Finalized semantics changed from the earlier simplistic wording:
+
+```text
+field sortable supplied
+→ field/ColDef value wins
+
+field sortable omitted
+→ inherit resolved AG Grid defaultColDef value
+```
+
+The resolved default column definition comes from the shared `baseDefaultColDef` plus any configurable `EntityDefinition.fieldDefaults`.
+
+Do not document omission as merely hard-coded `true` at the field-contract level. The shared base currently provides `sortable: true`, but configurable defaults may override that before AG Grid applies individual field precedence.
 
 ### `filter`
 
+Finalized:
+
+- no separate `filterable` boolean;
+- `filter` omitted means field is not filterable;
+- `filter` present means filtering is available;
+- `operators` is required/non-empty and is the exact allowed operator list;
+- base operator names align with the repository's current server-backed text/number/date vocabulary;
+- feature-specific operator keys are allowed only through typed extension and must later resolve to bounded query/backend semantics.
+
+Important compiler consequence: current shared `baseDefaultColDef` has `filter: true`, but configurable `FieldDefinition.filter` omission means not filterable. The future compiler therefore must emit the appropriate non-filterable column configuration for fields without `filter`. This is contract translation, not repair of invalid metadata.
+
+## Field defaults and native AG Grid precedence — finalized
+
+The user explicitly clarified that configurable defaults should mirror AG Grid's own `defaultColDef` + `columnDefs` behavior rather than introduce a custom runtime field-merging framework.
+
+Final model:
+
+```text
+shared baseDefaultColDef
+        +
+compiled EntityDefinition.fieldDefaults
+        ↓
+AG Grid defaultColDef
+
+compiled EntityDefinition.fields[]
+        ↓
+AG Grid columnDefs[]
+
+AG Grid rule
+→ individual ColDef value overrides matching defaultColDef value
+```
+
+Public contract:
+
 ```ts
-interface FieldFilterDefinition<TOperator extends string = FilterOperator> {
-  operators: readonly [TOperator, ...TOperator[]];
+interface FieldDefaultsDefinition {
+  sortable?: boolean;
+  layout?: FieldLayoutDefinition;
 }
 ```
 
-- no `filterable` boolean;
-- omitted `filter` means not filterable;
-- present `filter` means filterable with exactly the non-empty `operators` list;
-- type-specific shared operator vocabularies align with the repository's current server filter presets;
-- feature-specific typed operator keys are allowed only when a real bounded frontend/query/backend meaning exists;
-- backend metadata never supplies executable functions.
+This type is intentionally bounded to the field defaults designed so far; it is not a copy of AG Grid `ColDef`.
 
-Important runtime compiler requirement: current shared `defaultColDef` has `filter: true`, so an omitted configurable `filter` must explicitly compile to AG Grid `filter: false` or the public contract would be violated.
+Do not accept invalid configuration and silently repair it with clever merge logic. TypeScript should prevent invalid frontend-authored shapes where practical, and runtime validation must reject invalid backend JSON.
 
-## Field layout/defaults — finalized
+## Field layout/sizing — finalized
 
-The public field now has:
+### Naming correction
 
-```ts
-layout?: FieldLayoutDefinition;
+The first pushed layout draft used `defaultVisible`, `defaultPinned`, `defaultWidth`, and `defaultFlex`. That naming was reconsidered immediately because the values describe initial AG Grid column state, not the higher-level `fieldDefaults` concept.
+
+Final public names are:
+
+```text
+initialVisible
+initialPinned
+initialWidth
+initialFlex
 ```
 
-Layout is intentionally a **bounded initial-state/sizing contract**, not a catch-all presentation bucket and not a copy of AG Grid `ColDef`. Formatting, rendering, editing, tooltips, etc. remain separate design areas.
+This keeps concepts distinct:
+
+```text
+fieldDefaults
+→ entity/config-level values that compile into AG Grid defaultColDef
+
+initialWidth / initialFlex / initialVisible / initialPinned
+→ initial state properties that may appear in defaults or on one field
+```
 
 ### `FieldLayoutDefinition`
 
 ```ts
 interface FieldLayoutDefinition {
-  defaultVisible?: boolean;
-  defaultPinned?: "left" | "right";
+  initialVisible?: boolean;
+  initialPinned?: "left" | "right";
   sizing?: FieldSizingDefinition;
 }
 ```
 
-Finalized semantics:
+Compiler mapping requirement:
 
-- `layout` is optional; omission uses shared grid defaults.
-- layout defaults describe the starting user-facing column state, not authorization/security.
-- saved/persisted Grid State may later override these defaults.
-- current authorization/access/masking must eventually win over saved preferences when that access-resolution contract is designed.
-
-### `defaultVisible`
-
-- optional; omitted means initially visible.
-- compiler mapping: `defaultVisible` -> inverse of AG Grid `initialHide`.
-- use `initialHide`, not stateful `hide`, so rebuilding/updating column definitions does not reset a user's visibility state.
-
-### `defaultPinned`
-
-```ts
-type FieldPinnedPosition = "left" | "right";
+```text
+initialVisible → AG Grid initialHide (inverse boolean)
+initialPinned  → AG Grid initialPinned
 ```
 
-- optional; omission means initially unpinned.
-- compiler mapping: `defaultPinned` -> AG Grid `initialPinned`.
-- use `initialPinned`, not stateful `pinned`, to preserve later user/Grid-State pinning.
+Initial values seed state; they are not authorization constraints and must not continually override later allowed Grid State/user choices.
 
-### Field sizing
+### `FieldSizingDefinition`
+
+Finalized union prevents width/flex together:
 
 ```ts
-interface FieldSizingConstraintsDefinition {
+// fixed-width branch
+{
+  initialWidth?: number;
+  initialFlex?: never;
   minWidth?: number;
   maxWidth?: number;
   resizable?: boolean;
 }
 
-type FieldSizingDefinition =
-  | (FieldSizingConstraintsDefinition & {
-      defaultWidth?: number;
-      defaultFlex?: never;
-    })
-  | (FieldSizingConstraintsDefinition & {
-      defaultWidth?: never;
-      defaultFlex?: number;
-    });
+// flex branch
+{
+  initialWidth?: never;
+  initialFlex?: number;
+  minWidth?: number;
+  maxWidth?: number;
+  resizable?: boolean;
+}
 ```
 
-Finalized decisions:
-
-- support both fixed initial width and flex initial sizing;
-- `defaultWidth` and `defaultFlex` are mutually exclusive in TypeScript;
-- runtime JSON validation must enforce the same mutual-exclusion rule;
-- `defaultWidth` maps to AG Grid `initialWidth`;
-- `defaultFlex` maps to AG Grid `initialFlex`;
-- `minWidth` maps to AG Grid `minWidth`;
-- `maxWidth` maps to AG Grid `maxWidth`;
-- `resizable` maps to AG Grid `resizable`;
-- flex may use `minWidth` and `maxWidth` constraints;
-- manual resize of a flex column may disable flex in AG Grid; that becomes ordinary user state and must not be re-forced by column-definition refreshes.
-
-Current shared/default behavior:
-
-- repository `baseDefaultColDef.minWidth` is currently `120`, so omitted field `minWidth` inherits shared behavior;
-- AG Grid resizing is enabled by default and the repository also expects `true`, so omitted `resizable` means resizable;
-- no field-specific `maxWidth` when omitted;
-- if neither default width nor flex is configured, the compiler should not invent one; shared/AG Grid column defaults determine the starting width.
-
-### Runtime sizing validation requirements
-
-The eventual config validator must reject at least:
-
-- both `defaultWidth` and `defaultFlex` present;
-- zero/negative/non-finite width/flex/min/max values;
-- `minWidth > maxWidth`;
-- fixed `defaultWidth` outside declared min/max bounds.
-
-Do not add branded positive-number types just to pretend JSON has compile-time guarantees; runtime validation is the real authority for backend metadata.
-
-## Durable AG Grid compiler mapping principle
-
-Every public field-level option must have a real compiler or bounded-resolver path. Current expected mapping:
+Compiler mapping:
 
 ```text
-field.id                              -> ColDef.colId
-field.field                           -> ColDef.field
-field.labelKey                        -> translated ColDef.headerName
-field.dataType                        -> ColDef.cellDataType / type-specific behavior
-field.sortable                        -> ColDef.sortable
-field.filter                          -> filter + filterParams
-filter omitted                        -> ColDef.filter = false
-layout.defaultVisible                 -> ColDef.initialHide
-layout.defaultPinned                  -> ColDef.initialPinned
-layout.sizing.defaultWidth            -> ColDef.initialWidth
-layout.sizing.defaultFlex             -> ColDef.initialFlex
-layout.sizing.minWidth                -> ColDef.minWidth
-layout.sizing.maxWidth                -> ColDef.maxWidth
-layout.sizing.resizable               -> ColDef.resizable
+initialWidth → AG Grid initialWidth
+initialFlex  → AG Grid initialFlex
+minWidth     → AG Grid minWidth
+maxWidth     → AG Grid maxWidth
+resizable    → AG Grid resizable
 ```
 
-The use of AG Grid `initial*` properties is deliberate. AG Grid documents `width`, `flex`, `hide`, and `pinned` as stateful properties that can overwrite user state when column definitions are updated; `initialWidth`, `initialFlex`, `initialHide`, and `initialPinned` apply only when the column is created.
+Rules:
 
-Do not expose new public keys solely because AG Grid supports them. First establish a real stable product requirement and its interaction with Grid State, access, and runtime validation.
+- width and flex are mutually exclusive;
+- frontend TypeScript encodes that mutual exclusion;
+- backend JSON must be runtime-validated rather than repaired;
+- runtime validation must also reject non-positive width/flex values, `minWidth > maxWidth`, and initial width outside configured min/max bounds;
+- `minWidth` and `maxWidth` can bound flex sizing;
+- `resizable` inherits the resolved default-column setting when omitted.
 
-## TypeScript versus backend JSON
+## TypeScript typing versus backend JSON
+
+Durable architecture rule:
 
 ```text
 frontend-owned definitions
-→ narrow generic/type values where useful
+→ strong type narrowing where useful
 → compile-time checking
 
-backend JSON
-→ runtime data
-→ schema + registry/capability validation
+backend JSON metadata
+→ ordinary runtime values
+→ validate schema + registries + invariants
 → trusted/resolved configuration
-→ compiler
 ```
 
-Do not weaken all frontend types because JSON exists, and do not pretend TypeScript validates JSON.
+Do not weaken the frontend contract simply because JSON exists. Do not pretend TypeScript validates runtime JSON.
 
 ## Provisional / must be revisited
 
-- Strong typing of `dataAdapterKey` when the adapter registry is designed.
-- Possible stronger typing for `RowIdDefinition.path` if row-path propagation can be introduced without making the generic surface unreasonable.
-- Row-ID accessor/resolver only if a real entity cannot expose stable identity through a simple path.
-- Exact translation resource/module structure and generated/narrowed translation-key type strategy.
-- Custom filter-operator registry/query mapping.
-- Runtime configuration schema/library/versioning.
-- Exact Grid State reconciliation algorithm; principle already fixed that current authorization/config constraints beat stale saved preferences.
-- Whether future layout needs additional stable product controls such as size-to-fit participation, movement restrictions, or visibility locking. Do **not** add these merely to mirror AG Grid; require a concrete product need first.
+- Revisit strong generic typing of `dataAdapterKey` when the data-adapter registry is designed.
+- Row-ID path typing could be narrowed later if row-path utility design remains usable.
+- Row-ID accessor/resolver support only if a real entity cannot expose identity through a path.
+- Exact translation resource/module layout waits for translation infrastructure; resources should remain feature-oriented.
+- Runtime configuration validation/schema/versioning is mandatory but not yet designed.
+- Filter custom-operator registry/query mapping is still required before custom operator keys execute semantics.
+- `FieldDefaultsDefinition` should be expanded only when newly designed field properties are genuinely safe/useful as entity-wide AG Grid default-column values; do not automatically add every future `FieldDefinition` property.
+- Full Grid State/user-preference reconciliation is not yet designed, though initial-state versus current constraints precedence is already an established requirement.
 
-## Field areas still to design
+## Remaining field design
 
-Next field work should cover these in substantial coherent batches:
+Next field areas, in recommended sequence:
 
 1. formatter/display-value behavior;
-2. renderer selection and renderer registry contract;
-3. editing/editability, editor selection and editor registry;
-4. parser/normalizer/value-conversion stages;
-5. validation declarations;
-6. searchability and server sort/filter/search keys where API/query names differ from row paths;
-7. request/save field mapping for different read/write shapes;
-8. access/security/masking integration;
-9. accessor/resolver support only if real fields cannot be represented by simple paths.
+2. renderer selection and renderer registry;
+3. editing/editor selection plus parser/normalizer/value-conversion boundaries;
+4. validation declarations;
+5. searchability and server sort/filter/search mapping;
+6. request/save mapping when read/write shapes differ;
+7. access/security/masking integration;
+8. accessor/resolver only if a real field cannot be represented by a simple path.
+
+Do not assume exact property names/shapes from old chat examples; review each coherent batch before promoting to source.
 
 ## Documentation tooling requirement
 
-Once the public contract tree is large enough, add:
+Once the contract tree is substantial enough:
 
 - TypeDoc or equivalent for searchable generated API/type docs;
-- TsUML2 or equivalent for a generated SVG/type-composition hierarchy;
-- generated hierarchy visible alongside detailed reference where the docs UI supports it.
+- TsUML2 or equivalent for generated interface/type relationship visualization;
+- generate from TypeScript as much as practical;
+- do not distort TypeScript architecture to satisfy diagram tooling.
 
-Tooling must follow the TypeScript architecture, never influence it. If a tool cannot represent the real composition, change/supplement the tool rather than distorting interfaces.
-
-## Deferred areas beyond fields
+## Deferred configuration areas beyond fields
 
 - Renderer/editor/formatter/parser/normalizer/accessor registries.
-- Data-adapter registry contract and operations.
+- Datasource/data-adapter registry contract and operations.
 - Query/request/save mapping.
 - Validation declarations.
 - Actions/business operations.
 - Resolved access/security/masking.
 - Routing/view manifest.
 - Page-level configuration.
-- Translation infrastructure/fallbacks.
-- Grid State/preferences reconciliation.
+- Translation infrastructure and fallbacks.
+- User preferences/Grid State reconciliation.
 - Configuration versioning/runtime validation.
-- Exact top-level envelope and runtime compiler.
+- Exact top-level configuration envelope/runtime compiler.
+
+## CI / push cadence
+
+Batch related decisions before ordinary pushes. There is currently no open PR. Do not merge anything without explicit approval. Browser/Playwright can remain paused for this design/types/docs phase if a PR is later opened; restore it before runtime/grid integration materially needs browser coverage.
 
 ## Exact resume point
 
-**Field layout/defaults are now finalized in source/docs.**
+The layout/default-column correction is complete once this checkpoint is pushed.
 
-Resume at **formatter/display behavior + renderer selection/registry**. Do not reopen sizing unless a concrete implementation conflict is found.
+Resume with **formatter/display-value behavior + renderer selection/renderer registry**.
 
-When discussing formatting/rendering, preserve these distinctions:
+Keep the distinction explicit:
 
-- `dataType` is semantic value type, not a complete formatter/renderer decision;
-- display formatting and rich cell rendering are different responsibilities;
-- executable formatter/renderer functions stay frontend-owned and should be selected by bounded registry keys, not delivered as backend JavaScript;
-- the public contract should document exactly how each accepted key compiles/resolves into AG Grid behavior;
-- avoid one giant renderer/formatter registry that absorbs unrelated business logic.
+```text
+formatter
+→ converts a value into its displayed textual/value representation
 
-After the next coherent contract batch, update TypeScript/JSDoc/reference/concepts/progress together and push a coherent checkpoint.
+renderer
+→ provides richer cell UI/rendering when formatting alone is insufficient
+```
+
+Do not require custom renderers for ordinary number/date/currency/text formatting.
