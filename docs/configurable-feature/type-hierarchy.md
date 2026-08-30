@@ -20,32 +20,22 @@ FeatureDefinition
         ├── rowId: RowIdDefinition
         │   └── path
         ├── gridOptions?: ConfigurableSsrmGridOptions
+        │   ├── Pick<GridOptions, reviewed native keys>
         │   ├── defaultColDef?: ConfigurableDefaultColDef
         │   │   └── ConfigurableNativeColDefOptions
-        │   ├── pagination / SSRM cache-loading options
-        │   ├── rowSelection?: ConfigurableSsrmRowSelectionOptions
-        │   ├── cellSelection?: boolean | ConfigurableCellSelectionOptions
-        │   │   └── handle?: range | fill
-        │   ├── native editing / navigation / undo / clipboard options
-        │   ├── native column-movement options
-        │   ├── row/header/presentation options
-        │   ├── native tooltip options
-        │   └── focus/accessibility options
+        │   ├── rowSelection?: derived native flat-SSRM selection
+        │   └── cellSelection?: derived native range/fill selection
         └── fields: FieldDefinition[]
+            ├── ConfigurableNativeColDefOptions
+            │   ├── Pick<ColDef, reviewed native keys>
+            │   ├── Extract safe boolean branches from callback unions
+            │   └── native named editor/renderer + JSON-safe params
             ├── colId                  ← ColDef.colId
             ├── field                  ← ColDef.field
             ├── labelKey               → translation → ColDef.headerName
-            ├── cellDataType           ← ColDef.cellDataType
-            ├── native ColDef options  ← ConfigurableNativeColDefOptions
-            │   ├── sorting / sizing / pinning / wrapping
-            │   ├── filter presentation / header controls
-            │   ├── editable
-            │   ├── cellEditor / cellEditorParams / popup options
-            │   ├── paste / fill / import-export behavior
-            │   ├── cellRenderer
-            │   └── cellRendererParams
+            ├── cellDataType           ← BaseCellDataType
             ├── filtering?: FieldFilteringDefinition
-            │   └── filterOptions      → filterParams.filterOptions
+            │   └── filterOptions      ← ISimpleFilterModelType subset
             ├── valueFormatterKey?     → formatter registry → ColDef.valueFormatter
             ├── valueFormatterConfig?
             ├── valueParserKey?        → parser registry → ColDef.valueParser
@@ -73,12 +63,15 @@ flowchart TD
     F[FeatureDefinition] -->|entities record key = entity identity| E[EntityDefinition]
     E --> R[RowIdDefinition]
     E --> GO[ConfigurableSsrmGridOptions]
+    GO --> GP[Pick from GridOptions]
     GO --> D[ConfigurableDefaultColDef]
-    GO --> RS[ConfigurableSsrmRowSelectionOptions]
-    GO --> CS[ConfigurableCellSelectionOptions]
+    GO --> RS[Derived rowSelection]
+    GO --> CS[Derived cellSelection]
     E --> FD[FieldDefinition array]
     FD --> N[ConfigurableNativeColDefOptions]
+    N --> CP[Pick from ColDef]
     FD --> FIL[FieldFilteringDefinition]
+    FIL --> SFM[ISimpleFilterModelType]
     FD --> FMT[valueFormatterKey]
     FD --> PAR[valueParserKey]
     FMT --> FR[formatter registry]
@@ -103,23 +96,30 @@ compiler + registries + runtime policy
 final AG Grid GridOptions / ColDef / callbacks / components
 ```
 
-Normalization remains even when backend/storage names currently equal normalized frontend names. A backend rename is mapped once at this boundary; the compiler does not change.
+Normalization remains even when backend/storage names currently equal normalized frontend names. Compile-time AG Grid type derivation does not make backend JSON trusted.
 
-## Native naming rule
+## Native naming + type derivation rule
 
 ```text
 same AG Grid concept + same persisted value semantics
 → use AG Grid property name
-→ reuse/derive AG Grid type where practical
 
-AG Grid supports a JSON-safe registered component name
-→ keep native cellEditor / cellRenderer property
-→ validate the name against frontend registrations
+precise AG Grid public type exists
+→ use directly
+→ BaseCellDataType / ISimpleFilterModelType
 
-AG Grid expects executable function/expression semantics
-→ do not persist raw executable value
-→ use an explicit frontend registry key/config descriptor
+reviewed group of native members
+→ Pick<ColDef | GridOptions, ReviewedKeys>
+
+native member has declarative + executable branches
+→ Extract the safe branch
+
+nested native object has one executable member
+→ derive the native object
+→ Omit only that executable member
 ```
+
+Do not hand-copy a long list as individual `ColDef['key']` / `GridOptions['key']` declarations when `Pick` expresses the relationship. Also do not use a broad negative `Omit` for the whole persisted surface: explicit `Pick` means a future AG Grid upgrade cannot silently expose newly-added runtime/callback properties.
 
 The allowlist is capability-driven, not based only on the current Transaction demo.
 
@@ -160,25 +160,38 @@ business callbacks such as isRowSelectable
 
 ## Native flat-SSRM row selection
 
-The normalized native selection type intentionally reflects SSRM semantics:
+The normalized selection type is derived from `GridOptions['rowSelection']` rather than recreated locally:
 
 ```text
-mode = singleRow | multiRow
-checkboxes = static boolean branch
-enableClickSelection
-copySelectedRows
-...
+Extract singleRow branch
+Extract multiRow branch
+Pick common native declarative members
+Extract checkboxes boolean branch
 
 multiRow:
-groupSelects = self
-selectAll = all
-headerCheckbox
-ctrlASelectsRows
+Extract groupSelects = self
+Extract selectAll = all
+Pick headerCheckbox / ctrlASelectsRows
 ```
 
-`isRowSelectable` is runtime business policy.
+`isRowSelectable` remains runtime business policy.
 
 AG Grid treats `rowSelection.selectAll='filtered'|'currentPage'` as invalid for SSRM, so those are not accepted as native config. The repository's All Filtered / Current Page operations remain application-owned semantics.
+
+## Cell Selection / range-fill types
+
+Cell Selection is derived from `GridOptions['cellSelection']`:
+
+```text
+Pick native declarative top-level members
+        ↓
+Extract native range handle
+Extract native fill handle
+        ↓
+Omit fill.setFillValue only
+```
+
+`setFillValue` is executable frontend behavior. The native range/fill shape, mode, direction and other declarative handle members stay AG Grid-owned.
 
 ## Editing mapping after the native-first SSRM spike
 
@@ -241,16 +254,19 @@ valueParserKey
 
 Raw AG Grid expression strings are not accepted from backend configuration.
 
-## Filtering remains a deliberate custom descriptor
+## Filtering derives native types but keeps server semantics explicit
 
 ```text
-field.filtering
-→ server-supported query capability
-→ compiler selects appropriate ColDef.filter
-→ filtering.filterOptions → filterParams.filterOptions
+ISimpleFilterModelType
+        ↓ Extract current backend-supported operators
+FieldFilteringDefinition.filterOptions
+        ↓
+compiler → filterParams.filterOptions
 ```
 
-Native filter presentation such as `floatingFilter` can still remain native. Runtime validation must reject contradictory combinations where filter presentation is enabled but the field has no supported server filtering capability.
+`filtering` stays a deliberate application descriptor because it means "server-supported query capability", not only "render an AG Grid filter".
+
+The next filter-default layer should derive safe properties from AG Grid's `ITextFilterParams`, `INumberFilterParams`, `IBigIntFilterParams`, `IDateFilterParams` and `ISimpleFilterParams` using `Pick`/`Extract`/`Omit`. Executable matcher/parser/formatter/comparator members and semantics unsupported by the backend remain excluded.
 
 ## Grid-level merge structure
 
