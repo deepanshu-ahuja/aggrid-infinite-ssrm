@@ -1,6 +1,4 @@
 /** Presentation only for the isolated native-editing spike. */
 .grid-cell--draft-dirty {
-  outline: 2px solid #2e90fa;
-  outline-offset: -2px;
-  background-color: #eff8ff !important;
+  background-color: #fff8e1 !important;
 }
