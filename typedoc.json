@@ -1,0 +1,16 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "Configurable Feature API",
+  "entryPoints": [
+    "frontend/src/shared/grid/configurable/configuration.types.ts"
+  ],
+  "plugin": [
+    "typedoc-plugin-markdown"
+  ],
+  "out": "docs/configurable-feature/generated",
+  "readme": "none",
+  "entryFileName": "README",
+  "cleanOutputDir": true,
+  "excludePrivate": true,
+  "excludeProtected": true
+}
