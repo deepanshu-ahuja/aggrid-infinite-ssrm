@@ -1,14 +1,15 @@
+import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { SEEDED_ROWS, expectNoPageErrors, rowById } from './gridTestSupport';
 
 const ROUTE = '/ssrm-native-editing';
 
-async function openNativeEditingSpike(page: Parameters<typeof test>[0] extends never ? never : any) {
+async function openNativeEditingSpike(page: Page) {
   const pageErrors: Error[] = [];
-  page.on('pageerror', (error: Error) => pageErrors.push(error));
+  page.on('pageerror', (error) => pageErrors.push(error));
 
   const initialData = page.waitForResponse(
-    (response: any) =>
+    (response) =>
       response.request().method() === 'POST' &&
       response.url().endsWith('/api/transactions/query/') &&
       response.ok(),
