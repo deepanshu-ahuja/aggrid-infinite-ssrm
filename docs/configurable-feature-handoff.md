@@ -6,11 +6,9 @@
 
 ## 1. Scope
 
-The repository has proven Transaction Client, Infinite and SSRM grids plus an isolated native-first SSRM editing reference route merged from PR #42.
+The repository has proven Transaction Client, Infinite and SSRM grids plus the native-first SSRM editing reference route merged from PR #42.
 
-The configurable work remains a separate SSRM-first architecture experiment. Backend metadata does not choose Client/Infinite/SSRM, and the existing concrete grids should not be refactored merely to make configurable composition work.
-
-Business structure:
+The configurable work remains a separate SSRM-first architecture experiment. Backend metadata does not choose Client/Infinite/SSRM, and existing concrete grids should not be refactored merely to make configurable composition work.
 
 ```text
 Review feature
@@ -43,7 +41,7 @@ concrete configurable SSRM runtime
 
 Normalization remains even when backend/storage keys exactly match normalized frontend names. If backend naming changes later, map once at this boundary; compiler/grid code continues to consume the stable normalized model.
 
-## 3. Native-first naming rule
+## 3. Native-first naming/type rule
 
 ```text
 same AG Grid concept + same persisted value semantics
@@ -62,7 +60,9 @@ application/business meaning differs
 → keep application name
 ```
 
-This rule applies to the **whole configuration contract**, not just columns currently used by Transactions.
+This rule applies to the **whole configuration contract**, not only properties used by the current Transaction demo.
+
+The normalized native surface is an explicit allowlist, not a raw `GridOptions`/`ColDef` passthrough. A native option is omitted only for a concrete reason such as executable semantics, incompatible flat-SSRM meaning, unsupported end-to-end server semantics, or a different runtime architecture.
 
 ## 4. Current normalized type structure
 
@@ -78,11 +78,13 @@ FeatureDefinition
     ├── rowId: RowIdDefinition
     ├── gridOptions?: ConfigurableSsrmGridOptions
     │   ├── defaultColDef?: ConfigurableDefaultColDef
-    │   ├── pagination/cache native options
-    │   ├── cellSelection
-    │   ├── invalidEditValueMode
-    │   ├── native edit-entry/undo/clipboard options
-    │   └── basic native grid presentation options
+    │   ├── pagination / SSRM loading-cache options
+    │   ├── rowSelection?: ConfigurableSsrmRowSelectionOptions
+    │   ├── cellSelection?: ConfigurableCellSelectionOptions
+    │   ├── native editing/navigation/undo/clipboard options
+    │   ├── native column-movement options
+    │   ├── layout/presentation/tooltip options
+    │   └── focus/accessibility options
     └── fields: FieldDefinition[]
         ├── colId
         ├── field
@@ -90,9 +92,10 @@ FeatureDefinition
         ├── cellDataType
         ├── ConfigurableNativeColDefOptions
         │   ├── sorting/layout/sizing/presentation
+        │   ├── filter presentation/header controls
         │   ├── editable
         │   ├── cellEditor / cellEditorParams / popup options
-        │   ├── suppressPaste / suppressFillHandle
+        │   ├── paste/fill/import-export options
         │   └── cellRenderer / cellRendererParams
         ├── filtering?: FieldFilteringDefinition
         ├── valueFormatterKey? / valueFormatterConfig?
@@ -110,9 +113,9 @@ renderer
 └── key
 ```
 
-has been removed from the normalized model.
+has been removed.
 
-## 5. Why native `cellEditor` / `cellRenderer` are safe
+## 5. Native registered editor/renderer names
 
 AG Grid supports provided/registered components by string name. Therefore normalized JSON can carry:
 
@@ -122,11 +125,9 @@ cellEditor: "transactionAccountEditor"
 cellRenderer: "statusChip"
 ```
 
-Frontend runtime owns the actual custom component registration. Unknown/unapproved names must fail validation rather than being silently accepted.
+Frontend runtime owns actual custom component registration. Unknown/unapproved names must fail validation rather than being silently accepted.
 
-This is native AG Grid capability, so a separate `editor.key` or `renderer.key` abstraction is unnecessary.
-
-## 6. Why parser/formatter still use explicit keys
+## 6. Executable parser/formatter keys
 
 AG Grid `valueParser` and `valueFormatter` are executable function/expression properties. Persisting arbitrary expression strings is not allowed.
 
@@ -144,15 +145,13 @@ Optional `valueParserConfig` / `valueFormatterConfig` remain JSON-safe app data 
 
 ## 7. `gridOptions` and `defaultColDef`
 
-Entity-level native grid overrides now live under:
+Entity native grid overrides live under:
 
 ```text
 entity.gridOptions
 ```
 
-because the nested names are actual GridOptions concepts.
-
-`defaultColDef` moved under that object because AG Grid itself defines `defaultColDef` as a GridOptions property:
+`defaultColDef` lives there because AG Grid itself defines it as a GridOptions property:
 
 ```text
 application configurable-SSRM defaults
@@ -168,39 +167,75 @@ compiled field properties
 final ColDef
 ```
 
-Exact nested merge behavior belongs in the later normalizer/compiler implementation, but downstream property names stay native.
+Exact nested merge behavior is the next compiler/defaults batch.
 
 ## 8. Current reviewed native GridOptions surface
 
-The normalized SSRM grid options currently include:
+Current categories:
 
 ```text
-defaultColDef
+column defaults
+→ defaultColDef
 
 pagination
-paginationPageSize
-paginationPageSizeSelector
+→ pagination
+→ paginationAutoPageSize
+→ paginationPageSize
+→ paginationPageSizeSelector
+→ suppressPaginationPanel
 
-cacheBlockSize
-maxBlocksInCache
-blockLoadDebounceMillis
-maxConcurrentDatasourceRequests
+SSRM loading/cache
+→ cacheBlockSize
+→ maxBlocksInCache
+→ blockLoadDebounceMillis
+→ maxConcurrentDatasourceRequests
+→ serverSideInitialRowCount
+→ suppressServerSideFullWidthLoadingRow
 
-cellSelection
-invalidEditValueMode
-singleClickEdit
-suppressClickEdit
-stopEditingWhenCellsLoseFocus
-undoRedoCellEditing
-undoRedoCellEditingLimit
-suppressClipboardPaste
+row selection
+→ rowSelection
 
-rowHeight
-headerHeight
-animateRows
+cell selection/editing
+→ cellSelection
+→ invalidEditValueMode
+→ singleClickEdit
+→ suppressClickEdit
+→ enterNavigatesVertically
+→ enterNavigatesVerticallyAfterEdit
+→ stopEditingWhenCellsLoseFocus
+→ undoRedoCellEditing
+→ undoRedoCellEditingLimit
+→ suppressClipboardPaste
+
+column movement
+→ suppressMovableColumns
+→ suppressMoveWhenColumnDragging
+→ suppressColumnMoveAnimation
+→ suppressDragLeaveHidesColumns
+
+layout/presentation
+→ rowHeight
+→ rowBuffer
+→ headerHeight
+→ animateRows
+→ enableRtl
+
+tooltips
+→ enableBrowserTooltips
+→ tooltipShowDelay
+→ tooltipSwitchShowDelay
+→ tooltipHideDelay
+→ tooltipMouseTrack
+→ tooltipInteraction
+
+focus/accessibility
+→ suppressCellFocus
+→ suppressHeaderFocus
+→ enableCellTextSelection
+→ ensureDomOrder
 ```
 
-This is an allowlisted native surface, not an unrestricted `GridOptions` passthrough. It should continue to expand by auditing applicable JSON-safe native options rather than by inventing app aliases.
+Continue to expand this by **capability audit** when needed; do not invent aliases for native declarative values.
 
 ### Runtime-owned even though React accepts them as props
 
@@ -213,13 +248,42 @@ context
 getRowId callback
 events/callbacks
 GridApi refs
+business callbacks such as isRowSelectable
 ```
 
 The first configurable runtime remains SSRM. `rowModelType` is architecture-owned rather than metadata-selected.
 
-## 9. PR #42 / merged native-first SSRM editing reference
+## 9. Native flat-SSRM row selection
 
-PR #42 (`Spike: native-first SSRM editing`) was merged into `configurable-feature-grid` as merge commit `279fbfea85da85741b42dfa6e3cb034b36a92c51`.
+`ConfigurableSsrmRowSelectionOptions` keeps valid native row-selection configuration while business callbacks remain runtime-owned.
+
+```text
+common
+→ mode: singleRow | multiRow
+→ checkboxes?: boolean
+→ hideDisabledCheckboxes?
+→ enableClickSelection?
+→ copySelectedRows?
+→ enableSelectionWithoutKeys?
+
+multiRow
+→ groupSelects?: self
+→ selectAll?: all
+→ headerCheckbox?
+→ ctrlASelectsRows?
+```
+
+AG Grid 36.1 documents `rowSelection.selectAll='filtered'|'currentPage'` as invalid for SSRM and treats them as `'all'`. Therefore those values are not exposed as native SSRM config. The repository's All Filtered / Current Page semantics remain explicit application operations.
+
+`isRowSelectable` remains a runtime business-policy callback.
+
+## 10. PR #42 / native-first SSRM editing reference
+
+PR #42 (`Spike: native-first SSRM editing`) was merged into `configurable-feature-grid` as:
+
+```text
+279fbfea85da85741b42dfa6e3cb034b36a92c51
+```
 
 Reference route:
 
@@ -227,9 +291,9 @@ Reference route:
 /ssrm-native-editing
 ```
 
-It intentionally leaves the existing `/ssrm` implementation unchanged. Use it to understand editing ownership; do not copy the whole Transaction spike into configurable code.
+Existing `/ssrm` remains intentionally different. Use the spike to understand ownership; do not copy the whole Transaction component into configurable code.
 
-### Native AG Grid owns
+### AG Grid owns
 
 ```text
 normal cell editing
@@ -266,7 +330,7 @@ row and selected Save/Discard presentation
 backend authority
 ```
 
-## 10. Configurable editing consequences
+## 11. Configurable editing consequences
 
 Do **not** introduce configurable copies of interactions AG Grid already owns:
 
@@ -277,23 +341,22 @@ custom range-edit filtering
 custom Fill Handle replacement
 ```
 
-Configure the native capability instead:
+Configure native capability instead:
 
 ```text
 gridOptions.cellSelection
 field.editable
 field.suppressPaste
 field.suppressFillHandle
-...
+field.useValueParserForImport
+field.useValueFormatterForExport
 ```
 
-AG Grid's native Fill Handle/paste already skips non-editable cells. Application row/access policy should be composed into the native `editable` callback at compile/runtime time.
+Native Fill Handle/paste already skip non-editable cells. Application row/access policy should be composed into AG Grid `editable` at compile/runtime time.
 
-## 11. Validation direction after PR #42
+## 12. Validation direction after PR #42
 
-The previous stable validation store remains part of the old concrete tracked-editing implementation, but it is **not automatically the configurable editing architecture**.
-
-The native-first spike proved:
+The old stable validation store remains part of the existing concrete tracked-editing implementation, but it is **not automatically the configurable editing architecture**.
 
 ```text
 provided AG Grid editor
@@ -308,20 +371,18 @@ gridOptions.invalidEditValueMode = "block"
 → no dirty draft until a valid commit occurs
 ```
 
-Future configurable validation should therefore describe declarative rule data. The compiler/editor implementation adapts those rules into AG Grid's native validation callbacks. Callback functions themselves never come from backend JSON.
+Future configurable validation should describe declarative rule data. Compiler/editor code adapts those rules into native callbacks; callbacks never come from backend JSON.
 
-## 12. Lightweight draft state is not config
+## 13. Lightweight draft state is runtime, not config
 
-The merged generic spike primitives are candidates for reusable configurable runtime composition:
+Candidate shared files merged by PR #42:
 
 ```text
 frontend/src/shared/grid/editing/gridDraftEditing.ts
 frontend/src/shared/grid/editing/useGridDraftEditing.ts
 ```
 
-They are not metadata schemas.
-
-The state is deliberately finite:
+State is deliberately finite:
 
 ```text
 rowId
@@ -332,41 +393,35 @@ rowId
 
 Do not add complete API-response/block snapshots or a React Query row/original-value cache merely for draft persistence.
 
-The spike deliberately omits the previous REMOTE/conflict reconciliation layer. Concurrency/version/conflict UX remains a separate later product decision.
+The spike deliberately omits the previous REMOTE/conflict layer. Concurrency/version/conflict UX remains a separate later decision.
 
-## 13. Deliberately unsupported native lifecycle: `readOnlyEdit`
+## 14. Deliberately unsupported native examples
 
-AG Grid `readOnlyEdit=true` changes normal editing from grid mutation/`cellValueChanged` to application-owned `cellEditRequest`.
+### `readOnlyEdit`
 
-The merged spike and candidate draft observer are built around normal mutation + committed `cellValueChanged`. Therefore `readOnlyEdit` is not exposed in configurable grid options yet.
+`readOnlyEdit=true` changes normal mutation/`cellValueChanged` into application-owned `cellEditRequest`. That is a different runtime architecture, so it is not exposed yet.
 
-This is the correct reason to omit a native option: it changes the selected editing architecture, not merely because the Transaction demo does not use it.
+### Grouping/tree/pivot
 
-## 14. Filtering remains a server-query descriptor
+The current configurable proof uses the repository's flat SSRM backend request contract. Grouping, tree data, aggregation and pivot options remain out until their server semantics are implemented end to end.
 
-`filtering` remains custom:
+These are justified exclusions. "Transactions does not currently use it" is not enough by itself to exclude a native declarative option.
 
-```text
-filtering: {
-  filterOptions: [...]
-}
-```
+## 15. Filtering
 
-because its important persisted meaning is which operators the active server adapter/backend supports, not only which filter component AG Grid can render.
-
-Compiler intent:
+`filtering` remains custom because its persisted meaning includes server-query support:
 
 ```text
-filtering
+field.filtering
 → appropriate native filter
-→ filterOptions → filterParams.filterOptions
+→ filtering.filterOptions → filterParams.filterOptions
 ```
 
-Do not expose unsupported operators only because AG Grid provides them.
+Native filter presentation properties such as `floatingFilter` remain native ColDef options. Runtime validation must reject contradictory combinations if filter presentation is configured without a supported server filtering capability.
 
-## 15. `cellDataType`
+## 16. `cellDataType`
 
-The normalized built-in AG Grid names now include:
+Normalized AG Grid built-ins:
 
 ```text
 text
@@ -380,9 +435,9 @@ dateTimeString
 object
 ```
 
-SSRM requires explicit cell data types. The data adapter must materialise values in the representation AG Grid expects; for example raw JSON cannot directly transport JavaScript bigint.
+SSRM requires explicit cell data types. Data adapters must materialise the JavaScript representation AG Grid expects; raw JSON cannot directly transport bigint.
 
-## 16. Stable identity
+## 17. Stable identity
 
 ```text
 field.colId
@@ -394,41 +449,30 @@ field.field
 → current row/API value path
 ```
 
-They may differ. Explicit `colId` prevents API field-path changes from silently changing logical column identity.
+They may differ.
 
-## 17. Data adapters and backend authority
+## 18. Data adapters / backend authority
 
-`dataAdapterKey` resolves the frontend boundary for loading/saving/request-response mapping and backend-wire normalization.
+`dataAdapterKey` resolves the frontend loading/saving/request-response/normalization boundary.
 
-SSRM block loading remains datasource-owned; do not force TanStack Query into the datasource lifecycle for consistency.
+SSRM block loading remains datasource-owned; do not force TanStack Query into datasource loading.
 
-Backend remains authoritative for security/access, business validation at persistence, server-query semantics and writes.
+Backend remains authoritative for security/access, persistence validation, server-query semantics and writes.
 
-## 18. Documentation and source comments
+## 19. Documentation / continuation
 
-Public config changes require:
-
-1. useful JSDoc/IDE hover rationale in `configuration.types.ts`;
-2. curated reference updates under `docs/configurable-feature/`;
-3. progress/handoff updates when architecture direction changes;
-4. regenerated source-derived TypeDoc Markdown.
-
-Regenerate with:
+Public config changes require useful source JSDoc, curated docs and regenerated TypeDoc Markdown.
 
 ```bash
 npm run docs:configurable
 ```
 
-Generated pages under `docs/configurable-feature/generated/` must not be hand-edited as the normal fix.
-
-## 19. Working branch / continuation
-
-Current configurable design branch:
+Current branch:
 
 ```text
 configurable-feature-grid
 ```
 
-Do not create another branch unless explicitly asked. Do not merge another PR without explicit approval.
+Do not create another branch or merge another PR without explicit instruction.
 
 Read `docs/configurable-feature-config-design-progress.md` for the exact next batch.
