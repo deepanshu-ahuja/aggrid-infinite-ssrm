@@ -34,11 +34,10 @@ export function useGridDraftEditing<TData, TField extends string, TValue>({
 
   /**
    * Keep an imperative mirror because SSRM model updates and user callbacks can happen before React's
-   * next render. Mutations update this ref first, so a discard followed immediately by refresh cannot
-   * accidentally restore the just-discarded draft.
+   * next render. Every state mutation goes through `applyState`, which updates this ref before scheduling
+   * React state, so a discard followed immediately by refresh cannot restore the just-discarded draft.
    */
   const stateRef = useRef(state);
-  stateRef.current = state;
 
   const applyState = useCallback(
     (
