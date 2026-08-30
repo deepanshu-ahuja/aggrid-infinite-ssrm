@@ -53,6 +53,7 @@ Browser/manual verification material lives under `docs/implementation/testing/`:
 - [Transaction Import manual verification](testing/import-manual-testing.md)
 - [Server-backed Infinite + SSRM manual regression](testing/server-backed-manual-testing.md)
 - [Row interaction manual verification](testing/row-interaction-manual-testing.md)
+- [SSRM native editing spike manual verification](testing/ssrm-native-editing-spike-manual-testing.md) — isolated `/ssrm-native-editing` comparison route for native Cell Selection/Fill Handle, AG Grid validation, and lightweight BASE + LOCAL draft tracking.
 
 Browser-visible or AG Grid lifecycle work must add/update concrete manual steps in the same change. Automated Playwright coverage should be added for high-value integration contracts where the real grid/backend/browser combination can expose failures that unit/component tests cannot.
 
