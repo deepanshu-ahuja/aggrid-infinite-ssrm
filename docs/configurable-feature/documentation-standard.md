@@ -7,7 +7,7 @@ The goal is that a developer can understand the configuration model in complemen
 1. hover the TypeScript interface/property in an IDE and get a useful explanation immediately;
 2. read the curated Markdown reference without needing the source file or prior chat/design history;
 3. use the visible hierarchy/flow documentation to understand ownership and AG Grid mapping quickly;
-4. use generated API documentation from the TypeScript source once the generator is wired into the repository.
+4. use generated API documentation derived directly from the TypeScript source.
 
 ## JSDoc / IDE hover standard
 
@@ -107,21 +107,36 @@ and native-vs-custom mappings such as renderer key → registry → `cellRendere
 
 Generated API documentation is an additional layer, not a replacement for JSDoc or curated Markdown.
 
-Current tooling direction:
+Current repository tooling:
 
-- **TypeDoc** for source-derived TypeScript API documentation;
-- **typedoc-plugin-markdown** (or a compatible Markdown renderer) so generated API output can be browsed directly in the repository/GitHub rather than requiring a hosted HTML site;
-- keep generated output separate from curated explanatory docs so regeneration never overwrites human architecture guidance.
+- **TypeDoc** as a development dependency;
+- **typedoc-plugin-markdown** so generated API pages are GitHub-readable Markdown;
+- repository-root `typedoc.json` as the deterministic generator configuration;
+- `npm run docs:configurable` as the generation command;
+- `docs/configurable-feature/generated/` as the generated output directory.
 
-When the tooling is added:
+Generation flow:
 
-- add packages as normal dev dependencies;
-- update `package-lock.json` through npm at the same time; do not hand-edit the dependency lockfile;
-- add a deterministic npm script/configuration for regeneration;
-- regenerate the output as part of public contract changes when generated docs are committed;
-- ensure generated output reflects the real TypeScript architecture rather than changing architecture to make a generator prettier.
+```text
+frontend/src/shared/grid/configurable/configuration.types.ts
+        ↓
+npm run docs:configurable
+        ↓
+TypeDoc + typedoc-plugin-markdown
+        ↓
+docs/configurable-feature/generated/
+```
 
-If a generated relationship/diagram tool is later useful, choose one that is actively compatible with the repository's TypeScript version and real interface/type structure. Do not commit to a stale diagram package merely because it was named in an earlier proposal.
+Generated output is intended to be committed. When a public configurable contract changes:
+
+- update source/JSDoc and curated docs;
+- run `npm run docs:configurable`;
+- review the generated diff;
+- commit the generated output with the contract change.
+
+Do not edit generated API pages manually as the primary fix. Fix the source/JSDoc or TypeDoc configuration and regenerate.
+
+If a separate generated relationship/diagram tool is later useful, choose one that is actively compatible with the repository's TypeScript version and real interface/type structure. The current Mermaid hierarchy already provides the concise visual architecture view, so another diagram package is not required merely for decoration.
 
 ## Normalization documentation rule
 
@@ -141,6 +156,6 @@ When a public configuration contract changes:
 4. update `concepts.md` when a public concept needs plain-language explanation;
 5. update `type-hierarchy.md` when type/ownership/mapping structure changes;
 6. update the design-progress handoff when the change finalizes, rejects, defers, or preserves a decision for later;
-7. once generated docs exist, regenerate/update them in the same contract change.
+7. run `npm run docs:configurable` and commit the generated TypeDoc Markdown when the public contract/JSDoc changes.
 
 A documented option must correspond to the actual current public contract. Provisional design remains in the design-progress document until it is finalized.
