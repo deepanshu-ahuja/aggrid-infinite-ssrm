@@ -1,3 +1,5 @@
+import type { ColDef } from 'ag-grid-community';
+
 /** Reusable configuration root for one configurable business feature. */
 export interface FeatureDefinition<
   TFeatureKey extends string = string,
@@ -25,35 +27,31 @@ export interface ConfigurationJsonObject {
 }
 
 /**
- * AG Grid-compatible semantic/value representations supported by configurable fields.
+ * Built-in AG Grid cell-data-type names supported by configurable fields.
  *
- * The compiler sets the matching AG Grid `ColDef.cellDataType` explicitly. This is required for the
- * configurable SSRM proof because AG Grid data-type inference only runs with the Client-Side Row
- * Model. Keeping this mapping explicit also lets AG Grid provide its native type-specific parser,
- * formatter, editor, renderer and filter behavior before any field-level override is added.
+ * The public property is intentionally named `cellDataType`, matching AG Grid `ColDef.cellDataType`.
+ * The configurable SSRM compiler sets it explicitly because AG Grid data-type inference only runs
+ * with the Client-Side Row Model. AG Grid's native type-specific parser, formatter, editor, renderer
+ * and filter behavior is therefore the baseline before any configured override is applied.
  *
  * `date` / `dateTime` represent JavaScript `Date` values. `dateString` / `dateTimeString` represent
- * date values kept as strings (the normal shape for dates arriving directly from JSON APIs).
+ * values kept as strings, which is the normal representation for dates arriving from JSON APIs.
  */
-export type FieldDataType =
-  | 'text'
-  | 'number'
-  | 'boolean'
-  | 'date'
-  | 'dateString'
-  | 'dateTime'
-  | 'dateTimeString';
+export type FieldCellDataType = Extract<
+  NonNullable<ColDef['cellDataType']>,
+  'text' | 'number' | 'boolean' | 'date' | 'dateString' | 'dateTime' | 'dateTimeString'
+>;
 
-/** Base text-filter operators supported by the shared configurable filter vocabulary. */
-export type TextFilterOperator =
+/** Base text-filter options supported by the shared server-query vocabulary. */
+export type TextFilterOption =
   | 'contains'
   | 'equals'
   | 'notEqual'
   | 'startsWith'
   | 'endsWith';
 
-/** Base number-filter operators supported by the shared configurable filter vocabulary. */
-export type NumberFilterOperator =
+/** Base number-filter options supported by the shared server-query vocabulary. */
+export type NumberFilterOption =
   | 'equals'
   | 'notEqual'
   | 'greaterThan'
@@ -61,48 +59,57 @@ export type NumberFilterOperator =
   | 'lessThan'
   | 'lessThanOrEqual';
 
-/** Base date/date-time filter operators supported by the shared configurable filter vocabulary. */
-export type DateFilterOperator = 'equals' | 'notEqual' | 'lessThan' | 'greaterThan';
+/** Base date/date-time filter options supported by the shared server-query vocabulary. */
+export type DateFilterOption = 'equals' | 'notEqual' | 'lessThan' | 'greaterThan';
 
-/** Base boolean filter operators supported by the shared configurable filter vocabulary. */
-export type BooleanFilterOperator = 'equals' | 'notEqual';
+/** Base boolean filter options supported by the shared server-query vocabulary. */
+export type BooleanFilterOption = 'equals' | 'notEqual';
 
-/** Union of the shared filter operators available before feature-specific extensions. */
-export type FilterOperator =
-  | TextFilterOperator
-  | NumberFilterOperator
-  | DateFilterOperator
-  | BooleanFilterOperator;
+/** Union of the shared filter options available before feature-specific extensions. */
+export type FilterOption =
+  | TextFilterOption
+  | NumberFilterOption
+  | DateFilterOption
+  | BooleanFilterOption;
 
-/** Resolves the shared filter-operator vocabulary appropriate for a semantic field type. */
-export type FilterOperatorForDataType<TDataType extends FieldDataType> =
-  TDataType extends 'text'
-    ? TextFilterOperator
-    : TDataType extends 'number'
-      ? NumberFilterOperator
-      : TDataType extends 'boolean'
-        ? BooleanFilterOperator
-        : TDataType extends 'date' | 'dateString' | 'dateTime' | 'dateTimeString'
-          ? DateFilterOperator
+/** Resolves the shared filter-option vocabulary appropriate for an AG Grid cell data type. */
+export type FilterOptionForCellDataType<TCellDataType extends FieldCellDataType> =
+  TCellDataType extends 'text'
+    ? TextFilterOption
+    : TCellDataType extends 'number'
+      ? NumberFilterOption
+      : TCellDataType extends 'boolean'
+        ? BooleanFilterOption
+        : TCellDataType extends 'date' | 'dateString' | 'dateTime' | 'dateTimeString'
+          ? DateFilterOption
           : never;
 
 /** Filtering capability for one field. */
-export interface FieldFilterDefinition<TOperator extends string = FilterOperator> {
-  /** Complete non-empty list of operators the user may apply to this field. */
-  operators: readonly [TOperator, ...TOperator[]];
+export interface FieldFilterDefinition<TFilterOption extends string = FilterOption> {
+  /**
+   * Complete non-empty list of AG Grid Simple Filter choices exposed for this field.
+   *
+   * The name intentionally matches AG Grid `filterParams.filterOptions`. The configurable compiler
+   * combines this field-level list with the resolved shared/entity filter defaults rather than
+   * inventing a second operator vocabulary.
+   */
+  filterOptions: readonly [TFilterOption, ...TFilterOption[]];
 }
 
-/** Initial pin position available to a configurable field. */
-export type FieldPinnedPosition = 'left' | 'right';
+/** Initial pin position available to a configurable field, derived from AG Grid `ColDef`. */
+export type FieldPinnedPosition = Extract<
+  NonNullable<ColDef['initialPinned']>,
+  'left' | 'right'
+>;
 
 /** Sizing constraints that continue to apply after column creation. */
 export interface FieldSizingConstraintsDefinition {
-  /** Minimum width in pixels; omitted values inherit the resolved default column setting. */
-  minWidth?: number;
-  /** Maximum width in pixels. */
-  maxWidth?: number;
-  /** Whether the user can manually resize the column; omitted values inherit the default. */
-  resizable?: boolean;
+  /** Minimum width in pixels; same semantics/type as AG Grid `ColDef.minWidth`. */
+  minWidth?: ColDef['minWidth'];
+  /** Maximum width in pixels; same semantics/type as AG Grid `ColDef.maxWidth`. */
+  maxWidth?: ColDef['maxWidth'];
+  /** Whether the user can manually resize; same semantics/type as AG Grid `ColDef.resizable`. */
+  resizable?: ColDef['resizable'];
 }
 
 /**
@@ -113,21 +120,21 @@ export interface FieldSizingConstraintsDefinition {
  */
 export type FieldSizingDefinition =
   | (FieldSizingConstraintsDefinition & {
-      /** Initial fixed width in pixels; compiled to AG Grid `initialWidth`. */
-      initialWidth?: number;
+      /** Same semantics/type as AG Grid `ColDef.initialWidth`. */
+      initialWidth?: ColDef['initialWidth'];
       initialFlex?: never;
     })
   | (FieldSizingConstraintsDefinition & {
       initialWidth?: never;
-      /** Initial flex weight; compiled to AG Grid `initialFlex`. */
-      initialFlex?: number;
+      /** Same semantics/type as AG Grid `ColDef.initialFlex`. */
+      initialFlex?: ColDef['initialFlex'];
     });
 
 /** Initial layout configuration for one field. */
 export interface FieldLayoutDefinition {
-  /** Whether the column is visible when first created; compiled to the inverse of `initialHide`. */
-  initialVisible?: boolean;
-  /** Side on which the column is pinned when first created; compiled to `initialPinned`. */
+  /** Whether the column starts hidden; same semantics/type as AG Grid `ColDef.initialHide`. */
+  initialHide?: ColDef['initialHide'];
+  /** Initial pinned side; same semantics/type as AG Grid `ColDef.initialPinned`. */
   initialPinned?: FieldPinnedPosition;
   /** Optional initial sizing and persistent size constraints. */
   sizing?: FieldSizingDefinition;
@@ -140,8 +147,8 @@ export interface FieldLayoutDefinition {
  * `defaultColDef`. Individual compiled columns then use AG Grid's normal override precedence.
  */
 export interface FieldDefaultsDefinition {
-  /** Default sortable setting inherited by fields that do not specify `sortable`. */
-  sortable?: boolean;
+  /** Default sortable setting; same semantics/type as AG Grid `ColDef.sortable`. */
+  sortable?: ColDef['sortable'];
   /** Default layout/sizing settings inherited by fields that do not override them. */
   layout?: FieldLayoutDefinition;
 }
@@ -153,10 +160,10 @@ export interface FieldFormatterDefinition<TFormatterKey extends string = string>
   /**
    * Extra JSON-safe configuration for the registered formatter.
    *
-   * AG Grid already supplies the normal `ValueFormatterParams` when it invokes `valueFormatter`.
-   * These values are additional declarative inputs interpreted by our registered formatter; the
-   * compiler combines them with the AG Grid callback params rather than mapping them to a native
-   * `valueFormatterParams` property (AG Grid has no such column property).
+   * AG Grid already supplies normal `ValueFormatterParams` when it invokes `valueFormatter`. These
+   * values are additional declarative inputs interpreted by the registered formatter; the compiler
+   * combines them with the AG Grid callback params. AG Grid has no `valueFormatterParams` ColDef
+   * property analogous to `cellRendererParams`.
    */
   params?: ConfigurationJsonObject;
 }
@@ -169,14 +176,13 @@ export interface FieldRendererDefinition<TRendererKey extends string = string> {
    * Extra JSON-safe props for the registered renderer, compiled to AG Grid `cellRendererParams`.
    *
    * AG Grid still supplies its normal renderer props such as `value`, `valueFormatted`, `data`,
-   * `node`, `column`, `colDef` and `api`. Configuration should not duplicate those runtime values;
-   * use these params only for additional declarative component configuration.
+   * `node`, `column`, `colDef` and `api`. Configuration should not duplicate those runtime values.
    */
   params?: ConfigurationJsonObject;
 }
 
-/** Popup position supported by AG Grid cell editors. */
-export type FieldEditorPopupPosition = 'over' | 'under';
+/** Popup position supported by AG Grid cell editors, derived from `ColDef`. */
+export type FieldEditorPopupPosition = NonNullable<ColDef['cellEditorPopupPosition']>;
 
 interface FieldEditorBaseDefinition<TEditorKey extends string> {
   /** Stable key of the registered frontend editor implementation. */
@@ -184,9 +190,8 @@ interface FieldEditorBaseDefinition<TEditorKey extends string> {
   /**
    * Extra JSON-safe props for the registered editor, compiled to AG Grid `cellEditorParams`.
    *
-   * AG Grid still supplies the normal editor props (`value`, row/column information,
-   * `onValueChange`, `stopEditing`, `parseValue`, `formatValue`, etc.). These params configure the
-   * provided/custom input beyond that standard runtime context.
+   * AG Grid still supplies normal editor props (`value`, row/column information, `onValueChange`,
+   * `stopEditing`, `parseValue`, `formatValue`, etc.).
    */
   params?: ConfigurationJsonObject;
 }
@@ -208,19 +213,14 @@ export type FieldEditorDefinition<TEditorKey extends string = string> =
       popupPosition?: FieldEditorPopupPosition;
     });
 
-/**
- * Registered parser overriding the value parser provided by the field's AG Grid cell data type.
- *
- * The compiler resolves the key to frontend executable behavior and maps the resulting callback to
- * AG Grid `valueParser`. It is not the save-payload mapper.
- */
+/** Registered parser overriding the value parser provided by the field's AG Grid cell data type. */
 export interface FieldValueParserDefinition<TParserKey extends string = string> {
   /** Stable parser registry key. */
   key: TParserKey;
   /**
    * Extra JSON-safe configuration for the registered parser.
    *
-   * AG Grid invokes `valueParser` with its normal `ValueParserParams`; the compiler combines those
+   * AG Grid invokes `valueParser` with normal `ValueParserParams`; the compiler combines those
    * callback params with this declarative configuration. Custom React editors may also use AG Grid's
    * supplied `parseValue()` utility when they need to apply the column parser explicitly.
    */
@@ -251,15 +251,16 @@ export interface FieldEditingDefinition<
 /**
  * Reusable configuration for one field/column exposed by an entity.
  *
- * Executable formatting/rendering/editing/parsing behavior stays frontend-owned behind registries;
- * backend configuration carries only keys and JSON-safe parameters.
+ * Native AG Grid concepts deliberately keep AG Grid names and compatible types where the semantics
+ * are the same. Executable formatting/rendering/editing/parsing behavior stays frontend-owned behind
+ * registries; persisted/backend configuration carries only keys and JSON-safe parameters.
  */
 export interface FieldDefinition<
   TFieldId extends string = string,
   TFieldPath extends string = string,
   TTranslationKey extends string = string,
-  TDataType extends FieldDataType = FieldDataType,
-  TAdditionalFilterOperator extends string = never,
+  TCellDataType extends FieldCellDataType = FieldCellDataType,
+  TAdditionalFilterOption extends string = never,
   TFormatterKey extends string = string,
   TRendererKey extends string = string,
   TEditingDefinition extends FieldEditingDefinition = FieldEditingDefinition,
@@ -271,46 +272,34 @@ export interface FieldDefinition<
   /** Full translation key used to resolve the field/column label. */
   labelKey: TTranslationKey;
   /**
-   * Field value type/representation compiled directly to AG Grid `cellDataType`.
+   * AG Grid cell data type/representation, passed to `ColDef.cellDataType`.
    *
-   * The configurable SSRM compiler must set this explicitly because AG Grid data-type inference is
-   * Client-Side Row Model only. Native type behavior is the baseline: do not require formatter,
-   * renderer, editor or parser registry entries when the selected AG Grid cell data type already
-   * provides the required behavior.
+   * The configurable SSRM compiler sets this explicitly. Native type behavior is the baseline: do
+   * not require formatter, renderer, editor or parser registry entries when AG Grid already provides
+   * the required behavior.
    */
-  dataType: TDataType;
+  cellDataType: TCellDataType;
 
   /** Whether users can sort; omitted values inherit the resolved AG Grid `defaultColDef`. */
-  sortable?: boolean;
+  sortable?: ColDef['sortable'];
 
-  /** Omit when not filterable; when present, operators are the exact allowed filter choices. */
+  /** Omit when not filterable; when present, `filterOptions` are the exact allowed choices. */
   filter?: FieldFilterDefinition<
-    FilterOperatorForDataType<TDataType> | TAdditionalFilterOperator
+    FilterOptionForCellDataType<TCellDataType> | TAdditionalFilterOption
   >;
 
   /** Optional initial layout/sizing; supplied values override corresponding default column values. */
   layout?: FieldLayoutDefinition;
 
-  /**
-   * Optional custom display formatter compiled to AG Grid `valueFormatter`.
-   *
-   * Omit when the formatter supplied by `cellDataType` is sufficient.
-   */
+  /** Optional custom display formatter compiled to AG Grid `valueFormatter`. */
   formatter?: FieldFormatterDefinition<TFormatterKey>;
 
-  /**
-   * Optional custom rich cell renderer compiled to AG Grid `cellRenderer`.
-   *
-   * Omit when normal AG Grid / `cellDataType` rendering is sufficient (for example the native
-   * boolean cell type already provides checkbox rendering).
-   */
+  /** Optional custom rich cell renderer compiled to AG Grid `cellRenderer`. */
   renderer?: FieldRendererDefinition<TRendererKey>;
 
   /**
-   * Optional editing capability.
-   *
-   * Omit to make this field non-editable. Presence makes it potentially editable, but the compiled
-   * AG Grid `editable` callback must still compose current row/access/conflict policy.
+   * Optional editing capability. Omit to make this field non-editable; presence makes it potentially
+   * editable, but the compiled AG Grid `editable` callback still composes row/access/conflict policy.
    */
   editing?: TEditingDefinition;
 }
@@ -319,7 +308,7 @@ type ConfigurableFieldDefinition<TTranslationKey extends string = string> = Fiel
   string,
   string,
   TTranslationKey,
-  FieldDataType,
+  FieldCellDataType,
   string,
   string,
   string,
