@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  normalizeConfigurableSsrmGridOptions,
   normalizeFeatureDefinition,
   normalizeFieldDefinition,
 } from './configuration.normalizer';
@@ -70,5 +71,33 @@ describe('configurable runtime normalization', () => {
       cellDataType: 'number',
       filterParams: { filterOptions: ['contains'] },
     })).toThrow(/unsupported filter option "contains"/);
+  });
+
+  it('validates exposed native column union values rather than only their property names', () => {
+    expect(() => normalizeFieldDefinition({
+      ...validField,
+      initialPinned: 'center',
+    })).toThrow(/initialPinned.*left.*right/);
+
+    expect(() => normalizeFieldDefinition({
+      ...validField,
+      lockPosition: 'center',
+    })).toThrow(/lockPosition.*left.*right/);
+  });
+
+  it('validates the supported native flat-SSRM row-selection branches', () => {
+    expect(() => normalizeConfigurableSsrmGridOptions({
+      rowSelection: {
+        mode: 'multiRow',
+        enableClickSelection: 'anything',
+      },
+    })).toThrow(/enableClickSelection/);
+
+    expect(() => normalizeConfigurableSsrmGridOptions({
+      rowSelection: {
+        mode: 'multiRow',
+        checkboxLocation: 'somewhereElse',
+      },
+    })).toThrow(/checkboxLocation/);
   });
 });
