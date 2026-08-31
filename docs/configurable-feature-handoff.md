@@ -1,12 +1,24 @@
 # Handoff: Configurable Feature + AG Grid Architecture
 
-> **Status:** current architecture/design handoff for configurable-feature work on `configurable-feature-grid`.
+> **Status:** current architecture/design handoff for configurable-feature work on `configurable-feature-grid` after merged PR #43.
 >
-> Repository/source/docs are authoritative. In a new chat: inspect GitHub state, read root `AGENTS.md`, read this handoff, then read `docs/configurable-feature-config-design-progress.md` for the exact resume point.
+> Repository/source/docs are authoritative. In a new chat: inspect GitHub state first, read root `AGENTS.md`, read this handoff, then read `docs/configurable-feature-config-design-progress.md` for the exact resume point. Do not rely on old chat memory when the repository can provide current truth.
 
-## 1. Scope
+## 1. Current merged checkpoint and scope
 
-The repository has proven Transaction Client, Infinite and SSRM grids plus the native-first SSRM editing reference route merged from PR #42.
+PR #43 (`refactor: align configurable SSRM contract with native AG Grid`) was merged into `main` on 2026-08-31.
+
+```text
+PR #43 head before merge
+307bb14694603842d1c31c62620e6e35379d8e8a
+
+PR #43 merge commit / merged main checkpoint
+1aba320ef48551d298ef52fc623c06ecb99017a0
+```
+
+After the merge, `configurable-feature-grid` was fast-forwarded to that merge commit before post-merge handoff cleanup. Later handoff commits may advance the working branch; always inspect GitHub.
+
+The repository has proven Transaction Client, Infinite and SSRM grids plus the native-first SSRM editing reference route introduced by PR #42 and carried into `main` through PR #43.
 
 The configurable work remains a separate SSRM-first architecture experiment. Backend metadata does not choose Client/Infinite/SSRM, and existing concrete grids should not be refactored merely to make configurable composition work.
 
@@ -18,6 +30,19 @@ Review feature
 ```
 
 Entity identity is the key in `FeatureDefinition.entities`; `EntityDefinition<TLabelKey, TFieldDefinition>` stays business-agnostic.
+
+### New-chat reading order
+
+A new session should:
+
+1. inspect current `main`, `configurable-feature-grid`, open/recent PRs and current CI/status;
+2. read root `AGENTS.md` and follow its branch/PR/testing/documentation rules;
+3. read this file;
+4. read `docs/configurable-feature-config-design-progress.md`;
+5. read `docs/configurable-feature/configuration-reference.md`;
+6. read `docs/configurable-feature/type-hierarchy.md` and `docs/configurable-feature/concepts.md` as needed;
+7. inspect `frontend/src/shared/grid/configurable/configuration.types.ts` directly;
+8. inspect `/ssrm-native-editing` and merged PR #42 when editing/runtime composition is relevant.
 
 ## 2. Mandatory normalization boundary
 
@@ -62,6 +87,8 @@ single indexed access is clearest
 
 Do not manually mirror dozens of AG Grid property types when a reviewed `Pick` expresses the relationship. Do not use a broad top-level `Omit` that could accidentally expose new AG Grid runtime/callback properties after a library upgrade.
 
+PR #43 is the checkpoint for this public type-design pass. Do not reopen the whole type model speculatively before implementing a real consumer; refine types when runtime/default/compiler work proves a concrete need.
+
 ## 4. Current normalized structure
 
 Source:
@@ -96,7 +123,7 @@ There is deliberately no custom `editing → editor/parser`, `renderer → key`,
 
 ## 5. Native filters instead of an application filter wrapper
 
-The configurable field now follows the actual SSRM columns:
+The configurable field follows the actual SSRM/native-editing columns:
 
 ```ts
 filter: 'agTextColumnFilter',
@@ -176,7 +203,7 @@ message
 
 The configurable alias only narrows `params` to JSON-safe `ConfigurationJsonObject`.
 
-Runtime adaptation follows PR #42:
+Runtime adaptation follows the native-first editing reference:
 
 ```text
 validationRules
@@ -247,11 +274,13 @@ AG Grid's `filtered` / `currentPage` native select-all modes are not valid SSRM 
 
 ## 11. PR #42 native-first SSRM editing reference
 
-PR #42 (`Spike: native-first SSRM editing`) is merged into `configurable-feature-grid` as:
+PR #42 (`Spike: native-first SSRM editing`) was merged into `configurable-feature-grid` at:
 
 ```text
 279fbfea85da85741b42dfa6e3cb034b36a92c51
 ```
+
+Its code is now also in merged `main` through PR #43.
 
 Reference route: `/ssrm-native-editing`.
 
@@ -266,7 +295,7 @@ Ctrl/Cmd+D
 Ctrl/Cmd+Enter
 Fill Handle
 clipboard/paste
-editable filtering
+native editable filtering
 editor commit/validation lifecycle
 ```
 
@@ -352,28 +381,64 @@ field.field
 
 Backend remains authoritative for security/access, persistence validation, server-query semantics and writes.
 
-## 15. Next work
+## 15. Exact next work after PR #43
 
-The type-only native-alignment pass is now far enough along to start runtime foundations.
+The type-only native-alignment pass is now a merged checkpoint. The next session should not continue adding types merely for completeness.
 
-Next batch:
+First verify the merged/configurable head and regenerate generated docs if needed:
+
+```bash
+npm run typecheck
+npm run lint
+npm run test:run
+npm run build
+npm run docs:configurable
+```
+
+Then proceed with one coherent **defaults + normalization/compiler foundation** batch:
 
 ```text
 application configurable-SSRM defaults
-→ exact entity.gridOptions merge semantics
-→ nested defaultColDef/filterParams/rowSelection/cellSelection merging
-→ runtime JSON validation + normalization
-→ named component validation
-→ formatter/parser registries
-→ field compiler
-→ compose PR #42 draft editing + native validation
+        +
+normalized entity.gridOptions
+        ↓
+exact merge semantics
+        ↓
+runtime JSON validation + normalization
+        ↓
+named filter/editor/renderer validation
+        ↓
+formatter/parser/validator resolution
+        ↓
+compiled ColDef[] + GridOptions
+        ↓
+AgGridReact SSRM
+        ↓
+native editing / Cell Selection / clipboard / Fill Handle
+        ↓
+cellValueChanged
+        ↓
+useGridDraftEditing BASE + LOCAL runtime
 ```
 
-Then proceed to save/read mapping, access/security/masking, actions, Grid State reconciliation and schema/versioning.
+The batch should define:
 
-Read `docs/configurable-feature-config-design-progress.md` for the exact current checkpoint.
+1. application configurable-SSRM defaults;
+2. exact `entity.gridOptions` merge behavior;
+3. nested merge behavior for `defaultColDef`, `filterParams`, `rowSelection`, `cellSelection`, static editor params and runtime validation additions;
+4. runtime validation/normalization of backend JSON;
+5. allowlist validation for named filters/editors/renderers;
+6. formatter/parser registries using the AG Grid-derived registry types;
+7. field compilation into final `ColDef`s, including translated `headerName`, runtime business `editable` policy and validation callbacks;
+8. `rowId.path` compilation into runtime `getRowId`;
+9. configurable SSRM root composition while keeping AG Grid lifecycle visible;
+10. composition of the shared PR #42 draft-editing primitives, not a copy of the Transaction spike.
 
-## 16. Documentation / verification
+After that, continue with read/write/save mapping, access/security/masking, actions, Grid State reconciliation and schema/versioning.
+
+Read `docs/configurable-feature-config-design-progress.md` for the most precise checkpoint and current validation status.
+
+## 16. Documentation / verification truth
 
 Public config changes require source JSDoc, curated docs and regenerated TypeDoc Markdown:
 
@@ -381,6 +446,8 @@ Public config changes require source JSDoc, curated docs and regenerated TypeDoc
 npm run docs:configurable
 ```
 
-Current branch: `configurable-feature-grid`.
+PR #43 being merged does not by itself prove the exact head passed local/CI verification. Inspect current CI/status and do not claim checks that were not actually executed.
 
-Do not create another branch or merge another PR without explicit instruction.
+Current working branch for continued configurable-feature work: `configurable-feature-grid`.
+
+Do not create another branch or merge another PR without explicit user instruction.
