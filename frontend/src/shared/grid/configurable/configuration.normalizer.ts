@@ -342,7 +342,7 @@ export function normalizeFeatureDefinition(raw: unknown): FeatureDefinition {
   object(raw.entities, 'feature.entities');
   if (Object.keys(raw.entities).length === 0) invalid('feature.entities', 'expected at least one entity.');
   Object.entries(raw.entities).forEach(([key, entity]) => validateEntity(entity, `feature.entities.${key}`));
-  return clone(raw) as FeatureDefinition;
+  return clone(raw) as unknown as FeatureDefinition;
 }
 
 export function normalizeEntityDefinition(raw: unknown): EntityDefinition {
