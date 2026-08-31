@@ -3,13 +3,9 @@ import { NavLink, Navigate, Route, Routes } from 'react-router';
 import { TransactionsClientGrid } from '@/features/transactions/grid/TransactionsClientGrid';
 import { TransactionsInfiniteGrid } from '@/features/transactions/grid/TransactionsInfiniteGrid';
 import { TransactionsSsrmGrid } from '@/features/transactions/grid/TransactionsSsrmGrid';
+import { TransactionsSsrmNativeEditingGrid } from '@/features/transactions/grid/TransactionsSsrmNativeEditingGrid';
 
-/**
- * Small application shell for comparing the three AG Grid row models.
- *
- * Each URL renders one real grid root. This keeps Client-Side, Infinite and SSRM lifecycle code
- * separate while making it easy to open, refresh, and test each implementation directly in browser.
- */
+/** Small application shell for comparing the row models and isolated experiments. */
 export function App() {
   return (
     <Box component="main" sx={{ minHeight: '100vh', py: { xs: 3, md: 5 } }}>
@@ -24,16 +20,11 @@ export function App() {
             </Typography>
           </Box>
 
-          <Stack direction="row" spacing={1}>
-            <Button component={NavLink} to="/client" variant="outlined">
-              Client-Side Row Model
-            </Button>
-            <Button component={NavLink} to="/infinite" variant="outlined">
-              Infinite Row Model
-            </Button>
-            <Button component={NavLink} to="/ssrm" variant="outlined">
-              Server-Side Row Model
-            </Button>
+          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+            <Button component={NavLink} to="/client" variant="outlined">Client-Side Row Model</Button>
+            <Button component={NavLink} to="/infinite" variant="outlined">Infinite Row Model</Button>
+            <Button component={NavLink} to="/ssrm" variant="outlined">Server-Side Row Model</Button>
+            <Button component={NavLink} to="/ssrm-native-editing" variant="outlined">SSRM Native Editing Spike</Button>
           </Stack>
 
           <Routes>
@@ -41,6 +32,7 @@ export function App() {
             <Route path="/client" element={<TransactionsClientGrid />} />
             <Route path="/infinite" element={<TransactionsInfiniteGrid />} />
             <Route path="/ssrm" element={<TransactionsSsrmGrid />} />
+            <Route path="/ssrm-native-editing" element={<TransactionsSsrmNativeEditingGrid />} />
             <Route path="*" element={<Navigate to="/client" replace />} />
           </Routes>
         </Stack>

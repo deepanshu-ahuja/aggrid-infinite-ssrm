@@ -15,28 +15,31 @@ Useful current references:
 - `docs/implementation/row-models/ssrm.md` — SSRM implementation guide;
 - `docs/implementation/testing/browser-regression.md` — Playwright architecture, E2E reset, CI/local execution and next-capability handoff;
 - `docs/implementation/testing/coverage-matrix.html` — readable cross-layer automated coverage inventory;
-- `docs/implementation/testing/` — manual verification guides.
+- `docs/implementation/testing/` — manual verification guides;
+- `docs/configurable-feature-handoff.md` — current configurable-feature architecture handoff;
+- `docs/configurable-feature-config-design-progress.md` — latest configurable design checkpoint and exact resume point.
 
 Statuses used here: **VERIFY**, **DESIGN**, **TODO**, **PLANNED**, **DEFERRED**.
 
 ## Current agreed sequence
 
-The existing-capability regression-hardening implementation is complete. The implementation browser run passed 80/80 TypeScript Playwright scenarios across Client, Infinite and SSRM, alongside passing frontend and backend checks. The later Playwright local-workflow/coverage-view cleanup was merged through PR #35 and its exact head passed Frontend, Backend and Browser regression CI.
+The existing Client/Infinite/SSRM Transaction capability foundation and regression-hardening work are complete enough to support the next architecture experiment. Transaction Import and the later mutable row-interaction fixes are merged history rather than active PR work.
 
-Transaction Import was completed and merged to `main` through PR #38. Manual use then exposed a row-interaction presentation regression when an authoritative write changed `interactionMode`: an old `selectionDisabled` class could remain on a now-enabled row. PR #39 fixes mutable interaction presentation with native `rowClassRules` and is the active verification PR.
+PR #41 merged the consolidated configurable-feature architecture handoff to `main`. The detailed configuration-contract design is continuing separately on `configurable-feature-grid` without an open PR during this design phase.
 
-PR #39 also contains real-grid regression scenarios for interaction-mode transitions through Import, single-row Save, Save Selected/bulk persistence and selected Change Status on Client, Infinite and SSRM. Those newly added mutation-path scenarios are not considered passed coverage until the exact PR head completes browser CI successfully.
-
-Current handoff sequence:
+Current sequence:
 
 ```text
-1. Finish PR #39 exact-head CI / row-interaction verification and merge only when explicitly requested
-2. After merge, synchronize grid-foundation with the new main head
-3. Build an isolated fourth configurable SSRM-based grid experiment
-4. Evaluate reuse/migration only after that experiment proves its boundary
+1. Continue configurable-feature contract design on configurable-feature-grid
+2. Settle broad SSRM/native grid-level configuration + defaults/merge/normalization/registry typing
+3. Continue validation, server-query, save-mapping and access/security contracts
+4. Build the isolated fourth configurable SSRM-based grid only after the contracts are sufficiently stable
+5. Evaluate reuse/migration only after that experiment proves its boundary
 ```
 
-Do not keep expanding Playwright merely to increase test count. Add browser coverage when a new capability or a concrete regression introduces a material real-browser/AG Grid/backend risk.
+Do not create another design branch or open/merge a PR unless explicitly requested by the user.
+
+Do not keep expanding Playwright merely to increase test count. Add browser coverage when a new implemented capability or a concrete regression introduces a material real-browser/AG Grid/backend risk.
 
 # Active backlog
 
@@ -130,18 +133,11 @@ References:
 - `docs/implementation/transaction-editing.md`
 
 ### A7. Dynamic row-interaction transitions
-**Status:** VERIFY
+**Status:** VERIFY / IMPLEMENTED
 
-Authoritative writes can change the backend-derived `interactionMode`. Mutable `selectionDisabled` / `readOnly` presentation must use native `rowClassRules` so old restricted classes are removed when a surviving RowNode becomes enabled.
+The mutable row-interaction regression discovered during Import/manual verification was fixed and merged. Authoritative writes can change backend-derived `interactionMode`; mutable `selectionDisabled` / `readOnly` presentation uses native `rowClassRules` so stale restricted classes are removed when a surviving RowNode becomes enabled.
 
-PR #39 regression coverage exercises the transition lifecycle across all three row models through:
-
-- Import;
-- single-row Save;
-- Save Selected / bulk persistence;
-- selected Change Status.
-
-The Save Selected scenario also verifies that rows selected while enabled do not remain selected after the authoritative response makes them non-selectable.
+Regression coverage exists across Import, single-row Save, Save Selected/bulk persistence and selected Change Status for the applicable row models.
 
 References:
 
@@ -198,7 +194,7 @@ Current SSRM implementation is flat. Do not introduce advanced semantics without
 ## D. Import
 
 ### D1. Import workflow
-**Status:** VERIFY
+**Status:** VERIFY / IMPLEMENTED
 
 Current implemented contract:
 
@@ -213,8 +209,6 @@ Current implemented contract:
 - structured row/field error presentation;
 - concrete Client/Infinite/SSRM authoritative refresh after Apply;
 - existing LOCAL drafts remain separate and reconcile against imported REMOTE values normally.
-
-Import implementation is merged on `main`. The remaining VERIFY status is for broader/manual verification and the row-interaction regression discovered during that verification; it does not mean the Import feature is still waiting to be implemented.
 
 Current deliberate non-goals:
 
@@ -235,24 +229,37 @@ Do not hide Import inside ordinary cell-edit persistence.
 
 ## E. Isolated configurable SSRM experiment
 
-### E1. Fourth configurable grid path
-**Status:** PLANNED / AFTER PR #39 VERIFICATION
+### E1. Configuration contract and fourth grid path
+**Status:** DESIGN
 
-Build a separate SSRM-based grid composition path to prove the metadata compiler/resolver/registry boundary.
+The configurable architecture is now actively being designed on `configurable-feature-grid`.
 
-Rules:
+Current canonical design references:
 
+- `docs/configurable-feature-handoff.md`;
+- `docs/configurable-feature-config-design-progress.md`;
+- `docs/configurable-feature/configuration-reference.md`;
+- `docs/configurable-feature/type-hierarchy.md`;
+- `frontend/src/shared/grid/configurable/configuration.types.ts`.
+
+Current rules:
+
+- first proof is SSRM-only;
 - do not refactor `/client`, `/infinite` or `/ssrm` merely to make the experiment work;
 - do not rewrite proven shared loading, selection, tracked editing, conflict, validation, freshness, lifecycle or Grid State mechanics while the composition boundary is still being proven;
 - temporary feature-level duplication is acceptable when it protects proven behavior and makes comparison explicit;
-- backend metadata may describe supported JSON-safe table/business composition;
+- frontend authors/supports the configuration contract; backend may persist/manage and return it;
+- raw backend/storage config is validated + normalized before compilation even when current names happen to match;
+- native AG Grid names/types are preferred when semantics match;
+- broad SSRM-relevant declarative configuration should not be artificially limited to today's demo properties;
+- executable behavior is represented by JSON-safe keys/params and resolved by frontend registries only when genuinely configurable;
+- registry implementations should use real AG Grid callback/component/property types where practical;
+- runtime infrastructure such as the datasource/context/compiled columns remains frontend-owned;
 - backend metadata does not dynamically select Client/Infinite/SSRM;
-- frontend/application chooses the supported AG Grid row model(s);
-- executable renderers/editors/formatters/validators/action behavior remain frontend implementations;
 - evaluate migration/reuse only after the isolated path proves the boundary;
 - migration is not automatic.
 
-Architecture proposal material remains separate from current implementation docs.
+Exact next design batch is maintained in `docs/configurable-feature-config-design-progress.md`.
 
 ## F. Reuse proof
 
@@ -267,7 +274,7 @@ Do not invent a fake business feature merely to manufacture reuse.
 
 ## 2026-08 — Existing-capability regression hardening
 
-Completed the audit/hardening phase before the next product capability:
+Completed the audit/hardening phase before the configurable architecture work:
 
 - deterministic per-test Playwright Transaction reset;
 - stable seeded IDs, selectors and authoritative readiness helpers;
@@ -275,7 +282,7 @@ Completed the audit/hardening phase before the next product capability:
 - broad high-value Client / Infinite / SSRM browser regression coverage;
 - focused frontend/backend tests kept at deterministic boundaries instead of duplicating every permutation in Playwright;
 - durable Playwright/AGENTS testing rules;
-- implementation browser run: 80/80 Playwright scenarios passed in real Chromium, with frontend and backend checks also passing.
+- an implementation browser run passed 80/80 Playwright scenarios in real Chromium alongside frontend/backend checks at that checkpoint.
 
 Reference: `docs/implementation/testing/browser-regression.md`.
 
@@ -285,7 +292,7 @@ Client-Side, Infinite and flat SSRM exist as separate concrete routes with nativ
 
 ## 2026-08 — Row interaction
 
-Implemented `enabled | selectionDisabled | readOnly`, native loaded-row guards, backend authority for server-wide operations, editing integration and presentation.
+Implemented `enabled | selectionDisabled | readOnly`, native loaded-row guards, backend authority for server-wide operations, editing integration and dynamic presentation.
 
 Reference: `docs/implementation/row-interaction.md`.
 
@@ -303,7 +310,7 @@ Reference: `docs/implementation/edit-conflict-reconciliation.md`.
 
 ## 2026-08 — Field/input validation
 
-Implemented registered JSON-safe validation rules, stable row/field validation state, direct/programmatic edit integration, Row Save and exact Save Selected guards, backend DRF field-error mapping, correction/Discard/conflict-resolution lifecycle, and coexistence with BASE/LOCAL/REMOTE conflict state.
+Implemented registered JSON-safe validation rules, stable row/field validation state, direct/programmatic edit integration, Row Save and exact Save Selected guards, backend DRF field-error mapping, correction/Discard/conflict-resolution lifecycle and coexistence with BASE/LOCAL/REMOTE conflict state.
 
 References:
 

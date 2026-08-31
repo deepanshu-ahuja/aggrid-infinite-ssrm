@@ -1,0 +1,4 @@
+/** Presentation only for the isolated native-editing spike. */
+.grid-cell--draft-dirty {
+  background-color: #fff8e1 !important;
+}
