@@ -13,31 +13,34 @@ Useful current references:
 - `docs/implementation/row-models/client.md` — Client-Side implementation guide;
 - `docs/implementation/row-models/infinite.md` — Infinite implementation guide;
 - `docs/implementation/row-models/ssrm.md` — SSRM implementation guide;
+- `docs/implementation/configurable-ssrm.md` — implemented isolated configurable SSRM foundation;
 - `docs/implementation/testing/browser-regression.md` — Playwright architecture, E2E reset, CI/local execution and next-capability handoff;
 - `docs/implementation/testing/coverage-matrix.html` — readable cross-layer automated coverage inventory;
 - `docs/implementation/testing/` — manual verification guides;
 - `docs/configurable-feature-handoff.md` — current configurable-feature architecture handoff;
-- `docs/configurable-feature-config-design-progress.md` — latest configurable design checkpoint and exact resume point.
+- `docs/configurable-feature-config-design-progress.md` — latest configurable design/runtime checkpoint and exact resume point.
 
 Statuses used here: **VERIFY**, **DESIGN**, **TODO**, **PLANNED**, **DEFERRED**.
 
 ## Current agreed sequence
 
-The existing Client/Infinite/SSRM Transaction capability foundation and regression-hardening work are complete enough to support the next architecture experiment. Transaction Import and the later mutable row-interaction fixes are merged history rather than active PR work.
+The existing Client/Infinite/SSRM Transaction capability foundation and regression-hardening work are complete enough to support the isolated configurable architecture experiment. Transaction Import and the later mutable row-interaction fixes are merged history rather than active PR work.
 
-PR #41 merged the consolidated configurable-feature architecture handoff to `main`. The detailed configuration-contract design is continuing separately on `configurable-feature-grid` without an open PR during this design phase.
+PR #43 merged the native-first configurable public type contract to `main`. `configurable-feature-grid` now contains the first real defaults + normalization/compiler + isolated SSRM consumer foundation and is kept visible through PR #44 while verification continues.
 
 Current sequence:
 
 ```text
-1. Continue configurable-feature contract design on configurable-feature-grid
-2. Settle broad SSRM/native grid-level configuration + defaults/merge/normalization/registry typing
-3. Continue validation, server-query, save-mapping and access/security contracts
-4. Build the isolated fourth configurable SSRM-based grid only after the contracts are sufficiently stable
-5. Evaluate reuse/migration only after that experiment proves its boundary
+1. Verify/harden the configurable SSRM runtime foundation on configurable-feature-grid
+2. Keep generated TypeDoc + coverage/manual docs synchronized with the exact verified head
+3. Continue server sort/filter/search mapping only where the real adapter/backend semantics require extension
+4. Design and implement read/write/save mapping
+5. Continue access/security/masking, business actions and Grid State/access reconciliation
+6. Add runtime config schema/versioning when the backend/runtime exchange requires it
+7. Evaluate reuse/migration only after the isolated path proves the boundary
 ```
 
-Do not create another design branch or open/merge a PR unless explicitly requested by the user.
+Do not create another work branch automatically. Keep meaningful branch work in an open PR. Do not merge a PR unless explicitly requested by the user.
 
 Do not keep expanding Playwright merely to increase test count. Add browser coverage when a new implemented capability or a concrete regression introduces a material real-browser/AG Grid/backend risk.
 
@@ -125,12 +128,15 @@ Do not suppress AG Grid lifecycle warnings; fix concrete ownership/timing defect
 ### A6. Validation + editing integration
 **Status:** VERIFY
 
-Implemented behavior includes registered frontend validation rules, stable row/field validation state, direct/programmatic edit integration, Row Save and exact Save Selected guards, backend field-error mapping, correction/Discard/conflict-resolution lifecycle and separation of validation from BASE/LOCAL/REMOTE conflicts.
+Implemented Transaction behavior includes registered frontend validation rules, stable row/field validation state, direct/programmatic edit integration, Row Save and exact Save Selected guards, backend field-error mapping, correction/Discard/conflict-resolution lifecycle and separation of validation from BASE/LOCAL/REMOTE conflicts.
+
+The configurable SSRM foundation separately compiles declarative validation rules into AG Grid native editor validation and composes the lightweight PR #42 BASE + LOCAL draft observer. It does not import the older Transaction REMOTE/conflict architecture.
 
 References:
 
 - `docs/implementation/grid-validation.md`
 - `docs/implementation/transaction-editing.md`
+- `docs/implementation/configurable-ssrm.md`
 
 ### A7. Dynamic row-interaction transitions
 **Status:** VERIFY / IMPLEMENTED
@@ -143,6 +149,23 @@ References:
 
 - `docs/implementation/row-interaction.md`
 - `docs/implementation/testing/row-interaction-manual-testing.md`
+
+### A8. Configurable SSRM exact-head verification
+**Status:** VERIFY
+
+The first configurable runtime foundation is implemented on `configurable-feature-grid`. Before treating it as complete, verify the exact branch head with:
+
+```bash
+npm run typecheck
+npm run lint
+npm run test:run
+npm run build
+npm run docs:configurable
+```
+
+Also run the applicable Playwright and manual browser verification. Generated TypeDoc was already stale at the pre-runtime handoff checkpoint, so it must not be described as current until `npm run docs:configurable` actually regenerates it.
+
+Reference: `docs/implementation/testing/configurable-ssrm-manual-testing.md`.
 
 ## B. Capability discoverability
 
@@ -170,9 +193,11 @@ Do not add route/session/browser-refresh draft persistence until the product req
 ### C2. Backend optimistic concurrency / stale-write protection
 **Status:** DEFERRED
 
-Current BASE/LOCAL/REMOTE reconciliation detects divergence only after fresh authoritative data reaches the browser.
+Current BASE/LOCAL/REMOTE reconciliation detects divergence only after fresh authoritative data reaches the browser in the proven Transaction grids.
 
 Backend version/ETag/revision protection requires a separate product/API contract if stale writes must be rejected even without an intervening refresh.
+
+For the configurable SSRM path, concurrency/conflict/versioning remains a separate later decision; do not automatically bring the previous REMOTE reconciliation architecture into the new foundation.
 
 ### C3. Undo/redo
 **Status:** DEFERRED
@@ -189,7 +214,7 @@ Backend/user-profile persistence is not part of the current implementation.
 ### C5. Grouping/tree/aggregation/pivot and other advanced AG Grid features
 **Status:** DEFERRED
 
-Current SSRM implementation is flat. Do not introduce advanced semantics without an explicit product contract.
+Current SSRM implementation is flat. Do not introduce advanced semantics without an explicit product/server contract.
 
 ## D. Import
 
@@ -229,37 +254,82 @@ Do not hide Import inside ordinary cell-edit persistence.
 
 ## E. Isolated configurable SSRM experiment
 
-### E1. Configuration contract and fourth grid path
-**Status:** DESIGN
+### E1. Defaults + normalization/compiler + first SSRM consumer
+**Status:** VERIFY / IMPLEMENTED FOUNDATION
 
-The configurable architecture is now actively being designed on `configurable-feature-grid`.
+The first configurable runtime foundation is implemented on `configurable-feature-grid` and exposed only at `/configurable-ssrm`.
 
-Current canonical design references:
+Implemented foundation:
+
+- application configurable-SSRM defaults;
+- exact `entity.gridOptions` merge behavior;
+- nested `defaultColDef`, filter/editor/renderer param, rowSelection and Cell Selection merge behavior;
+- mandatory runtime `unknown` JSON validation + normalization;
+- filter/editor/renderer name allowlists;
+- formatter/parser/validator frontend registries;
+- `labelKey → headerName` compilation;
+- `rowId.path → getRowId` plus shared-draft row accessor;
+- `validationRules → cellEditorParams.getValidationErrors` for provided editors;
+- fields → final native `ColDef[]`;
+- resolved native `GridOptions`;
+- isolated Transaction configurable SSRM root;
+- existing Transaction request mapper/API/data-source lifecycle composition;
+- existing Transaction row/cell eligibility composition;
+- `useGridDraftEditing` BASE + LOCAL composition rather than copying PR #42;
+- focused unit tests plus real-grid Playwright coverage.
+
+Current canonical references:
 
 - `docs/configurable-feature-handoff.md`;
 - `docs/configurable-feature-config-design-progress.md`;
 - `docs/configurable-feature/configuration-reference.md`;
 - `docs/configurable-feature/type-hierarchy.md`;
-- `frontend/src/shared/grid/configurable/configuration.types.ts`.
+- `docs/configurable-feature/concepts.md`;
+- `docs/implementation/configurable-ssrm.md`;
+- `docs/implementation/testing/configurable-ssrm-manual-testing.md`;
+- `frontend/src/shared/grid/configurable/configuration.types.ts`;
+- `frontend/src/shared/grid/configurable/configuration.defaults.ts`;
+- `frontend/src/shared/grid/configurable/configuration.normalizer.ts`;
+- `frontend/src/shared/grid/configurable/configuration.compiler.ts`.
 
-Current rules:
+Current rules remain:
 
 - first proof is SSRM-only;
 - do not refactor `/client`, `/infinite` or `/ssrm` merely to make the experiment work;
-- do not rewrite proven shared loading, selection, tracked editing, conflict, validation, freshness, lifecycle or Grid State mechanics while the composition boundary is still being proven;
-- temporary feature-level duplication is acceptable when it protects proven behavior and makes comparison explicit;
 - frontend authors/supports the configuration contract; backend may persist/manage and return it;
 - raw backend/storage config is validated + normalized before compilation even when current names happen to match;
 - native AG Grid names/types are preferred when semantics match;
-- broad SSRM-relevant declarative configuration should not be artificially limited to today's demo properties;
 - executable behavior is represented by JSON-safe keys/params and resolved by frontend registries only when genuinely configurable;
-- registry implementations should use real AG Grid callback/component/property types where practical;
-- runtime infrastructure such as the datasource/context/compiled columns remains frontend-owned;
+- runtime infrastructure such as the datasource/context/compiled-column application remains frontend-owned;
 - backend metadata does not dynamically select Client/Infinite/SSRM;
+- server query semantics remain adapter/backend-owned rather than inferred by the compiler;
 - evaluate migration/reuse only after the isolated path proves the boundary;
 - migration is not automatic.
 
-Exact next design batch is maintained in `docs/configurable-feature-config-design-progress.md`.
+### E2. Configurable server query/search contract expansion
+**Status:** DESIGN / TODO when needed
+
+The first Transaction consumer deliberately reuses `mapTransactionGridRequest`. Extend configurable query metadata/mapping only when a real consumer requires semantics beyond that existing adapter. Do not send arbitrary AG Grid column/filter identifiers to the backend.
+
+### E3. Configurable read/write/save mapping
+**Status:** TODO
+
+Design persistence around the proven native editing + `cellValueChanged` + `useGridDraftEditing` ownership. Keep single-row and bulk persistence semantics explicit. Do not make Select All manufacture edits for clean/unloaded rows.
+
+### E4. Access/security/masking + business actions
+**Status:** TODO
+
+Keep business eligibility and security backend/feature-owned. Introduce registries/config descriptors only when there is a real configuration-driven action/access system to select among.
+
+### E5. Grid State/access reconciliation
+**Status:** TODO
+
+Native Grid State remains preferred for supported view preferences, but configurable column/access changes require deliberate reconciliation semantics before persistence is enabled for this route.
+
+### E6. Runtime config schema/versioning
+**Status:** TODO when backend config exchange requires it
+
+The runtime already has a mandatory normalization boundary. Add explicit schema/version negotiation when the backend/database representation becomes an actual external contract rather than inventing versions speculatively.
 
 ## F. Reuse proof
 
@@ -304,7 +374,7 @@ Reference: `docs/implementation/transaction-editing.md`.
 
 ## 2026-08 — BASE / LOCAL / REMOTE conflicts
 
-Implemented unchanged/converged/divergent reconciliation, `Use server`, `Keep my edit`, conflict-aware guards and Discard-to-latest-REMOTE.
+Implemented unchanged/converged/divergent reconciliation, `Use server`, `Keep my edit`, conflict-aware guards and Discard-to-latest-REMOTE for the proven Transaction grids.
 
 Reference: `docs/implementation/edit-conflict-reconciliation.md`.
 
