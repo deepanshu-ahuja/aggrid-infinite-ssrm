@@ -29,20 +29,20 @@ FeatureDefinition
             ├── ConfigurableNativeColDefOptions
             │   ├── Pick<ColDef, reviewed native keys>
             │   ├── Extract safe boolean branches from callback unions
+            │   ├── filter + typed filterParams
             │   └── native named editor/renderer + JSON-safe params
             ├── colId                  ← ColDef.colId
             ├── field                  ← ColDef.field
             ├── labelKey               → translation → ColDef.headerName
             ├── cellDataType           ← BaseCellDataType
-            ├── filtering?: FieldFilteringDefinition
-            │   └── filterOptions      ← ISimpleFilterModelType subset
+            ├── validationRules?       → validator registry → native editor validation
             ├── valueFormatterKey?     → formatter registry → ColDef.valueFormatter
             ├── valueFormatterConfig?
             ├── valueParserKey?        → parser registry → ColDef.valueParser
             └── valueParserConfig?
 ```
 
-There is deliberately **no** configurable `editing: { editor, parser }` wrapper. Native AG Grid properties stay flat whenever their persisted values are safely representable.
+There is deliberately no configurable `editing: { editor, parser }`, `renderer: { key }`, or `filtering: { ... }` wrapper. Native AG Grid properties stay flat whenever their persisted values are safely representable.
 
 ## What the generics do — and do not do
 
@@ -70,8 +70,10 @@ flowchart TD
     E --> FD[FieldDefinition array]
     FD --> N[ConfigurableNativeColDefOptions]
     N --> CP[Pick from ColDef]
-    FD --> FIL[FieldFilteringDefinition]
-    FIL --> SFM[ISimpleFilterModelType]
+    N --> FIL[filter + typed filterParams]
+    FIL --> FP[AG Grid filter param types]
+    FD --> VAL[validationRules]
+    VAL --> VR[validator registry]
     FD --> FMT[valueFormatterKey]
     FD --> PAR[valueParserKey]
     FMT --> FR[formatter registry]
@@ -121,8 +123,6 @@ nested native object has one executable member
 
 Do not hand-copy a long list as individual `ColDef['key']` / `GridOptions['key']` declarations when `Pick` expresses the relationship. Also do not use a broad negative `Omit` for the whole persisted surface: explicit `Pick` means a future AG Grid upgrade cannot silently expose newly-added runtime/callback properties.
 
-The allowlist is capability-driven, not based only on the current Transaction demo.
-
 ## Grid options: configurable vs runtime-owned
 
 Examples of current native configurable grid properties:
@@ -155,7 +155,7 @@ context
 getRowId callback
 event callbacks
 GridApi refs
-business callbacks such as isRowSelectable
+business callbacks such as isRowSelectable/getRowClass
 ```
 
 ## Native flat-SSRM row selection
@@ -169,12 +169,13 @@ Pick common native declarative members
 Extract checkboxes boolean branch
 
 multiRow:
-Extract groupSelects = self
-Extract selectAll = all
 Pick headerCheckbox / ctrlASelectsRows
+Extract selectAll = all
 ```
 
 `isRowSelectable` remains runtime business policy.
+
+`groupSelects` is intentionally absent from the current configurable contract because the target runtime is flat SSRM. It should return with actual server-side grouping support rather than being exposed only to carry the default `'self'` value.
 
 AG Grid treats `rowSelection.selectAll='filtered'|'currentPage'` as invalid for SSRM, so those are not accepted as native config. The repository's All Filtered / Current Page operations remain application-owned semantics.
 
@@ -193,6 +194,45 @@ Omit fill.setFillValue only
 
 `setFillValue` is executable frontend behavior. The native range/fill shape, mode, direction and other declarative handle members stay AG Grid-owned.
 
+## Native server-backed filtering
+
+```text
+field.filter
+→ native AG Grid filter name / boolean
+
+field.filterParams
+→ ConfigurableFilterParamsForCellDataType
+→ AG Grid ITextFilterParams / INumberFilterParams /
+   IBigIntFilterParams / IDateFilterParams-derived safe members
+```
+
+Operator keys come from `ISimpleFilterModelType` and are narrowed to the active server-adapter contract.
+
+Current common contract:
+
+```text
+Text       → contains / equals / notEqual / startsWith / endsWith
+Number     → equals / notEqual / greaterThan / greaterThanOrEqual / lessThan / lessThanOrEqual
+BigInt     → same operator vocabulary as Number
+Date/time  → equals / notEqual / lessThan / greaterThan
+Boolean    → equals / notEqual
+```
+
+Common filter behavior stays native:
+
+```text
+buttons
+closeOnApply
+debounceMs
+readOnly
+filterPlaceholder string
+maxNumConditions = 1
+```
+
+Type-specific UI-safe native members are derived from AG Grid types. Executable callbacks and server-semantic toggles that the current filter model/backend does not represent remain excluded.
+
+There is no parallel `FieldFilteringDefinition` anymore.
+
 ## Editing mapping after the native-first SSRM spike
 
 ```text
@@ -203,7 +243,7 @@ Ctrl/Cmd+Enter
 Fill Handle
 clipboard/paste
         ↓
-AG Grid applies native editable rules
+AG Grid applies native editable + editor validation rules
         ↓
 cellValueChanged
         ↓
@@ -231,16 +271,40 @@ gridOptions.suppressClipboardPaste
                                 → GridOptions.suppressClipboardPaste
 ```
 
+## Validation mapping
+
+```text
+field.validationRules
+→ ConfigurableValidationRule
+→ proven GridValidationRule shape with JSON-safe params
+→ frontend validator registry
+→ validation messages
+```
+
+Then runtime adapts those messages into AG Grid's native validation lifecycle:
+
+```text
+provided editor
+→ cellEditorParams.getValidationErrors
+
+custom React/MUI editor
+→ useGridCellEditor
+→ getValidationErrors / getValidationElement
+```
+
+`invalidEditValueMode='block'` means invalid editor values never become committed BASE+LOCAL drafts.
+
 ## Registered component names vs executable registries
 
 ```text
+filter: "agTextColumnFilter"
 cellEditor: "transactionAccountEditor"
 cellRenderer: "statusChip"
 ```
 
 These are native registered-component names. Frontend runtime owns actual implementations.
 
-Formatter/parser are different:
+Formatter/parser are different because native string values there are executable AG Grid expressions:
 
 ```text
 valueFormatterKey
@@ -252,21 +316,7 @@ valueParserKey
 → ColDef.valueParser
 ```
 
-Raw AG Grid expression strings are not accepted from backend configuration.
-
-## Filtering derives native types but keeps server semantics explicit
-
-```text
-ISimpleFilterModelType
-        ↓ Extract current backend-supported operators
-FieldFilteringDefinition.filterOptions
-        ↓
-compiler → filterParams.filterOptions
-```
-
-`filtering` stays a deliberate application descriptor because it means "server-supported query capability", not only "render an AG Grid filter".
-
-The next filter-default layer should derive safe properties from AG Grid's `ITextFilterParams`, `INumberFilterParams`, `IBigIntFilterParams`, `IDateFilterParams` and `ISimpleFilterParams` using `Pick`/`Extract`/`Omit`. Executable matcher/parser/formatter/comparator members and semantics unsupported by the backend remain excluded.
+`RegisteredValueFormatter` and `RegisteredValueParser` derive the real AG Grid function branches for registry implementation typing.
 
 ## Grid-level merge structure
 
@@ -284,7 +334,7 @@ individual FieldDefinition native properties
 final ColDef
 ```
 
-Exact nested merge behavior for `defaultColDef`, `cellSelection` and `rowSelection` is the next compiler/defaults design batch.
+Exact nested merge behavior for `defaultColDef`, `cellSelection`, `rowSelection`, static editor params and runtime validation params belongs to the compiler/defaults implementation batch.
 
 ## Runtime editing state is not configuration
 
