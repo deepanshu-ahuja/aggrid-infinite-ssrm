@@ -38,6 +38,7 @@ Use these when you are interested in one capability across the supported row mod
 - [Transaction Import](grid-import.md)
 - [Grid export](grid-export.md)
 - [Row interaction](row-interaction.md)
+- [Configurable SSRM runtime](configurable-ssrm.md)
 - [Reusable server-backed grid guide](server-backed-grid-reuse.md)
 - [Theme integration](theming.md)
 - [Foundation status](ag-grid-foundation-status.md)
@@ -54,6 +55,7 @@ Browser/manual verification material lives under `docs/implementation/testing/`:
 - [Server-backed Infinite + SSRM manual regression](testing/server-backed-manual-testing.md)
 - [Row interaction manual verification](testing/row-interaction-manual-testing.md)
 - [SSRM native editing spike manual verification](testing/ssrm-native-editing-spike-manual-testing.md) — isolated `/ssrm-native-editing` comparison route for native Cell Selection/Fill Handle, AG Grid validation, and lightweight BASE + LOCAL draft tracking.
+- [Configurable SSRM manual verification](testing/configurable-ssrm-manual-testing.md) — isolated `/configurable-ssrm` normalization/compiler/runtime composition checks.
 
 Browser-visible or AG Grid lifecycle work must add/update concrete manual steps in the same change. Automated Playwright coverage should be added for high-value integration contracts where the real grid/backend/browser combination can expose failures that unit/component tests cannot.
 

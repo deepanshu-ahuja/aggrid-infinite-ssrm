@@ -1,6 +1,7 @@
 import { Box, Button, Container, Stack, Typography } from '@mui/material';
 import { NavLink, Navigate, Route, Routes } from 'react-router';
 import { TransactionsClientGrid } from '@/features/transactions/grid/TransactionsClientGrid';
+import { TransactionsConfigurableSsrmGrid } from '@/features/transactions/grid/TransactionsConfigurableSsrmGrid';
 import { TransactionsInfiniteGrid } from '@/features/transactions/grid/TransactionsInfiniteGrid';
 import { TransactionsSsrmGrid } from '@/features/transactions/grid/TransactionsSsrmGrid';
 import { TransactionsSsrmNativeEditingGrid } from '@/features/transactions/grid/TransactionsSsrmNativeEditingGrid';
@@ -25,6 +26,7 @@ export function App() {
             <Button component={NavLink} to="/infinite" variant="outlined">Infinite Row Model</Button>
             <Button component={NavLink} to="/ssrm" variant="outlined">Server-Side Row Model</Button>
             <Button component={NavLink} to="/ssrm-native-editing" variant="outlined">SSRM Native Editing Spike</Button>
+            <Button component={NavLink} to="/configurable-ssrm" variant="outlined">Configurable SSRM</Button>
           </Stack>
 
           <Routes>
@@ -33,6 +35,7 @@ export function App() {
             <Route path="/infinite" element={<TransactionsInfiniteGrid />} />
             <Route path="/ssrm" element={<TransactionsSsrmGrid />} />
             <Route path="/ssrm-native-editing" element={<TransactionsSsrmNativeEditingGrid />} />
+            <Route path="/configurable-ssrm" element={<TransactionsConfigurableSsrmGrid />} />
             <Route path="*" element={<Navigate to="/client" replace />} />
           </Routes>
         </Stack>
