@@ -16,7 +16,6 @@ import type {
   ConfigurableDefaultColDef,
   ConfigurableSsrmGridOptions,
   EntityDefinition,
-  FieldDefinition,
 } from './configuration.types';
 import {
   requireAllowedComponentName,
@@ -70,7 +69,7 @@ function mergeJsonObject(
 
 function mergeFieldNativeOptions(
   defaultColDef: ConfigurableDefaultColDef | undefined,
-  field: FieldDefinition,
+  field: EntityDefinition['fields'][number],
 ) {
   const merged = {
     ...(defaultColDef ?? {}),
@@ -131,6 +130,7 @@ export function compileConfigurableRowId<TData>(
     const value = readPathValue(data, path);
     if (
       (typeof value !== 'string' && typeof value !== 'number') ||
+      (typeof value === 'number' && !Number.isFinite(value)) ||
       String(value).trim().length === 0
     ) {
       throw new Error(`Configured rowId.path "${path}" did not resolve to a stable string/number ID.`);
@@ -145,7 +145,7 @@ export function compileConfigurableRowId<TData>(
 }
 
 function compileField<TData>(
-  field: FieldDefinition,
+  field: EntityDefinition['fields'][number],
   defaultColDef: ConfigurableDefaultColDef | undefined,
   registries: ConfigurableGridRegistries<TData>,
   resolveLabel: (labelKey: string) => string,
@@ -227,7 +227,9 @@ function compileGridOptions<TData>(
 
   const compiled: GridOptions<TData> = {
     ...rest,
-    defaultColDef: defaultColDef ? { ...defaultColDef } : undefined,
+    // Runtime-normalized string paths cannot satisfy generic TData's compile-time nested-path proof.
+    // Keep that assertion at this single metadata/compiler boundary.
+    defaultColDef: defaultColDef ? ({ ...defaultColDef } as ColDef<TData>) : undefined,
   };
 
   if (rowSelection) {
