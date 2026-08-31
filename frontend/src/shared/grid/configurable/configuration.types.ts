@@ -2,7 +2,11 @@ import type {
   BaseCellDataType,
   ColDef,
   GridOptions,
+  IBigIntFilterParams,
+  IDateFilterParams,
+  INumberFilterParams,
   ISimpleFilterModelType,
+  ITextFilterParams,
 } from 'ag-grid-community';
 
 /**
@@ -102,18 +106,112 @@ export type FilterOptionForCellDataType<TCellDataType extends FieldCellDataType>
           : never;
 
 /**
- * Server-supported filtering capability for one configurable field.
+ * Native Simple Filter behavior that is both JSON-safe and common across Text/Number/BigInt/Date.
  *
- * `ISimpleFilterModelType` remains the native source of truth for option keys. This wrapper stays
- * application-specific because its important meaning is which operations the active server adapter
- * can execute, not merely which filter component AG Grid can render.
+ * `filterPlaceholder` is narrowed to AG Grid's string branch because its other branch is executable.
+ * `filterOptions` is intentionally handled separately so each field can be constrained to the exact
+ * native operator keys that the server adapter supports end-to-end.
  */
-export interface FieldFilteringDefinition<
+type ConfigurableSimpleFilterCommonParamKey =
+  | 'buttons'
+  | 'closeOnApply'
+  | 'debounceMs'
+  | 'readOnly'
+  | 'defaultOption'
+  | 'defaultJoinOperator'
+  | 'maxNumConditions'
+  | 'numAlwaysVisibleConditions';
+
+export type ConfigurableSimpleFilterCommonParams = Pick<
+  ITextFilterParams,
+  ConfigurableSimpleFilterCommonParamKey
+> & {
+  filterPlaceholder?: Extract<NonNullable<ITextFilterParams['filterPlaceholder']>, string>;
+};
+
+/**
+ * Common JSON-safe Simple Filter params plus a server-supported native option allowlist.
+ *
+ * AG Grid also permits custom `IFilterOptionDef` entries containing a predicate function. Those are
+ * deliberately excluded from persisted metadata; executable filter behavior remains frontend-owned.
+ */
+export type ConfigurableSimpleFilterParams<
   TFilterOption extends ISimpleFilterModelType = FilterOption,
-> {
-  /** Exact non-empty native option list supported end-to-end for this field. */
-  filterOptions: readonly [TFilterOption, ...TFilterOption[]];
-}
+> = ConfigurableSimpleFilterCommonParams & {
+  filterOptions?: TFilterOption[];
+};
+
+/** JSON-safe Text Filter params derived from AG Grid's `ITextFilterParams`. */
+export type ConfigurableTextFilterParams<
+  TFilterOption extends ISimpleFilterModelType = TextFilterOption,
+> = ConfigurableSimpleFilterParams<TFilterOption> &
+  Pick<ITextFilterParams, 'caseSensitive' | 'trimInput'>;
+
+type ConfigurableScalarFilterParamKey =
+  | 'inRangeInclusive'
+  | 'includeBlanksInEquals'
+  | 'includeBlanksInNotEqual'
+  | 'includeBlanksInLessThan'
+  | 'includeBlanksInGreaterThan'
+  | 'includeBlanksInRange';
+
+/** JSON-safe Number Filter params; executable `numberParser` / `numberFormatter` stay frontend-owned. */
+export type ConfigurableNumberFilterParams<
+  TFilterOption extends ISimpleFilterModelType = NumberFilterOption,
+> = ConfigurableSimpleFilterParams<TFilterOption> &
+  Pick<INumberFilterParams, ConfigurableScalarFilterParamKey | 'allowedCharPattern'>;
+
+/** JSON-safe BigInt Filter params; executable parser/formatter callbacks stay frontend-owned. */
+export type ConfigurableBigIntFilterParams<
+  TFilterOption extends ISimpleFilterModelType = NumberFilterOption,
+> = ConfigurableSimpleFilterParams<TFilterOption> &
+  Pick<IBigIntFilterParams, ConfigurableScalarFilterParamKey | 'allowedCharPattern'>;
+
+/**
+ * JSON-safe Date Filter params derived from AG Grid's `IDateFilterParams`.
+ *
+ * Native `comparator` and `isValidDate` are callbacks and therefore excluded. `minValidDate` and
+ * `maxValidDate` also accept JavaScript `Date` objects natively; persisted configuration keeps only
+ * AG Grid's documented string representation.
+ */
+export type ConfigurableDateFilterParams<
+  TFilterOption extends ISimpleFilterModelType = DateFilterOption,
+> = ConfigurableSimpleFilterParams<TFilterOption> &
+  Pick<
+    IDateFilterParams,
+    | ConfigurableScalarFilterParamKey
+    | 'browserDatePicker'
+    | 'minValidYear'
+    | 'maxValidYear'
+    | 'inRangeFloatingFilterDateFormat'
+    | 'includeTime'
+    | 'useIsoSeparator'
+  > & {
+    minValidDate?: Extract<NonNullable<IDateFilterParams['minValidDate']>, string>;
+    maxValidDate?: Extract<NonNullable<IDateFilterParams['maxValidDate']>, string>;
+  };
+
+/**
+ * Resolves the native JSON-safe filter-param surface for one configured cell data type.
+ *
+ * Boolean currently keeps only common Simple Filter behavior plus the server-supported equality
+ * operators. Set Filter / Multi Filter are separate server-query capabilities and are not smuggled
+ * into this flat Simple Filter contract merely because AG Grid can render them.
+ */
+export type ConfigurableFilterParamsForCellDataType<
+  TCellDataType extends FieldCellDataType,
+  TAdditionalFilterOption extends ISimpleFilterModelType = never,
+> = TCellDataType extends 'text'
+  ? ConfigurableTextFilterParams<TextFilterOption | TAdditionalFilterOption>
+  : TCellDataType extends 'number'
+    ? ConfigurableNumberFilterParams<NumberFilterOption | TAdditionalFilterOption>
+    : TCellDataType extends 'bigint'
+      ? ConfigurableBigIntFilterParams<NumberFilterOption | TAdditionalFilterOption>
+      : TCellDataType extends 'date' | 'dateString' | 'dateTime' | 'dateTimeString'
+        ? ConfigurableDateFilterParams<DateFilterOption | TAdditionalFilterOption>
+        : TCellDataType extends 'boolean'
+          ? ConfigurableSimpleFilterParams<BooleanFilterOption | TAdditionalFilterOption>
+          : never;
 
 /**
  * Native declarative `ColDef` members that can be persisted without changing their AG Grid semantics.
@@ -123,6 +221,7 @@ export interface FieldFilteringDefinition<
  * becoming backend-configurable after a library upgrade.
  */
 type ConfigurableNativeColDefKey =
+  | 'type'
   | 'sortable'
   | 'initialSort'
   | 'initialSortIndex'
@@ -175,14 +274,20 @@ type ConfigurableNativeColDefBooleanBranches = {
  *
  * Most members are inherited directly through `Pick<ColDef, ...>`. Only members whose native value
  * can be executable or framework-owned are replaced below with the safe representation we support.
- * AG Grid editor/renderer component names stay native because AG Grid already supports registered
- * components by string name; the frontend owns and validates the actual registrations.
+ * AG Grid editor/renderer/filter component names stay native because AG Grid already supports named
+ * registered components; the frontend owns and validates the actual registrations.
  */
 export type ConfigurableNativeColDefOptions<
   TCellEditorName extends string = string,
   TCellRendererName extends string = string,
+  TFilterName extends string = string,
+  TFilterParams = ConfigurableSimpleFilterCommonParams,
 > = ConfigurableNativeColDefBase &
   ConfigurableNativeColDefBooleanBranches & {
+    /** AG Grid provided-filter name or an allowlisted frontend-registered filter name. */
+    filter?: Extract<NonNullable<ColDef['filter']>, boolean> | TFilterName;
+    /** Native JSON-safe params for the selected filter component. */
+    filterParams?: TFilterParams;
     /** AG Grid provided-editor name or an allowlisted frontend-registered editor name. */
     cellEditor?: TCellEditorName;
     /** Static JSON-safe editor params; runtime functions such as validation callbacks are merged later. */
@@ -193,8 +298,13 @@ export type ConfigurableNativeColDefOptions<
     cellRendererParams?: ConfigurationJsonObject;
   };
 
-/** Native JSON-safe `defaultColDef` uses the same reviewed declarative column surface. */
-export type ConfigurableDefaultColDef = ConfigurableNativeColDefOptions<string, string>;
+/** Native JSON-safe `defaultColDef` uses the common filter behavior rather than one filter-type's options. */
+export type ConfigurableDefaultColDef = ConfigurableNativeColDefOptions<
+  string,
+  string,
+  string,
+  ConfigurableSimpleFilterCommonParams
+>;
 
 type NativeCellSelectionOptions = Exclude<NonNullable<GridOptions['cellSelection']>, boolean>;
 type NativeCellSelectionHandle = NonNullable<NativeCellSelectionOptions['handle']>;
@@ -204,8 +314,8 @@ type NativeFillHandle = Extract<NativeCellSelectionHandle, { mode: 'fill' }>;
 /**
  * Native Cell Selection handle with only executable Fill Handle behavior removed.
  *
- * AG Grid owns the range/fill shape, direction and future compatible declarative members. The only
- * current member removed is `setFillValue`, because that is executable frontend behavior.
+ * AG Grid owns the range/fill shape, direction and compatible declarative members. The only current
+ * member removed is `setFillValue`, because that is executable frontend behavior.
  */
 export type ConfigurableCellSelectionHandle =
   | NativeRangeHandle
@@ -241,17 +351,20 @@ type ConfigurableRowSelectionCommonOptions = Pick<
 };
 
 /**
- * Native row-selection configuration valid for the flat configurable SSRM model.
+ * Native row-selection configuration valid for the current flat configurable SSRM model.
  *
- * `isRowSelectable` is deliberately absent because it is executable business policy. SSRM also treats
- * `selectAll: 'filtered' | 'currentPage'` as invalid, so the persisted native branch is narrowed to
- * `'all'`; our All Filtered / Current Page operations remain separate application semantics.
+ * `isRowSelectable` is deliberately absent because it is executable business policy. Group-selection
+ * behavior is also absent because this configurable runtime is currently flat SSRM; when server-side
+ * grouping becomes a supported capability its native group-selection branch should be added together
+ * with the corresponding request/state semantics.
+ *
+ * SSRM treats `selectAll: 'filtered' | 'currentPage'` as invalid, so the persisted native branch is
+ * narrowed to `'all'`; our All Filtered / Current Page operations remain application semantics.
  */
 export type ConfigurableSsrmRowSelectionOptions =
   | (ConfigurableRowSelectionCommonOptions & Pick<NativeSingleRowSelectionOptions, 'mode'>)
   | (ConfigurableRowSelectionCommonOptions &
       Pick<NativeMultiRowSelectionOptions, 'mode' | 'headerCheckbox' | 'ctrlASelectsRows'> & {
-        groupSelects?: Extract<NonNullable<NativeMultiRowSelectionOptions['groupSelects']>, 'self'>;
         selectAll?: Extract<NonNullable<NativeMultiRowSelectionOptions['selectAll']>, 'all'>;
       });
 
@@ -320,6 +433,18 @@ export type ConfigurableSsrmGridOptions = ConfigurableSsrmGridOptionsBase & {
     | ConfigurableCellSelectionOptions;
 };
 
+/** Actual AG Grid formatter-function branch used by frontend formatter registries. */
+export type RegisteredValueFormatter<TData = unknown, TValue = unknown> = Exclude<
+  NonNullable<ColDef<TData, TValue>['valueFormatter']>,
+  string
+>;
+
+/** Actual AG Grid parser-function branch used by frontend parser registries. */
+export type RegisteredValueParser<TData = unknown, TValue = unknown> = Exclude<
+  NonNullable<ColDef<TData, TValue>['valueParser']>,
+  string
+>;
+
 /**
  * Reusable configuration for one field/column exposed by an entity.
  *
@@ -348,7 +473,12 @@ export type FieldDefinition<
   TCellRendererName extends string = string,
   TValueFormatterKey extends string = string,
   TValueParserKey extends string = string,
-> = ConfigurableNativeColDefOptions<TCellEditorName, TCellRendererName> & {
+> = ConfigurableNativeColDefOptions<
+  TCellEditorName,
+  TCellRendererName,
+  string,
+  ConfigurableFilterParamsForCellDataType<TCellDataType, TAdditionalFilterOption>
+> & {
   /**
    * Stable native Column ID and application field-configuration identity.
    * It remains independent from the API `field` path so Grid State/API identity survives path renames.
@@ -363,11 +493,6 @@ export type FieldDefinition<
 
   /** Explicit AG Grid base cell data type; SSRM cannot infer this from row data. */
   cellDataType: TCellDataType;
-
-  /** Server-supported native Simple Filter options for this field. */
-  filtering?: FieldFilteringDefinition<
-    FilterOptionForCellDataType<TCellDataType> | TAdditionalFilterOption
-  >;
 
   /** Frontend registry key resolved to executable AG Grid `valueFormatter`. */
   valueFormatterKey?: TValueFormatterKey;
