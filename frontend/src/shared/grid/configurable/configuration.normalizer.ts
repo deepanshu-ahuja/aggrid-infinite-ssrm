@@ -177,6 +177,30 @@ function validateColumnOptions(value: JsonObject, path: string, keys: readonly s
   for (const key of ['headerTooltip', 'tooltipField', 'cellEditor', 'cellRenderer']) {
     if (value[key] !== undefined) string(value[key], `${path}.${key}`);
   }
+  if (value.type !== undefined) {
+    if (typeof value.type !== 'string') {
+      if (!Array.isArray(value.type) || value.type.some((item) => typeof item !== 'string')) {
+        invalid(`${path}.type`, 'expected a string or array of strings.');
+      }
+    }
+  }
+  if (value.initialSort !== undefined && value.initialSort !== null && !['asc', 'desc'].includes(String(value.initialSort))) {
+    invalid(`${path}.initialSort`, 'expected "asc", "desc", or null.');
+  }
+  if (value.sortingOrder !== undefined) {
+    if (!Array.isArray(value.sortingOrder)) invalid(`${path}.sortingOrder`, 'expected an array.');
+    value.sortingOrder.forEach((item, index) => {
+      if (item !== null && typeof item !== 'object' && !['asc', 'desc'].includes(String(item))) {
+        invalid(`${path}.sortingOrder[${index}]`, 'expected a native sort direction/definition.');
+      }
+    });
+  }
+  if (value.initialPinned !== undefined && value.initialPinned !== null && !['left', 'right'].includes(String(value.initialPinned))) {
+    invalid(`${path}.initialPinned`, 'expected "left", "right", or null.');
+  }
+  if (value.lockPosition !== undefined && typeof value.lockPosition !== 'boolean' && !['left', 'right'].includes(String(value.lockPosition))) {
+    invalid(`${path}.lockPosition`, 'expected a boolean, "left", or "right".');
+  }
   if (value.filter !== undefined && typeof value.filter !== 'boolean' && typeof value.filter !== 'string') {
     invalid(`${path}.filter`, 'expected a boolean or registered filter name.');
   }
@@ -201,6 +225,21 @@ function validateRowSelection(value: unknown, path: string) {
   else if (value.mode === 'multiRow') knownKeys(value, [...common, ...multi], path);
   else invalid(`${path}.mode`, 'expected "singleRow" or "multiRow".');
 
+  if (
+    value.enableClickSelection !== undefined &&
+    typeof value.enableClickSelection !== 'boolean' &&
+    value.enableClickSelection !== 'enableSelection' &&
+    value.enableClickSelection !== 'enableDeselection'
+  ) {
+    invalid(`${path}.enableClickSelection`, 'expected a boolean, "enableSelection", or "enableDeselection".');
+  }
+  if (
+    value.checkboxLocation !== undefined &&
+    value.checkboxLocation !== 'selectionColumn' &&
+    value.checkboxLocation !== 'autoGroupColumn'
+  ) {
+    invalid(`${path}.checkboxLocation`, 'expected "selectionColumn" or "autoGroupColumn".');
+  }
   for (const key of ['hideDisabledCheckboxes', 'copySelectedRows', 'enableSelectionWithoutKeys', 'checkboxes', 'headerCheckbox', 'ctrlASelectsRows']) {
     if (value[key] !== undefined) bool(value[key], `${path}.${key}`);
   }
@@ -347,15 +386,15 @@ export function normalizeFeatureDefinition(raw: unknown): FeatureDefinition {
 
 export function normalizeEntityDefinition(raw: unknown): EntityDefinition {
   validateEntity(raw, 'entity');
-  return clone(raw) as EntityDefinition;
+  return clone(raw) as unknown as EntityDefinition;
 }
 
 export function normalizeConfigurableSsrmGridOptions(raw: unknown): ConfigurableSsrmGridOptions {
   validateGridOptions(raw, 'gridOptions');
-  return clone(raw) as ConfigurableSsrmGridOptions;
+  return clone(raw) as unknown as ConfigurableSsrmGridOptions;
 }
 
 export function normalizeFieldDefinition(raw: unknown): FieldDefinition {
   validateField(raw, 'field');
-  return clone(raw) as FieldDefinition;
+  return clone(raw) as unknown as FieldDefinition;
 }
