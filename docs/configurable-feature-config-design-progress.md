@@ -4,41 +4,53 @@
 
 Durable continuation file for configurable-feature work on `configurable-feature-grid`.
 
-In a new chat, inspect GitHub/current branches first and read root `AGENTS.md`, then:
+A new chat/session must reconstruct current truth from GitHub and repository docs rather than relying on conversation memory.
 
-1. `docs/configurable-feature-handoff.md`;
-2. `docs/configurable-feature/configuration-reference.md`;
-3. `docs/configurable-feature/type-hierarchy.md`;
-4. this file;
-5. merged PR #42 / `/ssrm-native-editing` when editing/runtime composition is relevant.
+Start in this order:
 
-## Current checkpoint
+1. inspect current `main`, `configurable-feature-grid`, open/recent PRs and latest CI/status;
+2. read root `AGENTS.md` and follow its documented reading/workflow rules;
+3. read `docs/configurable-feature-handoff.md`;
+4. read `docs/configurable-feature/configuration-reference.md`;
+5. read `docs/configurable-feature/type-hierarchy.md`;
+6. read this file for the exact current checkpoint/resume point;
+7. inspect merged PR #42 / `/ssrm-native-editing` when editing/runtime composition is relevant;
+8. inspect the actual current source before changing anything, especially `frontend/src/shared/grid/configurable/configuration.types.ts`.
 
-PR #42 (`Spike: native-first SSRM editing`) is merged into `configurable-feature-grid` at:
+## Current merged checkpoint
+
+PR #43 (`refactor: align configurable SSRM contract with native AG Grid`) was merged into `main` on 2026-08-31.
+
+```text
+PR #43 head before merge
+307bb14694603842d1c31c62620e6e35379d8e8a
+
+PR #43 merge commit / merged main checkpoint
+1aba320ef48551d298ef52fc623c06ecb99017a0
+```
+
+Immediately after that merge, `configurable-feature-grid` was fast-forwarded to the merge commit above before this post-merge handoff cleanup. Subsequent handoff/documentation commits may advance `configurable-feature-grid`, so always inspect GitHub rather than assuming a stored SHA is the current branch head.
+
+PR #42 (`Spike: native-first SSRM editing`) was previously merged into `configurable-feature-grid` at:
 
 ```text
 279fbfea85da85741b42dfa6e3cb034b36a92c51
 ```
 
-Current type-contract source pass is represented by:
-
-```text
-f5dc87b6bd82fa9559fc9c1c4e832074a9e0fb86
-feat: add configurable validation rule types
-```
-
-Later documentation commits advance branch HEAD. Always inspect GitHub rather than assuming this commit is current HEAD.
+Its code is now part of the history merged through PR #43. `/ssrm-native-editing` is the behavioral editing reference for the configurable direction; existing `/ssrm` remains its own current implementation.
 
 ## Working rules
 
-- Stay on `configurable-feature-grid` unless explicitly told otherwise.
-- Do not create another branch or merge another PR without explicit user instruction.
+- Continue configurable-feature work on `configurable-feature-grid` unless explicitly told otherwise.
+- Do not create another branch unless explicitly requested.
+- Do not merge a PR unless explicitly requested.
 - First configurable runtime remains flat SSRM.
 - Backend metadata never chooses row model.
-- AG Grid 36.1 is the implementation reference; native capability first.
+- AG Grid 36.1 is the implementation reference; use native capability first.
 - No universal grid wrapper / giant `useGrid`.
-- SSRM datasource loading remains datasource-owned, not TanStack Query.
-- Existing `/ssrm` remains current implementation; `/ssrm-native-editing` is the merged native-first editing reference for the configurable direction.
+- SSRM datasource loading remains datasource-owned, not TanStack Query-owned.
+- Existing concrete Client/Infinite/SSRM grids remain independent; do not refactor them merely to make configurable composition work.
+- `/ssrm-native-editing` is a reference for ownership and reusable mechanics, not a component to copy wholesale.
 
 ## Mandatory normalization boundary
 
@@ -81,7 +93,9 @@ single Type['key'] is clearest
 
 Top-level persisted surfaces stay explicit positive `Pick` allowlists. Do not use a broad `Omit` that might expose newly-added AG Grid runtime/callback properties after an upgrade.
 
-## Current public type contract — DONE for this design pass
+## Current public type contract — design checkpoint complete
+
+PR #43 is the review/merge checkpoint for the current public configuration-type design. Do not reopen the whole type model speculatively before building a real consumer. Adjust types when defaults/normalization/compiler/runtime work proves a concrete need.
 
 ### Feature/entity/identity
 
@@ -130,7 +144,7 @@ There is no custom `editing.editor`, `editing.parser`, `renderer`, or `filtering
 
 ### Native server-backed filters
 
-Field filtering now follows the real SSRM columns:
+Field filtering follows the real SSRM/native-editing columns:
 
 ```text
 filter
@@ -150,17 +164,11 @@ IDateFilterParams
 
 Current common server contract keeps one condition per field, so configurable `maxNumConditions` is narrowed to `1`.
 
-Persisted filter params intentionally exclude:
+Persisted filter params intentionally exclude executable callbacks and native options whose semantics the current server-query contract cannot faithfully reproduce.
 
-```text
-custom predicate functions
-text matcher/formatter callbacks
-number/bigint parser/formatter callbacks
-date comparator/isValidDate callbacks
-blank/range/time semantic toggles not represented by current server-query mapping
-```
+The important rule is:
 
-The important rule is: **JSON-safe is necessary but not sufficient for SSRM config**. A native property that changes server filtering meaning must also have end-to-end adapter/backend semantics.
+> JSON-safe is necessary but not sufficient for SSRM configuration. A native property that changes server filtering meaning must also have end-to-end adapter/backend semantics.
 
 ### Native grid surface
 
@@ -172,7 +180,7 @@ rowSelection
 cellSelection
 ```
 
-The grid-level surface includes the native-editing spike requirements:
+The grid-level surface includes the native-editing reference requirements:
 
 ```text
 cellSelection
@@ -217,7 +225,7 @@ valueParserKey / valueParserConfig
 
 ### Validation declarations
 
-`FieldDefinition.validationRules` now reuses the proven shared `GridValidationRule` shape:
+`FieldDefinition.validationRules` reuses the proven shared `GridValidationRule` shape:
 
 ```text
 key
@@ -225,7 +233,7 @@ params
 message
 ```
 
-Only `params` is narrowed to `ConfigurationJsonObject` for persisted config.
+Only `params` is narrowed to JSON-safe `ConfigurationJsonObject` for persisted config.
 
 Runtime native adaptation remains:
 
@@ -251,7 +259,7 @@ Ctrl/Cmd+D
 Ctrl/Cmd+Enter
 Fill Handle
 clipboard/paste
-editable filtering
+native editable filtering
 editor validation lifecycle
 ```
 
@@ -266,6 +274,8 @@ safe acknowledgement/rebase
 SSRM LOCAL restoration
 Discard + authoritative refresh
 ```
+
+Feature/business layer owns row/cell editability policy, validation rule selection/messages, persistence mapping/endpoints, Save/Discard presentation and backend authority.
 
 Do not recreate old Apply Last Edit / current-page Flow 1 / Flow 2 behavior.
 
@@ -287,9 +297,9 @@ native editor-validation callbacks
 
 Grouping/tree/pivot/aggregation stay out until their real SSRM/server semantics are designed.
 
-## Type contract remaining questions
+## Type contract remaining refinements
 
-The public type surface is now broad enough to start compiler/default work, but the following may still be refined when real config examples expose a need:
+The public type surface is broad enough to start runtime work. Refine these only when a real config/runtime example requires it:
 
 - strongly correlating registered component names with their static params;
 - feature-specific filter component-name allowlists;
@@ -300,25 +310,54 @@ Do not pre-create registry keys for every AG Grid callback.
 
 ## Exact next batch
 
-Proceed to the **defaults + normalization/compiler foundation**, not another type-only naming pass:
+Proceed to the **defaults + normalization/compiler foundation**, not another general type-only naming pass.
+
+Before implementation, first verify the merged checkpoint locally/CI and regenerate TypeDoc if still stale.
+
+Then implement one coherent batch:
 
 1. define application configurable-SSRM defaults;
-2. define exact shallow/deep merge semantics for `entity.gridOptions`;
+2. define exact merge semantics for `entity.gridOptions`;
 3. define nested merge semantics for `defaultColDef`, `filterParams`, `rowSelection`, `cellSelection`, and static `cellEditorParams` plus runtime validation params;
 4. define runtime validation/normalization of backend JSON against the supported contract;
 5. define allowlist validation for named filters/editors/renderers;
 6. define formatter/parser registries using `RegisteredValueFormatter` / `RegisteredValueParser`;
 7. compile normalized fields into final `ColDef`s while composing runtime business `editable` policy and validation callbacks;
-8. wire the shared PR #42 draft-editing infrastructure by composition, not by copying the Transaction spike;
-9. keep server query mapping/data adapters authoritative for filter/sort semantics.
+8. build/compose the configurable SSRM root while keeping AG Grid lifecycle visible;
+9. compose the shared PR #42 draft-editing infrastructure rather than copying the Transaction spike;
+10. keep server query mapping/data adapters authoritative for filter/sort semantics.
+
+Expected runtime direction:
+
+```text
+application configurable-SSRM defaults
+        +
+normalized entity.gridOptions
+        ↓
+resolved configurable grid options
+        ↓
+normalized fields
+        ↓
+component/formatter/parser/validator resolution
+        ↓
+compiled ColDef[] + GridOptions
+        ↓
+AgGridReact SSRM
+        ↓
+native editing / Cell Selection / clipboard / Fill Handle
+        ↓
+cellValueChanged
+        ↓
+useGridDraftEditing BASE + LOCAL runtime
+```
 
 After that, continue with read/write/save mapping, access/security/masking, actions, Grid State reconciliation and broader runtime schema/versioning.
 
 ## Validation/testing status
 
-The source/docs in this pass were written directly to `configurable-feature-grid` through GitHub. Full local lint/typecheck/unit/build have not been executed on this exact head in this session.
+PR #43 was merged without an exact-head green status being established in the design session. Do not infer green from the merge itself.
 
-After pulling, run:
+At the start of the next implementation session, inspect current GitHub Actions/status first. If the exact merged/configurable head has not been validated, run at least:
 
 ```bash
 npm run typecheck
@@ -328,4 +367,6 @@ npm run build
 npm run docs:configurable
 ```
 
-Generated TypeDoc under `docs/configurable-feature/generated/` remains stale until regeneration is committed.
+Review and commit regenerated TypeDoc output under `docs/configurable-feature/generated/` if it changes.
+
+Do not claim local/browser/CI verification that was not actually executed.
