@@ -36,20 +36,32 @@ React + AG Grid application from Vite
         ↓ HTTP API requests
 Django REST API
         ↓ reads/writes
-Transaction authoritative data
+mutable deterministic E2E sources
+├── Transaction TRANSACTIONS
+├── Review LOANS
+└── Review FINANCE_ROWS
 ```
 
-Django is simply the real backend used by the browser during an end-to-end test. Playwright drives Chromium and can also make normal HTTP requests to the Django API for test setup, such as the E2E data reset.
+Django is simply the real backend used by the browser during an end-to-end test. Playwright drives Chromium and can also make normal HTTP requests to the Django API for test setup, such as the E2E data resets.
 
 When this document says the backend is started in **E2E/Playwright test mode**, it means only this:
 
 ```text
 E2E_TESTING=true
-→ our Django setting enables the test-only Transaction reset endpoint
+→ our Django setting enables the gated test-only reset endpoints
 → normal product behavior/API remains the same
 ```
 
 `E2E_TESTING` is our environment flag, not a Playwright feature and not a standard Django mode.
+
+Current reset endpoints are:
+
+```text
+POST /api/transactions/__e2e__/reset/
+POST /api/review/__e2e__/reset/
+```
+
+Both return 404 when `E2E_TESTING` is not enabled.
 
 ## Technology and source layout
 
@@ -62,7 +74,7 @@ playwright.config.ts
 → browser/project settings, retries, diagnostics, base URL, optional local slow motion
 
 fixtures.ts
-→ mandatory automatic per-test E2E data reset
+→ mandatory automatic per-test reset of every mutable authoritative E2E source
 
 gridTestSupport.ts
 → stable seeded row IDs, editor locators, real-grid readiness helpers
@@ -95,38 +107,56 @@ CI deliberately keeps the original `5173 → 8000` ports. The separate `5174 →
 
 ### Why `E2E_TESTING=true`?
 
-It enables only the default-off test-data reset endpoint used by the automatic Playwright fixture.
+It enables only the default-off test-data reset boundaries used by the automatic Playwright fixture.
 
-Without it, that endpoint returns 404.
+Without it, both reset endpoints return 404.
 
 ### Why `--noreload`?
 
 Normal Django development `runserver` watches Python files and may restart through its autoreloader. That is useful for development but unnecessary for E2E execution.
 
-The Transaction demo source currently lives in one Python process as an in-memory list. `--noreload` gives the browser suite one unambiguous Django process owning that list:
+The current Transaction and Review demo sources live in one Python process as module-level in-memory lists. `--noreload` gives the browser suite one unambiguous Django process owning all of them:
 
 ```text
 one Django process
-→ one TRANSACTIONS list
-→ reset fixture always resets that same authoritative list
+├── one TRANSACTIONS list
+├── one LOANS list
+└── one FINANCE_ROWS list
+        ↓
+fixture resets those exact authoritative list objects before every test/retry
 ```
 
-It is a test-stability choice, not a Playwright requirement.
+The reset helpers mutate each list in place rather than rebinding it, so code already holding the authoritative list object continues to see the reset contents.
+
+This is a test-stability choice, not a Playwright requirement.
 
 ## Per-test data isolation
 
-The Transaction API currently uses the module-level deterministic `TRANSACTIONS` list in `backend/apps/transactions/services.py`. It does not currently persist these rows in SQLite.
+Current browser-visible mutable backend sources are deterministic in-process Python lists:
+
+```text
+backend/apps/transactions/services.py
+→ TRANSACTIONS
+
+backend/apps/review/services.py
+→ LOANS
+→ FINANCE_ROWS
+```
+
+They are not currently persisted in SQLite.
 
 Without isolation:
 
 ```text
 Test A
-→ PATCH txn-00001 account = "E2E client"
-→ Django TRANSACTIONS is mutated
+→ saves Transaction account
+→ submits a Loan
+→ submits Finance review
+→ Django module-level lists are mutated
 
 Test B
 → same Django process
-→ would inherit Test A's value
+→ would inherit Test A's Transaction / Loan / Finance state
 ```
 
 The automatic browser fixture prevents that:
@@ -136,37 +166,45 @@ Playwright test/retry starts
         ↓
 POST /api/transactions/__e2e__/reset/
         ↓
-E2E_TESTING=false → 404
-E2E_TESTING=true  → rebuild deterministic 750 rows
+restore deterministic 750 Transaction rows
         ↓
-run scenario from a known clean state
+POST /api/review/__e2e__/reset/
+        ↓
+restore deterministic 180 Loan + 210 Finance rows
+        ↓
+run scenario from one known clean state
 ```
 
-The reset route is test infrastructure, not a product API:
+The reset routes are test infrastructure, not product APIs:
 
 - `E2E_TESTING` defaults to `false`;
-- normal local/production application mode cannot use it;
-- browser CI enables it only for its dedicated backend process;
-- every normal Playwright test and retry resets before user actions begin.
+- normal local/production application mode cannot use them;
+- browser CI enables them only for its dedicated backend process;
+- every normal Playwright test and retry resets all currently mutable browser-test sources before user actions begin.
 
-Current stable seed examples used by browser tests:
+Current stable seed examples used by browser tests include:
 
 ```text
 txn-00001 → enabled, account Operating
 txn-00002 → selectionDisabled
 txn-00004 → readOnly
+
+LN-1000 → first deterministic Loan row
+FIN-5000 → first deterministic Finance row
 ```
 
 Use stable seeded identifiers rather than whichever rendered row happens to be first.
+
+When another mutable authoritative data source becomes part of browser tests, add it to this same fixture/reset contract in the same capability work. Do not rely on spec order or on choosing rows whose current values happen to make repeated mutations harmless.
 
 ## Browser test flow
 
 A normal real-grid test follows this chain:
 
 ```text
-automatic reset succeeds
+automatic Transaction + Review resets succeed
         ↓
-page.goto(/client | /infinite | /ssrm)
+page.goto(target route)
         ↓
 wait for authoritative API response
         ↓
@@ -195,7 +233,9 @@ Examples:
 
 ```text
 .ag-row[row-id="txn-00001"]
-→ stable business row
+.ag-row[row-id="LN-1000"]
+.ag-row[row-id="FIN-5000"]
+→ stable business rows
 
 getByRole('button', { name: 'Save' })
 → user-visible action
@@ -243,25 +283,31 @@ Do not fix a browser failure by merely increasing timeouts before understanding 
 
 ## Current database boundary
 
-Django has SQLite configured, but current Transaction rows are not stored there.
+Django has SQLite configured, but the current Transaction/Review demo rows exercised by browser tests are not stored there.
 
 ```text
 Django SQLite configuration
 → available framework database
 
-Transaction grid authoritative demo rows
+Transaction authoritative demo rows
 → Python TRANSACTIONS list in process memory
+
+Review Loan authoritative demo rows
+→ Python LOANS list in process memory
+
+Review Finance authoritative demo rows
+→ Python FINANCE_ROWS list in process memory
 ```
 
-The E2E reset abstraction hides that storage implementation from Playwright. The browser fixture asks only for "restore known E2E state".
+The E2E reset abstraction hides those storage implementations from Playwright. The browser fixture asks only for "restore all mutable known E2E state" through the gated endpoints.
 
-## Future database-backed Transactions
+## Future database-backed entities
 
-When Transactions move to a real repository/database, keep the Playwright fixture contract and replace the backend implementation behind the reset boundary:
+When Transactions, Loan, Finance, or future browser-tested entities move to real repositories/databases, keep the Playwright fixture contract and replace the backend implementation behind the corresponding reset boundary:
 
 ```text
 browser test starts
-→ reset dedicated E2E database
+→ reset dedicated E2E datastore(s)
 → seed known rows
 → test through normal UI/API
 ```
@@ -269,10 +315,11 @@ browser test starts
 Rules:
 
 - never point Playwright at developer or production data;
-- use a dedicated E2E/test database;
+- use dedicated E2E/test datastores;
 - migrate/seed known rows deterministically;
 - reset per test when scenarios mutate shared authoritative data;
-- keep stable seeded IDs where tests need known business-policy rows.
+- keep stable seeded IDs where tests need known business-policy rows;
+- keep reset routes default-off and unavailable from normal application processes.
 
 ## Authentication and credentials
 
@@ -296,7 +343,7 @@ Use a dedicated test user and never hardcode real credentials.
 
 Playwright should cover high-value end-to-end contracts and real AG Grid/browser integration, not every logical permutation already proven by focused tests.
 
-Good Playwright candidates include row-model loading/sort/filter/pagination integration, selection lifecycle, Save/Discard, selected actions/export, row eligibility, editors/validation, BASE/LOCAL/REMOTE conflicts, cache/store recreation, error/retry and uncaught renderer/formatter errors.
+Good Playwright candidates include row-model loading/sort/filter/pagination integration, selection lifecycle, Save/Discard, selected actions/export, row eligibility, editors/validation, BASE/LOCAL/REMOTE conflicts, cache/store recreation, error/retry, configurable entity/backend switching, and uncaught renderer/formatter errors.
 
 Keep combinatorial rule/state math and deterministic races in focused tests when a browser adds no useful evidence.
 
@@ -323,6 +370,8 @@ add/update pure/component/backend tests as applicable
         ↓
 add/update Playwright when real browser/grid integration is material
         ↓
+add every newly mutable authoritative E2E source to deterministic reset isolation
+        ↓
 update manual verification steps
         ↓
 update coverage matrix
@@ -346,7 +395,7 @@ Playwright E2E
 React/Vite :5174 → Django :8001
 ```
 
-This is important because the E2E Django process repeatedly resets its own in-memory Transaction data. Your normal Django process on `8000` remains separate and is not reset by Playwright.
+This is important because the E2E Django process repeatedly resets its own in-memory Transaction and Review data. Your normal Django process on `8000` remains separate and is not reset by Playwright.
 
 First-time browser setup from the repository root:
 
@@ -444,11 +493,13 @@ It is not the easiest tool for creating a brand-new flow from manual clicking. U
 
 Playwright Codegen is useful when a developer does not yet know Playwright syntax and wants to create a starting test by using the application normally.
 
-Keep the dedicated E2E backend and frontend running, then reset the E2E data once before recording if the flow depends on known seed values:
+Keep the dedicated E2E backend and frontend running, then reset all mutable E2E data once before recording if the flow depends on known seed values:
 
 ```bash
 npm run e2e:reset
 ```
+
+That command resets both the Transaction source and Review Loan/Finance sources.
 
 Start the recorder:
 
