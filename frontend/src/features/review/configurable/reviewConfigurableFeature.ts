@@ -40,8 +40,15 @@ export interface ReviewEntityRuntime<TData extends object> {
 /**
  * Base feature definition: everything this Review feature can support before current-user access is
  * applied. Nothing here represents a specific user's authorization.
+ *
+ * The explicit `FeatureDefinition` annotation contextually types nested editor/validation params as
+ * the JSON-safe configuration contract. That avoids TypeScript inventing optional `undefined` members
+ * while inferring one heterogeneous field-array union.
  */
-export const reviewFeatureDefinition = {
+export const reviewFeatureDefinition: FeatureDefinition<
+  typeof REVIEW_FEATURE_KEY,
+  ReviewEntityKey
+> = {
   featureKey: REVIEW_FEATURE_KEY,
   entities: {
     loan: {
@@ -159,7 +166,7 @@ export const reviewFeatureDefinition = {
       ],
     },
   },
-} satisfies FeatureDefinition<typeof REVIEW_FEATURE_KEY, ReviewEntityKey>;
+};
 
 /**
  * Frontend-only simulated profiles. These represent already-resolved current-user access; generic
