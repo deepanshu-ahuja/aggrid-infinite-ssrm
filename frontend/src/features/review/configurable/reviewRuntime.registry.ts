@@ -1,4 +1,4 @@
-// GRIDCAP-DATA-LOAD | GRIDCAP-QUERY-SORT | GRIDCAP-QUERY-FILTER | GRIDCAP-ACTION-SELECTED
+// GRIDCAP-DATA-LOAD | GRIDCAP-QUERY-SORT | GRIDCAP-QUERY-FILTER | GRIDCAP-ACTION-SELECTED | GRIDCAP-ROW-ELIGIBILITY
 import { listTransactions, updateTransactionsBySelection } from '@/features/transactions/api/transactions.api';
 import {
   mapTransactionFilterModel,
@@ -85,6 +85,13 @@ const transactionRuntime: ReviewEntityRuntime = {
     };
   },
   registries: reviewRegistries,
+  runtimePolicy: {
+    // Transaction already receives backend-authoritative row interaction metadata. Preserve those same
+    // generic effects when Transaction is rendered by Review instead of weakening the mature SSRM
+    // behavior merely because the columns are configurable.
+    isRowSelectable: ({ data }) => data?.interactionMode === 'enabled',
+    isCellEditable: ({ data }) => data?.interactionMode !== 'readOnly',
+  },
   primaryAction: {
     label: 'Submit',
     execute: async ({ selection, filterModel }, signal) => {
