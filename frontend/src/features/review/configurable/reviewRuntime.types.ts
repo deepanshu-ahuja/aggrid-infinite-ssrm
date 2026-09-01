@@ -1,3 +1,4 @@
+import type { ConfigurableGridRuntimePolicy } from '@/shared/grid/configurable/configuration.compiler';
 import type { ConfigurableGridRegistries } from '@/shared/grid/configurable/configuration.registries';
 import type { GridRowsLoader } from '@/shared/grid/data/gridData.types';
 import type { ServerSelectionIntent } from '@/shared/grid/selection/serverSelection';
@@ -49,5 +50,7 @@ export interface ReviewPrimaryActionAdapter {
 export interface ReviewEntityRuntime {
   rowsLoader: GridRowsLoader<ReviewRuntimeRow>;
   registries: ConfigurableGridRegistries<ReviewRuntimeRow>;
+  /** Optional row-level policy from authoritative runtime data, e.g. Transaction interactionMode. */
+  runtimePolicy?: ConfigurableGridRuntimePolicy<ReviewRuntimeRow>;
   primaryAction?: ReviewPrimaryActionAdapter;
 }
