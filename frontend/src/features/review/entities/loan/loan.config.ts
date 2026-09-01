@@ -56,18 +56,6 @@ export const loanEntityDefinition: ReviewEntityDefinition = {
       ],
     },
     {
-      colId: 'borrowerTaxId',
-      field: 'borrowerTaxId',
-      labelKey: 'review.loan.borrowerTaxId',
-      cellDataType: 'object',
-      minWidth: 205,
-      sortable: false,
-      filter: false,
-      editable: false,
-      cellRenderer: 'reviewSensitiveText',
-      sensitivity: { maskable: true },
-    },
-    {
       colId: 'principal',
       field: 'principal',
       labelKey: 'review.loan.principal',
