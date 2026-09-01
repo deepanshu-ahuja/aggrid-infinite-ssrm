@@ -87,9 +87,15 @@ class LoanSubmitSerializer(serializers.Serializer):
 
 
 class FinanceWindowSerializer(serializers.Serializer):
-    # Finance deliberately uses different names and nesting from the Loan/Transaction query contract.
-    from_ = serializers.IntegerField(source="from", min_value=0)
+    # `from` is intentionally the external Finance wire key, even though it is a Python keyword.
+    # DRF's `source=` changes where validated data is stored; it does not rename the incoming JSON
+    # field. Add the field dynamically so requests can remain `{ "window": { "from": ..., "size": ... } }`.
     size = serializers.IntegerField(min_value=1, max_value=200)
+
+    def get_fields(self):
+        fields = super().get_fields()
+        fields["from"] = serializers.IntegerField(min_value=0)
+        return fields
 
 
 class FinanceOrderSerializer(serializers.Serializer):
