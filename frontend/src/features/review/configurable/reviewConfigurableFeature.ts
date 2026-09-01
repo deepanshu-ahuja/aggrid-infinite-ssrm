@@ -1,4 +1,4 @@
-// GRIDCAP-CONFIG-ACCESS | GRIDCAP-COLUMNS | GRIDCAP-DATA-LOAD
+// GRIDCAP-COLUMNS | GRIDCAP-DATA-LOAD
 import type { GridRowsLoader } from '@/shared/grid/data/gridData.types';
 import type { ConfigurableApplicationAccessProjection } from '@/shared/grid/configurable/configuration.access';
 import type { ConfigurableGridRegistries } from '@/shared/grid/configurable/configuration.registries';
@@ -247,7 +247,7 @@ const financeRows: FinanceReviewRow[] = [
   { id: 'FN-2003', facility: 'Bridge C', counterparty: 'Summit Partners', exposure: 1900000, currency: 'GBP', reviewStatus: 'Escalated' },
 ];
 
-function createLocalRowsLoader<TData>(rows: readonly TData[]): GridRowsLoader<TData> {
+function createLocalRowsLoader<TData extends object>(rows: readonly TData[]): GridRowsLoader<TData> {
   return async (request) => {
     // This FE-only development source intentionally implements no server sort/filter semantics yet.
     // The access/profile experiment is about configuration projection, not pretending local arrays are
