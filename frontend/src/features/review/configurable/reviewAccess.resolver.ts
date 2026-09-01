@@ -46,9 +46,11 @@ function resolveReviewEntityCapabilities(
     const sensitiveAccess = access.sensitiveFields?.[String(resolvedField.colId)];
 
     // Sensitivity is provider/access metadata, not an AG Grid ColDef property. Compile the resolved
-    // entitlement into JSON-safe renderer params and deliberately do not pass `sensitivity` itself to
-    // the generic column compiler, which would otherwise treat unknown properties as native options.
-    const { sensitivity: _sensitivity, ...fieldWithoutSensitivity } = baseField;
+    // entitlement into renderer params and remove the Review-only metadata before the generic compiler
+    // sees the field. This keeps the AG Grid contract bounded while preserving default-deny access.
+    const fieldWithoutSensitivity = { ...baseField };
+    delete fieldWithoutSensitivity.sensitivity;
+
     return {
       ...fieldWithoutSensitivity,
       // Preserve any editability/access narrowing already performed by the shared resolver.
