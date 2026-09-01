@@ -1,11 +1,11 @@
-import type { EntityDefinition } from '@/shared/grid/configurable/configuration.types';
+import type { ReviewEntityDefinition } from '../../configurable/reviewDefinition.types';
 
 /**
  * Base Loan definition: everything the Review feature can support for Loan before current-user access
  * narrows it. This is deliberately much richer than the first local-array proof and exercises the
  * same configurable compiler surface already proven by the Transaction example.
  */
-export const loanEntityDefinition: EntityDefinition = {
+export const loanEntityDefinition: ReviewEntityDefinition = {
   labelKey: 'review.entities.loan',
   dataAdapterKey: 'review-loans',
   rowId: { path: 'id' },
@@ -23,6 +23,13 @@ export const loanEntityDefinition: EntityDefinition = {
       selectAll: 'all',
     },
   },
+  actions: [
+    {
+      key: 'submit',
+      labelKey: 'review.actions.submit',
+      placement: 'primary',
+    },
+  ],
   fields: [
     {
       colId: 'borrower',
@@ -47,6 +54,18 @@ export const loanEntityDefinition: EntityDefinition = {
           message: 'Borrower must be 120 characters or fewer.',
         },
       ],
+    },
+    {
+      colId: 'borrowerTaxId',
+      field: 'borrowerTaxId',
+      labelKey: 'review.loan.borrowerTaxId',
+      cellDataType: 'object',
+      minWidth: 205,
+      sortable: false,
+      filter: false,
+      editable: false,
+      cellRenderer: 'reviewSensitiveText',
+      sensitivity: { maskable: true },
     },
     {
       colId: 'principal',
