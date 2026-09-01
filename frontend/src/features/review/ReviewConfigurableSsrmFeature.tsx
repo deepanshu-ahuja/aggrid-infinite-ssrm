@@ -1,4 +1,4 @@
-// GRIDCAP-CONFIG-ACCESS | GRIDCAP-ROWMODEL-SSRM | GRIDCAP-COLUMNS
+// GRIDCAP-ROWMODEL-SSRM | GRIDCAP-COLUMNS
 import { Alert, Chip, Divider, Stack, Typography } from '@mui/material';
 import { ConfigurableSsrmEntityGrid } from '@/shared/grid/configurable/ConfigurableSsrmEntityGrid';
 import { resolveFeatureAccess } from '@/shared/grid/configurable/configuration.access';
