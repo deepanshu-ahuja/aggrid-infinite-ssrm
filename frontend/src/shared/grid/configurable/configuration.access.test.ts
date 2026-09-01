@@ -1,4 +1,3 @@
-// GRIDCAP-CONFIG-ACCESS
 import { describe, expect, it } from 'vitest';
 import { resolveFeatureAccess, type ConfigurableApplicationAccessProjection } from './configuration.access';
 import type { FeatureDefinition } from './configuration.types';
