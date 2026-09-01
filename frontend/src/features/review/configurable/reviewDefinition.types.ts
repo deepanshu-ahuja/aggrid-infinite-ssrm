@@ -12,42 +12,24 @@ export interface ReviewActionDefinition {
   placement: 'primary' | 'secondary';
 }
 
-/** Base sensitivity capability. Current-user unmask permission is deliberately not stored here. */
-export interface ReviewFieldSensitivityDefinition {
-  maskable: true;
-}
-
 /**
- * Preserve the shared entity contract's full normalized field width and add only Review metadata.
+ * Review's entity extension over the shared configurable grid metadata.
  *
- * Using bare `FieldDefinition` here would accidentally narrow normalized fields' filter-option generic
- * and make an already-normalized Transaction entity incompatible even though its runtime metadata is
- * valid. Review extends the existing configured field; it does not redefine that AG Grid contract.
+ * The shared EntityDefinition continues to own all AG Grid field/grid metadata. Review adds only
+ * business-action identities; endpoint functions, payload mapping and mutation behavior stay outside
+ * declarative configuration in the entity runtime registry.
  */
-type BaseConfigurableFieldDefinition = EntityDefinition['fields'][number];
-
-export type ReviewFieldDefinition = BaseConfigurableFieldDefinition & {
-  sensitivity?: ReviewFieldSensitivityDefinition;
-};
-
-/** Review's current entity extension over the shared configurable grid metadata. */
-export interface ReviewEntityDefinition extends EntityDefinition<string, ReviewFieldDefinition> {
+export interface ReviewEntityDefinition extends EntityDefinition {
   actions?: readonly ReviewActionDefinition[];
 }
 
-export interface ReviewSensitiveFieldAccess {
-  canRequestUnmask: boolean;
-}
-
 /**
- * Review access extends the shared default-deny field projection with action and sensitive-value
- * entitlements. It remains a resolved-current-user allowlist, not a second grid configuration.
+ * Review access extends the shared default-deny field projection with business-action entitlements.
+ * It is an authorization allowlist, not a partial copy/override of EntityDefinition.
  */
 export interface ReviewEntityAccessProjection extends ConfigurableEntityAccessProjection {
   /** Omitted action means unavailable. `true` means this resolved user/session may invoke it. */
   actions?: Readonly<Record<string, true>>;
-  /** Omitted sensitive entry means visible masked value cannot request unmask. */
-  sensitiveFields?: Readonly<Record<string, ReviewSensitiveFieldAccess>>;
 }
 
 export interface ReviewFeatureAccessProjection extends ConfigurableFeatureAccessProjection {
@@ -58,10 +40,7 @@ export interface ReviewApplicationAccessProjection extends ConfigurableApplicati
   features: Readonly<Record<string, ReviewFeatureAccessProjection>>;
 }
 
-/**
- * After Review-specific access resolution, sensitivity metadata has been compiled into static renderer
- * params, so the generic grid receives ordinary shared fields plus allowed action identities.
- */
+/** Shared resolved entity metadata plus the action identities that survived access resolution. */
 export interface ResolvedReviewEntityDefinition extends EntityDefinition {
   actions?: readonly ReviewActionDefinition[];
 }
