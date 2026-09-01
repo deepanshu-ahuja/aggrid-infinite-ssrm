@@ -65,8 +65,10 @@ jobs:
       - name: Django system check
         run: python backend/manage.py check
 
-      - name: Transactions tests
-        run: python backend/manage.py test apps.transactions
+      - name: Backend tests
+        # Keep every backend entity added to the configurable Review proof inside the CI contract.
+        # A green backend job must cover Loan/Finance as well as the existing Transaction APIs.
+        run: python backend/manage.py test apps.transactions apps.review
 
   browser:
     name: Browser regression
@@ -100,8 +102,8 @@ jobs:
 
       - name: Start Django and Vite
         run: |
-          # One no-reload Django process owns the in-memory Transaction source for the browser suite.
-          # E2E_TESTING exposes only the gated reset helper used by the automatic Playwright fixture.
+          # One no-reload Django process owns the deterministic in-memory backend sources for the suite.
+          # E2E_TESTING exposes only the gated Transaction reset helper used by the automatic fixture.
           E2E_TESTING=true python backend/manage.py runserver 127.0.0.1:8000 --noreload > /tmp/grid-backend.log 2>&1 &
           npm run dev -- --host 127.0.0.1 > /tmp/grid-vite.log 2>&1 &
 
