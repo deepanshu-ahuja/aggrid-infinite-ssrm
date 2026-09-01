@@ -1,20 +1,19 @@
-import type { ConfigurableApplicationAccessProjection } from '@/shared/grid/configurable/configuration.access';
+import type { ReviewApplicationAccessProjection } from './reviewDefinition.types';
 
 export const REVIEW_ACCESS_PROFILE_STORAGE_KEY = 'aggrid.devAccessProfile';
 export const REVIEW_ACTIVE_ENTITY_STORAGE_KEY = 'aggrid.devActiveEntity';
-export const DEFAULT_REVIEW_ACCESS_PROFILE = 'allEntities';
+export const DEFAULT_REVIEW_ACCESS_PROFILE = 'loanAndFinance';
 
 export type ReviewAccessProfileKey =
   | 'loanOnly'
   | 'financeOnly'
-  | 'transactionOnly'
   | 'loanAndFinance'
-  | 'allEntities'
   | 'loanReadOnly'
   | 'loanRestricted';
 
 const fullLoanFields = {
   borrower: 'edit',
+  borrowerTaxId: 'read',
   principal: 'edit',
   currency: 'edit',
   status: 'edit',
@@ -26,6 +25,7 @@ const fullLoanFields = {
 const fullFinanceFields = {
   facility: 'read',
   counterparty: 'edit',
+  counterpartyReference: 'read',
   exposure: 'edit',
   currency: 'read',
   desk: 'edit',
@@ -34,58 +34,56 @@ const fullFinanceFields = {
   nextReviewDate: 'edit',
 } as const;
 
-const fullTransactionFields = {
-  reference: 'read',
-  interaction: 'read',
-  account: 'edit',
-  amount: 'edit',
-  currency: 'edit',
-  status: 'edit',
-  transactionDate: 'edit',
-} as const;
-
 /**
  * FE-only resolved access fixtures selected through localStorage.
  *
- * These are authorization allowlists, NOT partial EntityDefinition overrides. A field omitted here is
- * absent for that simulated user. This default-deny rule prevents a newly-added base field from being
- * silently exposed to every existing profile.
+ * These are authorization allowlists, NOT partial entity/grid overrides. Missing fields, actions and
+ * sensitive entitlements are unavailable by default. That default-deny rule is important: adding a new
+ * field/action to a base definition must never silently expose it to every existing user profile.
  */
 export const reviewAccessProfiles: Readonly<
-  Record<ReviewAccessProfileKey, ConfigurableApplicationAccessProjection>
+  Record<ReviewAccessProfileKey, ReviewApplicationAccessProjection>
 > = {
   loanOnly: {
     features: {
-      review: { entities: { loan: { fields: fullLoanFields } } },
+      review: {
+        entities: {
+          loan: {
+            fields: fullLoanFields,
+            actions: { submit: true },
+            sensitiveFields: { borrowerTaxId: { canRequestUnmask: true } },
+          },
+        },
+      },
     },
   },
   financeOnly: {
     features: {
-      review: { entities: { finance: { fields: fullFinanceFields } } },
-    },
-  },
-  transactionOnly: {
-    features: {
-      review: { entities: { transaction: { fields: fullTransactionFields } } },
+      review: {
+        entities: {
+          finance: {
+            fields: fullFinanceFields,
+            actions: { submit: true, escalate: true },
+            sensitiveFields: { counterpartyReference: { canRequestUnmask: true } },
+          },
+        },
+      },
     },
   },
   loanAndFinance: {
     features: {
       review: {
         entities: {
-          loan: { fields: fullLoanFields },
-          finance: { fields: fullFinanceFields },
-        },
-      },
-    },
-  },
-  allEntities: {
-    features: {
-      review: {
-        entities: {
-          loan: { fields: fullLoanFields },
-          finance: { fields: fullFinanceFields },
-          transaction: { fields: fullTransactionFields },
+          loan: {
+            fields: fullLoanFields,
+            actions: { submit: true },
+            sensitiveFields: { borrowerTaxId: { canRequestUnmask: true } },
+          },
+          finance: {
+            fields: fullFinanceFields,
+            actions: { submit: true, escalate: true },
+            sensitiveFields: { counterpartyReference: { canRequestUnmask: true } },
+          },
         },
       },
     },
@@ -97,6 +95,7 @@ export const reviewAccessProfiles: Readonly<
           loan: {
             fields: {
               borrower: 'read',
+              borrowerTaxId: 'read',
               principal: 'read',
               currency: 'read',
               status: 'read',
@@ -104,6 +103,8 @@ export const reviewAccessProfiles: Readonly<
               region: 'read',
               internalScore: 'read',
             },
+            // No actions/unmask entitlement: read-only field access does not imply business-action or
+            // sensitive-value permission.
           },
         },
       },
@@ -114,14 +115,15 @@ export const reviewAccessProfiles: Readonly<
       review: {
         entities: {
           loan: {
-            // Internal score, region and origination date are deliberately absent for this simulated
-            // user. The resolver removes them entirely rather than merely hiding rendered columns.
+            // Internal score, borrower tax id, region and origination date are deliberately absent.
+            // The resolver removes them entirely rather than merely hiding rendered columns.
             fields: {
               borrower: 'read',
               principal: 'edit',
               currency: 'read',
               status: 'edit',
             },
+            actions: { submit: true },
           },
         },
       },
