@@ -1,6 +1,6 @@
 # Configurable Feature Type Hierarchy and AG Grid Mapping
 
-Portable architecture/type map for the current configurable SSRM experiment.
+Portable type/ownership map for the current configurable Review SSRM runtime.
 
 ## Base configuration hierarchy
 
@@ -9,138 +9,153 @@ FeatureDefinition
 ├── featureKey
 └── entities: Record<entityKey, EntityDefinition>
     │
-    │  entityKey = business/config identity
-    │  e.g. "loan", "finance", "builder"
+    │ entityKey = business/config identity
+    │ e.g. loan / finance / transaction
     │
     └── EntityDefinition
         ├── labelKey
         ├── dataAdapterKey
-        ├── rowId: RowIdDefinition
-        │   └── path
+        ├── rowId.path
         ├── gridOptions?: ConfigurableSsrmGridOptions
-        │   ├── reviewed native GridOptions properties
-        │   ├── defaultColDef?: ConfigurableDefaultColDef
-        │   ├── rowSelection?: bounded native SSRM selection
-        │   └── cellSelection?: bounded native range/fill selection
         └── fields: FieldDefinition[]
             ├── reviewed native ColDef properties
-            ├── colId
-            ├── field
-            ├── labelKey
-            ├── cellDataType
+            ├── colId / field / labelKey / cellDataType
             ├── validationRules?
-            ├── valueFormatterKey? / valueFormatterConfig?
-            └── valueParserKey? / valueParserConfig?
+            ├── valueFormatterKey?
+            └── valueParserKey?
 ```
 
-`FeatureDefinition` and `EntityDefinition` are business-agnostic. The entity record key carries business identity.
-
-## Current access hierarchy
+Review extends `EntityDefinition` only with JSON-safe business-action identities:
 
 ```text
-ConfigurableApplicationAccessProjection
-└── features: Record<featureKey, ConfigurableFeatureAccessProjection>
-    └── entities: Record<entityKey, ConfigurableEntityAccessProjection>
-        └── fields: Record<colId, "read" | "edit">
+ReviewEntityDefinition
+└── actions?
+    └── { key, labelKey, placement }
+```
+
+Executable action/API functions do not live in configuration.
+
+## Access hierarchy
+
+```text
+ReviewApplicationAccessProjection
+└── features: Record<featureKey, ReviewFeatureAccessProjection>
+    └── entities: Record<entityKey, ReviewEntityAccessProjection>
+        ├── fields: Record<colId, "read" | "edit">
+        └── actions?: Record<actionKey, true>
 ```
 
 Resolution:
 
 ```text
-FeatureDefinition
+base Review FeatureDefinition
         +
-ConfigurableApplicationAccessProjection
+current-user access projection
         ↓
-resolveFeatureAccess(...)
+resolveFeatureAccess
         ↓
-ResolvedFeatureDefinition
-└── entities: only accessible entities
-    └── EntityDefinition
-        └── fields: only accessible fields
-            ├── read → editable false
-            └── edit → preserve base editability
+shared entity/field narrowing
+        ↓
+resolveReviewFeatureAccess
+        ↓
+Review action narrowing
+        ↓
+ResolvedReviewEntityDefinition
 ```
 
-`edit` access never promotes a base field whose definition is read-only.
+Rules remain default-deny:
 
-The access projection uses `colId` for field identity. It does not guess by label or arbitrary response property.
+- missing entity/field/action → unavailable;
+- `read` → resolved `editable=false`;
+- `edit` → preserves base editability and cannot promote base read-only;
+- unknown entity/field/action references fail controlledly.
 
-## Current Review proof
+The access shape is not an `EntityDefinition` override.
+
+## Current Review entity tree
 
 ```text
 reviewFeatureDefinition
 ├── loan
-│   ├── EntityDefinition
-│   ├── LoanReviewRow
-│   └── GridRowsLoader<LoanReviewRow>
-└── finance
-    ├── EntityDefinition
-    ├── FinanceReviewRow
-    └── GridRowsLoader<FinanceReviewRow>
+│   ├── Loan EntityDefinition
+│   ├── rowId.path = id
+│   └── dataAdapterKey = review-loans
+│
+├── finance
+│   ├── Finance EntityDefinition
+│   ├── rowId.path = recordKey
+│   └── dataAdapterKey = review-finance
+│
+└── transaction
+    ├── thin Review adapter
+    ├── reuses existing Transaction configurable EntityDefinition
+    └── dataAdapterKey = transactions
 ```
 
-Then:
+The runtime path is independent of entity name:
 
 ```text
-resolved Review feature
+resolved entity
         ↓
-active entity key (loan | finance)
+entity.dataAdapterKey
         ↓
-ConfigurableSsrmEntityGrid<TData>
+reviewEntityRuntimeRegistry
         ↓
-compileConfigurableSsrmEntity<TData>
+ReviewEntityRuntime
+├── rowsLoader
+├── registries
+├── runtimePolicy?
+└── primaryAction?
         ↓
-CompiledConfigurableSsrmEntity<TData>
-├── gridOptions: GridOptions<TData>
-├── columnDefs: ColDef<TData>[]
-├── getRowId
-├── getRowIdFromData
-└── components?
+ConfigurableSsrmEntityGrid
 ```
 
-The generic grid root does not know the active profile name or business entity name.
+## Runtime/backend adapter hierarchy
+
+```text
+Loan runtime
+├── mapLoanGridRequest
+├── /api/review/loans/query/
+└── /api/review/loans/submit/
+
+Finance runtime
+├── mapFinanceGridRequest
+├── /api/review/finance/search/
+└── /api/review/finance/commands/submit/
+
+Transaction runtime
+├── existing Transaction request mapper
+├── /api/transactions/query/
+└── existing Transaction selected-action API
+```
+
+All three normalize to the shared runtime contract before the generic grid consumes them.
+
+## Active entity lifecycle
+
+```text
+active entity key
+        ↓
+resolved entity + runtime
+        ↓
+<ReviewResolvedEntity key={activeEntityKey}>
+        ↓
+ConfigurableSsrmEntityGrid
+```
+
+Changing the entity identity remounts the entity subtree rather than reusing one live GridApi/datasource across incompatible business entities.
 
 ## Profile identity versus active entity
 
-Development-only localStorage currently supplies two separate values:
-
 ```text
 aggrid.devAccessProfile
-→ simulated current-user access
+→ which feature/entity/field/action projection to simulate
 
 aggrid.devActiveEntity
 → which accessible entity is currently open
 ```
 
-Do not collapse these into one concept. A profile may access multiple entities.
-
-## Trusted local configuration versus runtime JSON
-
-Current Review path:
-
-```text
-frontend-authored object
-        ↓
-`satisfies FeatureDefinition`
-        ↓
-access resolution
-        ↓
-compiler
-```
-
-Future backend/storage path:
-
-```text
-unknown runtime JSON
-        ↓
-configuration.normalizer.ts
-        ↓
-FeatureDefinition-compatible normalized config
-        ↓
-access resolution / compiler
-```
-
-Runtime normalization is a transport/trust-boundary concern, not a mandatory ceremony for every typed local constant.
+These are separate concepts. Current supported active entities are `loan | finance | transaction`.
 
 ## Field → AG Grid mapping
 
@@ -154,42 +169,70 @@ field.filter           → ColDef.filter
 field.filterParams     → ColDef.filterParams
 field.cellEditor       → ColDef.cellEditor
 field.cellEditorParams → ColDef.cellEditorParams
+field.cellRenderer     → validated renderer/component
 validationRules        → validator registry → getValidationErrors
 valueFormatterKey      → formatter registry → ColDef.valueFormatter
 valueParserKey         → parser registry → ColDef.valueParser
 ```
 
-Native names remain native when stored semantics match AG Grid. Executable functions remain frontend-owned.
+## Shared grid runtime output
+
+```text
+compileConfigurableSsrmEntity<TData>
+        ↓
+CompiledConfigurableSsrmEntity<TData>
+├── gridOptions: GridOptions<TData>
+├── columnDefs: ColDef<TData>[]
+├── getRowId
+├── getRowIdFromData
+└── components?
+```
+
+`ConfigurableSsrmEntityGrid` then visibly owns SSRM lifecycle, datasource composition, selection controller, GridApi ref, validation/editing events, and BASE + LOCAL draft restoration.
 
 ## Runtime-owned values
 
-Even though `AgGridReact` accepts them, these do not become ordinary feature metadata:
+These remain frontend/runtime-owned even though AG Grid accepts them:
 
 ```text
 modules
 rowModelType
 serverSideDatasource
-columnDefs application
 GridApi refs
 event callbacks
 React lifecycle
 getRowId executable callback
-row-specific business callbacks
+row runtime policy
+backend API functions
+mutation state
 BASE + LOCAL runtime state
 ```
 
-The configurable compiler produces native grid/column inputs; the generic SSRM root still visibly owns AG Grid lifecycle.
-
 ## Query boundary
 
-The compiler does not infer backend query semantics from `colId` or `field`.
-
 ```text
-AG Grid sort/filter model
+AG Grid sort/filter request
         ↓
-entity/feature request mapper
+entity field allowlist/request mapper
         ↓
-backend contract
+entity backend API
+        ↓
+entity response normalizer
+        ↓
+GridRowsLoader result
 ```
 
-The current Loan/Finance local proof intentionally has no server sort/filter semantics. The Transaction mapper remains the real server-query reference until another backend entity is implemented.
+Loan, Finance, and Transaction intentionally prove that one configurable grid does not require one backend wire format.
+
+## Trust boundary
+
+```text
+trusted frontend Loan/Finance config
+→ TypeScript/access/compiler
+
+runtime backend/storage config (`unknown`)
+→ configuration.normalizer
+→ access/compiler
+```
+
+Transaction currently reuses its earlier normalized backend-like definition. Normalization is a runtime trust-boundary concern, not mandatory ceremony for trusted local constants.
