@@ -1,7 +1,4 @@
-import type {
-  EntityDefinition,
-  FieldDefinition,
-} from '@/shared/grid/configurable/configuration.types';
+import type { EntityDefinition } from '@/shared/grid/configurable/configuration.types';
 import type {
   ConfigurableApplicationAccessProjection,
   ConfigurableEntityAccessProjection,
@@ -20,7 +17,16 @@ export interface ReviewFieldSensitivityDefinition {
   maskable: true;
 }
 
-export type ReviewFieldDefinition = FieldDefinition & {
+/**
+ * Preserve the shared entity contract's full normalized field width and add only Review metadata.
+ *
+ * Using bare `FieldDefinition` here would accidentally narrow normalized fields' filter-option generic
+ * and make an already-normalized Transaction entity incompatible even though its runtime metadata is
+ * valid. Review extends the existing configured field; it does not redefine that AG Grid contract.
+ */
+type BaseConfigurableFieldDefinition = EntityDefinition['fields'][number];
+
+export type ReviewFieldDefinition = BaseConfigurableFieldDefinition & {
   sensitivity?: ReviewFieldSensitivityDefinition;
 };
 
@@ -54,7 +60,7 @@ export interface ReviewApplicationAccessProjection extends ConfigurableApplicati
 
 /**
  * After Review-specific access resolution, sensitivity metadata has been compiled into static renderer
- * params, so the generic grid receives ordinary FieldDefinition values plus allowed action identities.
+ * params, so the generic grid receives ordinary shared fields plus allowed action identities.
  */
 export interface ResolvedReviewEntityDefinition extends EntityDefinition {
   actions?: readonly ReviewActionDefinition[];
