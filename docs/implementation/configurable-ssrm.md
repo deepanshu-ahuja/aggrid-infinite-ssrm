@@ -1,94 +1,158 @@
 # Configurable SSRM runtime
 
-The isolated `/configurable-ssrm` route now proves a business-agnostic configurable SSRM feature/runtime rather than a Transaction-only configurable grid.
+The `/configurable-ssrm` route implements one business-agnostic Review SSRM runtime that can render three different business entities: Loan, Finance, and Transaction.
 
-Existing `/client`, `/infinite`, `/ssrm`, and `/ssrm-native-editing` remain independent Transaction references and are not refactored through this path.
+Existing `/client`, `/infinite`, `/ssrm`, and `/ssrm-native-editing` remain independent Transaction reference routes. `TransactionsSsrmNativeEditingGrid` is intentionally preserved as the native-editing reference; the older Transaction-only configurable grid root has been removed because Review now owns the configurable route.
 
 ## Current implemented flow
 
 ```text
-frontend base FeatureDefinition
-("what can this feature support?")
+Review base FeatureDefinition
+├── loan
+├── finance
+└── transaction
         +
-frontend-only simulated current-user access profile
-("what may this user receive/do?")
+frontend-only simulated current-user access projection
         ↓
-resolveFeatureAccess
+resolveReviewFeatureAccess
         ↓
-resolved feature/entities/fields
+resolved entities + resolved fields + permitted action identities
         ↓
 active entity choice
         ↓
-ConfigurableSsrmEntityGrid<TData>
+entity.dataAdapterKey
         ↓
-application configurable-SSRM defaults + resolved entity.gridOptions
+Review runtime registry
         ↓
-compiler / registries
+keyed ReviewResolvedEntity
+        ↓
+ConfigurableSsrmEntityGrid
+        ↓
+compiler + executable registries
         ↓
 native GridOptions + ColDef[] + getRowId
         ↓
-AgGridReact SSRM lifecycle
+AG Grid SSRM datasource / selection / editing lifecycle
         ↓
-entity-specific rows loader
-        ↓
-native editing / validation
-        ↓
-useGridDraftEditing BASE + LOCAL
+entity-owned backend adapter
 ```
 
-AG Grid still owns native grid/editing behavior. The configurable compiler does not create a replacement grid API.
+Changing the active entity creates a keyed Review entity subtree. The previous GridApi, datasource, selection, mutation state, and BASE + LOCAL draft state are therefore destroyed instead of hot-swapping a live SSRM instance between business entities.
 
-## Generic feature/entity boundary
+## Feature/entity boundary
 
-`FeatureDefinition` is business-agnostic. Entity identity lives in `FeatureDefinition.entities` keys.
+`FeatureDefinition` and `ConfigurableSsrmEntityGrid` remain business-agnostic. Business identity is carried by the `entities` record keys and the resolved entity metadata.
 
-The current FE-only Review example defines one feature with two genuinely different entity/data shapes:
+Current Review entities:
 
 ```text
 review
 ├── loan
-│   ├── LoanReviewRow
-│   └── borrower / principal / status / internalScore
-└── finance
-    ├── FinanceReviewRow
-    └── facility / counterparty / exposure / currency / reviewStatus
+│   ├── rowId.path = id
+│   ├── dataAdapterKey = review-loans
+│   └── Loan-specific fields / validation / query metadata
+│
+├── finance
+│   ├── rowId.path = recordKey
+│   ├── dataAdapterKey = review-finance
+│   └── Finance-specific fields / validation / query metadata
+│
+└── transaction
+    ├── reuses the existing rich Transaction configurable entity definition
+    ├── dataAdapterKey = transactions
+    └── Review adds only its common Submit action metadata
 ```
 
-The shared `ConfigurableSsrmEntityGrid<TData>` has no knowledge of Loan, Finance, Transaction, roles, or localStorage. It receives an already-resolved `EntityDefinition`, an entity-specific `GridRowsLoader<TData>`, registries, and a label resolver. The concrete SSRM lifecycle remains visible inside this root.
+Transaction is intentionally visible under `features/review/entities/transaction/`, but its large column/grid configuration is not copied. Review composes the existing Transaction definition so there is one authoritative Transaction configurable config.
 
-The old Transaction configurable consumer files remain as earlier proof/reference code, but `/configurable-ssrm` now renders the Review feature so the route proves that the configurable runtime is not Transaction-shaped.
+The generic grid never branches on `loan`, `finance`, or `transaction`.
+
+## Backend/data adapter ownership
+
+One Review grid does **not** imply one polymorphic Review endpoint.
+
+The three entities intentionally prove different backend ownership:
+
+```text
+Loan
+POST /api/review/loans/query/
+request  → offset / limit / sort / filters
+response → rows / totalCount / filteredCount
+
+Finance
+POST /api/review/finance/search/
+request  → window / orderBy / criteria
+response → records / counts
+
+Transaction
+POST /api/transactions/query/
+request/response → existing Transaction server-query contract
+```
+
+Loan and Finance each have feature-owned request mappers with explicit field allowlists. Finance deliberately uses a wire vocabulary unrelated to the shared grid request/result shape. Its runtime adapter normalizes `records/counts` into the `GridRowsLoader` result expected by shared SSRM code.
+
+This boundary is the important rule:
+
+```text
+AG Grid request
+        ↓
+entity request mapper / allowlist
+        ↓
+entity backend contract
+        ↓
+entity runtime normalizes response
+        ↓
+shared GridRowsLoader result
+```
+
+The compiler never infers backend field semantics from arbitrary configured columns.
+
+## Rich configurable field behavior
+
+Loan and Finance now exercise the same configurable compiler surface used by Transaction, including applicable combinations of:
+
+- server-side `sortable` metadata;
+- text/number/date filters and filter parameters;
+- native text/number/select editors;
+- parser registry keys;
+- formatter registry keys;
+- renderer registry keys;
+- declarative validation rules;
+- native sizing and selection options;
+- different stable row-ID paths.
+
+Executable functions and React components remain frontend-owned registry entries. Configuration contains stable keys, not arbitrary executable JavaScript.
 
 ## Base definition versus current-user projection
 
-The base feature/entity definition describes everything that business context can support.
+The base entity definition says what the business entity can support. The access projection says which parts this current user/session may receive or use.
 
-A separate current-user access projection narrows it:
+Field rules remain default-deny:
 
 ```text
-base entity fields/capabilities
-        +
-current-user projection
-        ↓
-resolved entity
+feature omitted → feature unavailable
+entity omitted  → entity unavailable
+field omitted   → field removed
+field = read    → field present and resolved editable=false
+field = edit    → preserve base editability; never promote base read-only
 ```
 
-Current access semantics are intentionally small:
+Review extends the shared access projection with action identities:
 
-- omitting a feature means the user cannot access that feature;
-- omitting an entity means the user cannot access that entity;
-- omitting a field means the field is not delivered to the configurable grid;
-- field access `read` forces that resolved field to `editable: false`;
-- field access `edit` preserves the base field's editability but can never promote a base read-only field.
+```text
+action omitted       → unavailable
+actions[action]=true → permitted if the base entity actually declares that action
+```
 
-This means authorization removes unavailable configuration rather than merely applying CSS hiding.
+The access object is **not** a partial `EntityDefinition` override. It does not repeat column widths, editors, formatters, filters, or other grid configuration.
 
-`configuration.access.ts` validates references to entity keys and field `colId` values and fails controlledly for an invalid local/access projection.
+Unknown entity/field/action references fail controlledly.
 
-## FE-only development profiles
+## Development-only access profiles
 
-There is no real authentication/authorization backend for this configurable experiment yet. The current implementation intentionally simulates already-resolved current-user access in frontend code.
+There is still no real authentication/access backend for Review. localStorage selects a frontend development access fixture only.
 
-The profile selector is stored in localStorage:
+Profile key:
 
 ```text
 aggrid.devAccessProfile
@@ -99,112 +163,163 @@ Supported values:
 ```text
 loanOnly
 financeOnly
+transactionOnly
 loanAndFinance
+allEntities
 loanReadOnly
+loanRestricted
 ```
 
-Default when missing/invalid:
+Default:
 
 ```text
-loanAndFinance
+allEntities
 ```
 
-The currently opened entity is a separate localStorage value:
+Active entity is independent navigation state:
 
 ```text
-aggrid.devActiveEntity = loan | finance
+aggrid.devActiveEntity = loan | finance | transaction
 ```
 
-This separation is important. A simulated user with `loanAndFinance` access can open Loan or Finance independently; profile identity does not double as navigation state.
+If the stored active entity is not accessible under the selected profile, Review falls back to the first actually accessible entity.
 
-After changing either localStorage value, reload `/configurable-ssrm`.
+These localStorage values are development tooling only and are not a security boundary.
 
-These localStorage values are development tooling only and are **not a security boundary**. Later backend authorization should replace the development access provider with a resolved current-user manifest while the resolver/grid boundary stays stable.
+## Common Review Submit action
 
-## Trusted local configuration versus future backend JSON
-
-The Review base feature is authored as typed frontend code and uses TypeScript `satisfies FeatureDefinition<...>`. It is not forced through the backend/storage `unknown` normalization boundary merely to imitate a transport that does not exist yet.
-
-Current rule:
+Loan, Finance, and Transaction currently declare the same primary Review action identity:
 
 ```text
-trusted frontend-authored configuration
-        ↓
-TypeScript + controlled compiler assertions
-        ↓
-compiler
+submit
 ```
 
-Future backend/storage rule:
+The ownership split is deliberate:
 
 ```text
-backend/storage JSON (`unknown`)
-        ↓
-runtime validation / normalization
-        ↓
-normalized frontend configuration
-        ↓
-same access/compiler/runtime pipeline
+ReviewConfigurableSsrmFeature
+→ owns TanStack mutation state / success / error presentation
+
+active ReviewEntityRuntime
+→ owns endpoint, payload mapping, backend semantics, response normalization
+
+ConfigurableSsrmEntityGrid
+→ owns selected target + applied filter model
+→ clears selection only after successful action
+→ refreshes its own SSRM store after successful action
 ```
 
-`configuration.normalizer.ts` remains available for a real runtime JSON boundary and for the earlier backend-like Transaction proof. It is not required simply because a local frontend object could theoretically be stored remotely later.
+Current entity mappings:
 
-## Defaults and compilation
+```text
+Loan Submit
+→ POST /api/review/loans/submit/
 
-`configuration.defaults.ts` defines application policy for the configurable SSRM path.
+Finance Submit
+→ POST /api/review/finance/commands/submit/
+→ deliberately different command payload/response vocabulary
 
-The defaults reuse server-backed pagination/cache values, use `invalidEditValueMode = "block"`, enable native multi-row selection and Cell Selection, and provide common one-condition Simple Filter behavior.
+Transaction Submit
+→ existing Transaction selected-action API
+→ Review adapter maps the common Submit meaning to Transaction status Pending
+```
 
-The configurable defaults explicitly set `defaultColDef.sortable = false` and `defaultColDef.filter = false`. A server-backed configurable field must opt into query behavior only when its data adapter can execute matching semantics.
+A failed action Promise keeps the user's selection intact and does not refresh the store.
 
-`entity.gridOptions` overrides application defaults. The existing deterministic nested merge semantics remain unchanged.
+Entity-specific secondary actions are not implemented in the current Review UI yet.
 
-Each resolved field becomes a normal `ColDef`. The compiler maps `labelKey` to `headerName`, keeps native declarative properties native, resolves registered formatter/parser/validator behavior, merges native `getValidationErrors`, and compiles `rowId.path` to AG Grid `getRowId` plus the draft-state row accessor.
+## SSRM selection currently composed by the configurable root
 
-## Current Review data source
+`ConfigurableSsrmEntityGrid` composes the proven SSRM selection controller rather than inventing a Review-only selection model.
 
-Loan and Finance currently use tiny frontend-only in-memory row loaders. This is deliberate for the access/profile experiment: it proves different row data types and entity definitions without inventing backend Loan/Finance APIs before those contracts exist.
+Current controls/semantics include:
 
-The local loaders do not implement server sort/filter semantics, and the Review entity fields therefore leave sorting/filtering disabled. The previous Transaction adapter remains the reference for real server query mapping.
+- normal row/manual selection;
+- explicit **Select current page**;
+- explicit **Select all filtered**;
+- native SSRM header checkbox for **All records**;
+- compact include/exclude selection intent for unloaded rows;
+- selected-row count using total/filtered count ownership;
+- clear selection;
+- runtime row-selectability policy when supplied by an entity.
 
-When a real entity backend is introduced, supply a feature-owned `GridRowsLoader<TData>`/request mapper. Do not infer arbitrary backend query fields from configured AG Grid columns.
+Transaction preserves its backend-derived row interaction policy when rendered through Review.
 
-## Editing
+## Editing and validation
 
-Resolved `editable` metadata drives native AG Grid editing. `read` access is applied before compilation, so native single-cell editing, Fill Handle, clipboard and other edit entry points see the same final editability.
+Resolved field access is applied before compilation, so AG Grid receives the final `editable` behavior.
 
-The generic root composes `useGridDraftEditing` and retains only dirty BASE + LOCAL fields by stable row ID. Save/read-write mapping is still not implemented on this route.
+The configurable root currently composes:
+
+```text
+native AG Grid editor
+        ↓
+native configurable validation
+        ↓
+committed cellValueChanged
+        ↓
+useGridDraftEditing
+        ↓
+BASE + LOCAL dirty fields by stable row ID
+```
+
+This route does **not** yet implement configurable row Save/Save Selected/Discard persistence. The common Submit action is a selected business action, not the persistence path for cell edits.
+
+REMOTE conflict/concurrency/versioning remains deliberately separate.
+
+## Trusted local configuration versus runtime JSON
+
+Current Review Loan/Finance base definitions are trusted typed frontend source and therefore go directly through access resolution/compiler checks.
+
+Transaction continues to reuse its earlier normalized backend-like configurable definition.
+
+When real backend/storage configuration arrives:
+
+```text
+runtime JSON (`unknown`)
+        ↓
+validate / normalize
+        ↓
+FeatureDefinition-compatible value
+        ↓
+access resolution
+        ↓
+compiler/runtime
+```
+
+Do not pass raw runtime JSON to AG Grid, and do not force every trusted local constant through `unknown` normalization merely to imitate a transport boundary that does not exist.
 
 ## Current limits
 
-The configurable Review runtime does **not** yet implement:
+The configurable Review runtime does not yet implement:
 
-- real backend authentication/authorization;
+- real authentication/backend-authoritative user access;
 - backend-provided feature/access metadata;
-- business actions/action authorization;
-- masking/unmask flows;
-- configurable Save/read/write mapping;
-- row-specific authorization/capability payloads;
-- Grid State/access reconciliation;
+- configurable Save/Save Selected/Discard write mapping for cell drafts;
+- masking/unmask/sensitive-value retrieval;
+- entity-specific secondary action rendering/execution;
+- row-specific authorization/capability payloads beyond current runtime row interaction policy;
+- configurable Grid State/access reconciliation;
 - runtime config schema/version negotiation;
 - grouping/tree/pivot/aggregation;
-- REMOTE/conflict/concurrency/versioning.
+- REMOTE conflict/concurrency/versioning.
 
-These remain separate contracts rather than speculative properties added to the current metadata surface.
+Do not add placeholder metadata for these to current entities until the corresponding runtime/API contract is actually implemented.
 
-## Source and verification
+## Key source
 
-Key source:
-
-- `frontend/src/shared/grid/configurable/configuration.access.ts`
-- `frontend/src/shared/grid/configurable/ConfigurableSsrmEntityGrid.tsx`
-- `frontend/src/features/review/configurable/reviewConfigurableFeature.ts`
 - `frontend/src/features/review/ReviewConfigurableSsrmFeature.tsx`
+- `frontend/src/features/review/configurable/reviewFeature.definition.ts`
+- `frontend/src/features/review/configurable/reviewAccess.profiles.ts`
+- `frontend/src/features/review/configurable/reviewAccess.resolver.ts`
+- `frontend/src/features/review/configurable/reviewRuntime.registry.ts`
+- `frontend/src/features/review/entities/loan/`
+- `frontend/src/features/review/entities/finance/`
+- `frontend/src/features/review/entities/transaction/`
+- `frontend/src/shared/grid/configurable/ConfigurableSsrmEntityGrid.tsx`
 - `frontend/src/shared/grid/configurable/configuration.compiler.ts`
-- `frontend/src/shared/grid/configurable/configuration.defaults.ts`
+- `backend/apps/review/`
 
-Focused tests cover access projection and the existing compiler/defaults/normalizer contracts. Playwright covers localStorage profile/entity selection, entity/field removal, read-only projection, and native validation + BASE/LOCAL editing on the real `/configurable-ssrm` route.
+Focused mapper/backend tests cover the entity wire contracts. Playwright covers the real Review route, three entity runtimes, access projection, native validation/draft tracking, and Loan/Finance Submit payload delegation.
 
-Manual verification steps are in [`testing/configurable-ssrm-manual-testing.md`](testing/configurable-ssrm-manual-testing.md).
-
-Do not treat documented manual steps as executed unless they were actually run.
+Manual verification steps are in [`testing/configurable-ssrm-manual-testing.md`](testing/configurable-ssrm-manual-testing.md). A documented manual checklist is not a claim that those steps have been executed.

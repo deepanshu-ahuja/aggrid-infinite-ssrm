@@ -2,9 +2,9 @@
 
 Repository: `deepanshu-ahuja/aggrid-infinite-ssrm`
 
-Working branch: `configurable-feature-grid`
+Current continuation branch/PR at the time of this update: `configurable-feature-grid` / PR #45.
 
-Always inspect GitHub again before continuing. Do not assume the branch SHA in this document is still HEAD.
+Always inspect GitHub again before continuing. Do not assume branch/PR state or SHA from this document is still current.
 
 ## Durable reading order
 
@@ -21,197 +21,251 @@ Always inspect GitHub again before continuing. Do not assume the branch SHA in t
 11. `frontend/src/shared/grid/configurable/configuration.types.ts`;
 12. `frontend/src/shared/grid/configurable/configuration.access.ts`;
 13. `frontend/src/shared/grid/configurable/ConfigurableSsrmEntityGrid.tsx`;
-14. `frontend/src/features/review/configurable/reviewConfigurableFeature.ts`;
-15. `frontend/src/features/review/ReviewConfigurableSsrmFeature.tsx`.
+14. `frontend/src/features/review/configurable/reviewFeature.definition.ts`;
+15. `frontend/src/features/review/configurable/reviewAccess.profiles.ts`;
+16. `frontend/src/features/review/configurable/reviewAccess.resolver.ts`;
+17. `frontend/src/features/review/configurable/reviewRuntime.registry.ts`;
+18. `frontend/src/features/review/entities/loan/`;
+19. `frontend/src/features/review/entities/finance/`;
+20. `frontend/src/features/review/entities/transaction/`;
+21. `frontend/src/features/review/ReviewConfigurableSsrmFeature.tsx`.
 
-When editing is involved, also inspect the merged native-first SSRM editing reference (PR #42) and the current `gridDraftEditing.ts` / `useGridDraftEditing.ts`.
+For native-editing comparison, inspect `TransactionsSsrmNativeEditingGrid`. It is intentionally retained as a reference and is not cleanup debt.
 
 ## Current architecture checkpoint
 
-PR #43 established the native-first public configurable type contract. PR #44 originally added defaults/normalization/compiler and a Transaction proof consumer. The current branch advances that experiment to the intended feature/entity/access boundary.
-
-Current route flow:
+The configurable Review route now has three business entities and real server-backed loaders:
 
 ```text
-frontend base Review FeatureDefinition
-        │
-        ├── loan EntityDefinition + LoanReviewRow runtime
-        └── finance EntityDefinition + FinanceReviewRow runtime
+Review FeatureDefinition
+├── loan
+├── finance
+└── transaction
         +
-frontend-only simulated current-user access profile
+frontend simulated current-user access projection
         ↓
-resolveFeatureAccess
+resolveReviewFeatureAccess
         ↓
-resolved feature / entity set / field set / read-vs-edit access
+resolved fields + permitted action identities
         ↓
-separate active entity choice
+active entity
         ↓
-ConfigurableSsrmEntityGrid<TData>
+entity.dataAdapterKey
         ↓
-application configurable-SSRM defaults + compiler + registries
+Review runtime registry
         ↓
-native GridOptions + ColDef[] + getRowId
+keyed entity subtree
         ↓
-AG Grid SSRM lifecycle + entity-specific rows loader
-        ↓
-native validation/editing
-        ↓
-useGridDraftEditing BASE + LOCAL
+ConfigurableSsrmEntityGrid
 ```
 
-The configurable runtime stays isolated from `/client`, `/infinite`, `/ssrm`, and `/ssrm-native-editing`.
+The generic grid does not branch on Loan/Finance/Transaction/profile names.
 
-## Critical business-agnostic rule
+## Entity/backend ownership
 
-The configurable grid is **not a Transaction grid**.
+Do not collapse Review into one polymorphic backend endpoint merely because one UI can render several entities.
 
-`FeatureDefinition` owns a feature key and a set of entity definitions. Entity keys carry business identity such as `loan`, `finance`, `builder`, etc. The shared types/compiler/grid must not hard-code Transaction, Loan, Finance, or any other domain.
+Current contracts deliberately differ:
 
-`ConfigurableSsrmEntityGrid<TData>` receives an already-resolved entity plus its runtime adapters. It has no role/profile/localStorage/domain-name branching.
+```text
+Loan
+POST /api/review/loans/query/
+→ offset / limit / sort / filters
 
-The current Review route deliberately proves two different row types and different field sets. Do not create `LoanGrid`, `FinanceGrid`, etc. as separate grid frameworks.
+Finance
+POST /api/review/finance/search/
+→ window / orderBy / criteria
+→ records / counts response
+
+Transaction
+POST /api/transactions/query/
+→ existing Transaction contract
+```
+
+Entity-specific request mappers/allowlists own AG Grid → backend translation. Runtime adapters normalize backend results into `GridRowsLoader` results.
+
+Finance is intentionally wire-incompatible with Loan to prove the shared grid is not coupled to one backend shape.
+
+## Transaction inside Review
+
+Transaction **is** a Review entity.
+
+It lives visibly under:
+
+```text
+frontend/src/features/review/entities/transaction/
+```
+
+but Review does not copy the large Transaction configurable column definition. The thin Review adapter reuses `transactionsConfigurableFeature.entities.transaction` and adds only Review-specific business-action metadata/runtime adaptation.
+
+The obsolete `TransactionsConfigurableSsrmGrid` root has been removed. `TransactionsSsrmNativeEditingGrid` remains intentionally preserved.
 
 ## Base definition versus current-user access
 
-Keep these concepts separate:
+Keep these layers separate:
 
 ```text
 BASE FEATURE / ENTITY DEFINITION
-= everything the business view can support
+= what the business entity can support
 
 CURRENT-USER ACCESS PROJECTION
-= what this user/session may actually receive/do
+= which entities/fields/actions this user/session may receive/use
 
-RUNTIME ROW/FIELD CAPABILITIES
-= per-row restrictions when required later
+RUNTIME ROW POLICY
+= row-specific behavior based on authoritative row data where applicable
 ```
 
-The current frontend-only access resolver supports feature/entity/field removal plus `read`/`edit` field projection. `read` can downgrade a base editable field. `edit` cannot promote a field whose base definition is read-only.
+Field access remains default-deny (`read | edit`, missing = unavailable). Review also narrows declared action identities (`true`, missing = unavailable).
 
-Do not duplicate an entire feature/entity configuration per role/profile. Resolve a small access projection against the shared base definition.
+The access object is not a partial grid config override. Do not put widths/editors/filters/formatters/parsers/etc. into role/profile projections.
 
-## Development-only localStorage profiles
+## Development profiles
 
-Real auth/backend access metadata does not exist yet. For local verification, the Review feature simulates already-resolved user access.
-
-Profile selector:
+There is still no real authenticated access provider. Current localStorage development fixtures are:
 
 ```text
 aggrid.devAccessProfile
-```
-
-Current values:
-
-```text
-loanOnly
-financeOnly
-loanAndFinance
-loanReadOnly
+→ loanOnly
+→ financeOnly
+→ transactionOnly
+→ loanAndFinance
+→ allEntities
+→ loanReadOnly
+→ loanRestricted
 ```
 
 Default:
 
 ```text
-loanAndFinance
+allEntities
 ```
 
-Active entity selector:
+Separate active entity:
 
 ```text
-aggrid.devActiveEntity = loan | finance
+aggrid.devActiveEntity = loan | finance | transaction
 ```
 
-The profile and active entity are deliberately separate. A user/profile with access to both Loan and Finance may open either entity without changing identity/access.
+These values simulate an already-resolved access result for development only. They are not a security boundary.
 
-Change the key(s) in browser localStorage and reload `/configurable-ssrm`.
+## Active entity lifecycle
 
-These values are development tooling only. They are not a security boundary and must not become production authorization logic.
+The Review entity subtree is keyed by active entity identity.
 
-## Trusted local configuration versus backend JSON
+Do not hot-swap a live GridApi/datasource between Loan, Finance, and Transaction. An entity change should destroy previous grid/datasource/selection/draft/mutation state and mount the next entity fresh.
 
-Do **not** force trusted frontend-authored configuration through runtime `unknown` normalization merely to simulate a backend that does not exist yet.
+## Common primary action
 
-Current local path:
+Current entities expose the same Review action identity when access permits it:
 
 ```text
-frontend-authored typed config
-        ↓
-TypeScript (`satisfies FeatureDefinition`)
-        ↓
-access resolution
-        ↓
-compiler
+submit
 ```
 
-Future backend/storage path:
+Ownership:
 
 ```text
-backend/storage JSON (`unknown`)
-        ↓
-runtime validation / normalization
-        ↓
-normalized frontend config
-        ↓
-access/compiler/runtime
+Review component
+→ TanStack mutation lifecycle / UI result
+
+entity runtime
+→ endpoint / payload mapping / backend semantics / response normalization
+
+ConfigurableSsrmEntityGrid
+→ selection intent / filter model / successful refresh lifecycle
 ```
 
-`configuration.normalizer.ts` remains the real trust boundary when runtime JSON eventually crosses an API/storage boundary. The earlier Transaction proof may continue using it, but new local configuration does not need to pretend it is untrusted transport data.
+Current endpoints differ for Loan, Finance, and Transaction. Do not move those API details into the generic grid.
 
-## Native-first rules still apply
+Entity-specific secondary actions are not implemented yet; do not add placeholder action config without runtime/UI support.
 
-Use AG Grid-native configuration wherever the persisted meaning is native. Keep native names such as `filter`, `filterParams`, `cellEditor`, `cellRenderer`, `rowSelection`, and `cellSelection`.
+## Current configurable SSRM capability level
 
-Do not accept executable functions/expressions from backend JSON. Use frontend registry keys only where executable behavior genuinely needs selection.
+The generic grid now composes materially more of the mature SSRM mechanics:
 
-Runtime infrastructure remains runtime-owned: `modules`, `rowModelType`, datasource objects, component implementations, `GridApi` refs, `getRowId` callbacks, events and row/business callbacks.
+- server-backed loading;
+- explicit entity sort/filter mapping;
+- stable row IDs;
+- manual/current-page/all-filtered/all-records selection semantics;
+- selected count/compact selection target;
+- optional row runtime policy;
+- common selected business action lifecycle;
+- rich configurable columns/editors/renderers/parsers/formatters/validation;
+- native editing plus BASE + LOCAL draft tracking;
+- load retry/refresh lifecycle.
 
-## Data ownership in the current Review proof
+It does **not** yet have configurable cell-edit persistence parity (row Save / Save Selected / Discard), masking/unmask, configurable Grid State reconciliation, or REMOTE conflict/concurrency.
 
-Loan and Finance currently use small frontend-only in-memory `GridRowsLoader` adapters. This is deliberate because the current work is proving feature/entity/access composition, not inventing fake backend Loan/Finance APIs.
+## Masking decision for the current merge slice
 
-The local loaders do not implement server sort/filter semantics, so Review fields do not expose sort/filter. When a real entity backend appears, add an explicit feature adapter/request mapper rather than inferring arbitrary backend query fields from column metadata.
+Earlier in-progress PR #45 code briefly declared sensitive fields/unmask entitlements without a complete backend/runtime/UI unmask flow. Those placeholders were removed before merge rather than documenting half-implemented security behavior.
 
-The old Transaction configurable consumer remains reference/history for real Transaction request mapping but is no longer the `/configurable-ssrm` route owner.
+Masking/unmask remains explicitly planned for a dedicated coherent slice. When implemented, normal row APIs must not send unauthorized clear sensitive values merely for frontend masking.
 
-## Editing ownership
+## Trusted config versus runtime JSON
 
-AG Grid owns normal editing and supported native alternate edit entry points.
+Current Loan/Finance config is trusted typed frontend source:
 
-Access projection narrows field editability before compilation. The generic root then composes the final native `ColDef.editable` behavior and `useGridDraftEditing` BASE + LOCAL tracking.
+```text
+TypeScript → access → compiler
+```
 
-Do not copy complete API rows/SSRM blocks into React state. Do not introduce a React Query original-row cache. REMOTE conflict/concurrency/versioning remains a separate later decision.
+Transaction reuses its earlier normalized backend-like configurable definition.
 
-## Current deliberate limits
+Future real backend/storage metadata:
 
-The configurable Review route intentionally does not yet implement:
+```text
+unknown JSON → runtime validate/normalize → access → compiler/runtime
+```
 
-- real authentication/authorization;
-- backend feature/access metadata;
-- configurable persistence/read-write/save mapping;
-- business actions/action authorization;
-- masking/unmask;
-- row-specific access/capability payloads;
-- Grid State/access reconciliation;
-- runtime config schema/version negotiation;
-- grouping/tree/pivot/aggregation;
-- REMOTE conflict/concurrency/versioning.
+Do not remove the runtime normalizer from actual untrusted transport boundaries, and do not force trusted local constants through it unnecessarily.
+
+## Current cleanup state
+
+Removed as superseded:
+
+- `frontend/src/features/review/configurable/reviewConfigurableFeature.ts` (old local-array all-in-one Review proof);
+- `frontend/src/features/transactions/grid/TransactionsConfigurableSsrmGrid.tsx` (old Transaction-only configurable grid root).
+
+Preserve:
+
+- the existing rich Transaction configurable definition used by Review;
+- `TransactionsSsrmNativeEditingGrid` as native-editing reference;
+- mature `/client`, `/infinite`, `/ssrm` Transaction references.
 
 ## Verification requirement
 
-Do not claim the current branch is green unless the exact head actually executes:
+Do not call a PR/head green until the exact head has actually passed the repository CI gates, including browser regression.
+
+Current expected frontend checks include:
 
 ```bash
-npm run typecheck
 npm run lint
+npm run typecheck
 npm run test:run
 npm run build
 npm run docs:configurable
 ```
 
-Also run applicable Playwright/manual verification before claiming browser completion.
+Also maintain/update Playwright coverage, manual verification docs, capability tags, and the coverage matrix when capability footprint changes.
 
-Generated TypeDoc may still be stale until `npm run docs:configurable` actually runs successfully on the current head.
+Never claim manual verification unless it was actually executed.
+
+## Deferred topics
+
+Still separate/later unless explicitly reopened:
+
+- configurable cell-edit persistence mapping;
+- masking/unmask;
+- entity-specific secondary actions;
+- real backend-authenticated access provider;
+- backend-delivered config/access metadata;
+- row-specific access/capability payloads beyond current runtime policy;
+- Grid State/access reconciliation;
+- schema/version negotiation;
+- grouping/tree/pivot/aggregation;
+- REMOTE conflict/concurrency/versioning.
 
 ## Workflow
 
-Stay on `configurable-feature-grid` unless the user explicitly asks for another branch. Do not merge a PR unless explicitly requested. Do not refactor the proven Transaction row-model routes merely to make the configurable experiment look more shared.
+Inspect actual `main`, `grid-foundation`, open/recent PRs, and CI before making further changes. Do not create another branch automatically. Do not merge a PR unless the user explicitly asks.

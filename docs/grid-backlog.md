@@ -13,37 +13,37 @@ Useful current references:
 - `docs/implementation/row-models/client.md` — Client-Side implementation guide;
 - `docs/implementation/row-models/infinite.md` — Infinite implementation guide;
 - `docs/implementation/row-models/ssrm.md` — SSRM implementation guide;
-- `docs/implementation/configurable-ssrm.md` — implemented isolated configurable SSRM foundation;
+- `docs/implementation/configurable-ssrm.md` — current configurable Review SSRM implementation;
+- `docs/implementation/testing/configurable-ssrm-manual-testing.md` — configurable Review browser/manual verification;
 - `docs/implementation/testing/browser-regression.md` — Playwright architecture, E2E reset, CI/local execution and next-capability handoff;
 - `docs/implementation/testing/coverage-matrix.html` — readable cross-layer automated coverage inventory;
-- `docs/implementation/testing/` — manual verification guides;
-- `docs/configurable-feature-handoff.md` — current configurable-feature architecture handoff;
-- `docs/configurable-feature-config-design-progress.md` — latest configurable design/runtime checkpoint and exact resume point.
+- `docs/configurable-feature-handoff.md` — configurable-feature architecture handoff;
+- `docs/configurable-feature-config-design-progress.md` — configurable design/runtime checkpoint.
 
 Statuses used here: **VERIFY**, **DESIGN**, **TODO**, **PLANNED**, **DEFERRED**.
 
 ## Current agreed sequence
 
-The existing Client/Infinite/SSRM Transaction capability foundation and regression-hardening work are complete enough to support the isolated configurable architecture experiment. Transaction Import and the later mutable row-interaction fixes are merged history rather than active PR work.
+The mature Transaction Client/Infinite/SSRM foundation remains the behavioral reference. `TransactionsSsrmNativeEditingGrid` is intentionally retained as the native-editing reference and must not be removed merely because the configurable Review route exists.
 
-PR #43 merged the native-first configurable public type contract to `main`. `configurable-feature-grid` / PR #44 now contains defaults/compiler plus the generic feature/entity/access SSRM proof: one Review feature can resolve different Loan/Finance entity shapes and different simulated current-user projections before reaching the shared configurable SSRM root.
+PR #43 merged the native-first configurable public type contract. PR #44 merged the initial configurable SSRM/compiler/access proof. The current continuation work expands that proof into a real three-entity Review runtime with independent backend contracts and a common selected business action.
 
 Current sequence:
 
 ```text
-1. Verify/harden the generic configurable feature/entity/access SSRM runtime on configurable-feature-grid
-2. Keep implementation/manual/handoff/TypeDoc/coverage documentation synchronized with the exact verified head
-3. Add real server sort/filter/search mapping only when a real configurable entity backend requires it
-4. Design and implement configurable read/write/save mapping
-5. Continue business actions, action access, masking/unmask and row-specific access/capability design
-6. Reconcile native Grid State against changing resolved access before enabling persistence on the configurable route
-7. Add backend config/access providers plus schema/versioning only when runtime exchange actually exists
-8. Evaluate reuse/migration only after the isolated path proves the boundary
+1. Get the current configurable Review continuation exact-head CI green and keep docs synchronized
+2. User decides/executes merge; do not merge automatically
+3. Design + implement configurable edit persistence: Row Save, Save Selected Dirty, Discard, backend validation mapping
+4. Add masking/unmask only with a real backend-authoritative sensitive-value contract
+5. Add entity-specific secondary actions and richer row/field runtime capabilities when required
+6. Reconcile native Grid State against changing resolved access before enabling configurable persistence
+7. Add real backend configuration/access provider + runtime schema/versioning only when that transport exists
+8. Keep concurrency/conflict/versioning deferred until explicitly reopened
 ```
 
 Do not create another work branch automatically. Keep meaningful branch work in an open PR. Do not merge a PR unless explicitly requested by the user.
 
-Do not keep expanding Playwright merely to increase test count. Add browser coverage when a new implemented capability or a concrete regression introduces a material real-browser/AG Grid/backend risk.
+Do not expand Playwright merely to increase test count. Add browser coverage when a new implemented capability or concrete regression has material real-browser/AG Grid/backend risk.
 
 # Active backlog
 
@@ -97,7 +97,7 @@ Reference: `docs/implementation/edited-row-count.md`.
 ### A4. Export
 **Status:** VERIFY
 
-Implemented ownership:
+Implemented Transaction ownership:
 
 ```text
 Current Page
@@ -109,6 +109,8 @@ Selected Client
 Selected Infinite / SSRM
 → backend resolves logical selected target and writes CSV
 ```
+
+The configurable Review route does not yet compose configurable export.
 
 Reference: `docs/implementation/grid-export.md`.
 
@@ -131,7 +133,7 @@ Do not suppress AG Grid lifecycle warnings; fix concrete ownership/timing defect
 
 Implemented Transaction behavior includes registered frontend validation rules, stable row/field validation state, direct/programmatic edit integration, Row Save and exact Save Selected guards, backend field-error mapping, correction/Discard/conflict-resolution lifecycle and separation of validation from BASE/LOCAL/REMOTE conflicts.
 
-The configurable SSRM foundation separately compiles declarative validation rules into AG Grid native editor validation and composes the lightweight PR #42 BASE + LOCAL draft observer. It does not import the older Transaction REMOTE/conflict architecture.
+The configurable Review runtime separately compiles declarative validation rules into AG Grid native editor validation and composes lightweight BASE + LOCAL draft tracking. It intentionally does not import the older Transaction REMOTE/conflict architecture.
 
 References:
 
@@ -142,31 +144,38 @@ References:
 ### A7. Dynamic row-interaction transitions
 **Status:** VERIFY / IMPLEMENTED
 
-The mutable row-interaction regression discovered during Import/manual verification was fixed and merged. Authoritative writes can change backend-derived `interactionMode`; mutable `selectionDisabled` / `readOnly` presentation uses native `rowClassRules` so stale restricted classes are removed when a surviving RowNode becomes enabled.
+The mature Transaction routes support mutable `enabled | selectionDisabled | readOnly` interaction state and authoritative refresh transitions.
 
-Regression coverage exists across Import, single-row Save, Save Selected/bulk persistence and selected Change Status for the applicable row models.
+When Transaction is rendered as a Review entity, its existing backend-derived selectability/editability policy is preserved through the Review runtime adapter. Loan/Finance do not yet define a general row-capability payload contract.
 
-References:
+Reference: `docs/implementation/row-interaction.md`.
 
-- `docs/implementation/row-interaction.md`
-- `docs/implementation/testing/row-interaction-manual-testing.md`
-
-### A8. Configurable SSRM exact-head verification
+### A8. Configurable Review exact-head verification
 **Status:** VERIFY
 
-The current generic Review feature/entity/access runtime is implemented on `configurable-feature-grid`. Before treating the head as complete, verify:
+Before treating the current continuation head as merge-ready, verify the exact head through CI:
 
-```bash
-npm run typecheck
-npm run lint
-npm run test:run
-npm run build
-npm run docs:configurable
+```text
+Frontend
+→ lint
+→ typecheck
+→ unit/component tests
+→ build
+
+Backend
+→ Django system check
+→ apps.transactions tests
+→ apps.review tests
+
+Browser
+→ full Playwright regression suite
 ```
 
-Also run applicable Playwright and manual browser verification for the localStorage profile/entity combinations. Generated TypeDoc must not be described as current until `npm run docs:configurable` actually regenerates it on the exact head.
+The CI backend job must include both `apps.transactions` and `apps.review`; a green badge that omits Review backend tests is not sufficient.
 
-Reference: `docs/implementation/testing/configurable-ssrm-manual-testing.md`.
+Also keep `docs/implementation/testing/configurable-ssrm-manual-testing.md` current. Documented manual steps are not a claim that a manual browser pass was executed.
+
+Generated TypeDoc must not be described as current unless `npm run docs:configurable` was actually regenerated on the exact reported head.
 
 ## B. Capability discoverability
 
@@ -182,6 +191,8 @@ When a frontend capability footprint changes:
 3. update meaningful markers;
 4. update focused tests and implementation docs.
 
+Never invent an unregistered capability tag.
+
 ## C. Deferred core/product decisions
 
 ### C1. Application/session unsaved-draft lifetime
@@ -194,11 +205,9 @@ Do not add route/session/browser-refresh draft persistence until the product req
 ### C2. Backend optimistic concurrency / stale-write protection
 **Status:** DEFERRED
 
-Current BASE/LOCAL/REMOTE reconciliation detects divergence only after fresh authoritative data reaches the browser in the proven Transaction grids.
+The proven Transaction grids can reconcile BASE/LOCAL/REMOTE divergence after fresh authoritative data reaches the browser. Backend version/ETag/revision rejection is a separate product/API contract.
 
-Backend version/ETag/revision protection requires a separate product/API contract if stale writes must be rejected even without an intervening refresh.
-
-For the configurable SSRM path, concurrency/conflict/versioning remains a separate later decision; do not automatically bring the previous REMOTE reconciliation architecture into the new foundation.
+For configurable Review, conflict/concurrency/versioning remains explicitly deferred. Do not automatically import the previous REMOTE architecture into the configurable runtime.
 
 ### C3. Undo/redo
 **Status:** DEFERRED
@@ -206,11 +215,11 @@ For the configurable SSRM path, concurrency/conflict/versioning remains a separa
 Do not enable spreadsheet-style undo/redo until its interaction with tracked drafts, programmatic edits, conflicts, validation and Save/Discard is defined.
 
 ### C4. User/profile Grid State persistence
-**Status:** DEFERRED
+**Status:** DEFERRED for backend profile persistence
 
-Current native Grid State persists supported preferences through the replaceable browser-storage boundary.
+The mature Transaction routes persist supported native Grid State preferences through the current replaceable browser-storage boundary.
 
-Backend/user-profile persistence is not part of the current implementation.
+Backend/user-profile persistence is not part of the current implementation. Configurable Review also needs access/state reconciliation before enabling its own persistence.
 
 ### C5. Grouping/tree/aggregation/pivot and other advanced AG Grid features
 **Status:** DEFERRED
@@ -219,7 +228,7 @@ Current SSRM implementation is flat. Do not introduce advanced semantics without
 
 ## D. Import
 
-### D1. Import workflow
+### D1. Transaction Import workflow
 **Status:** VERIFY / IMPLEMENTED
 
 Current implemented contract:
@@ -253,58 +262,63 @@ References:
 
 Do not hide Import inside ordinary cell-edit persistence.
 
-## E. Isolated configurable SSRM experiment
+## E. Configurable Review SSRM
 
 ### E1. Generic feature/entity/configuration runtime
 **Status:** VERIFY / IMPLEMENTED FOUNDATION
 
-The configurable runtime is exposed only at `/configurable-ssrm` and now proves the intended business-agnostic boundary rather than a Transaction-shaped grid.
+The configurable runtime is exposed at `/configurable-ssrm` and now proves one Review feature with three distinct entity shapes through one configurable SSRM root:
 
-Implemented foundation:
+```text
+Review
+├── Loan
+├── Finance
+└── Transaction
+```
+
+Implemented foundation includes:
 
 - application configurable-SSRM defaults;
-- exact `entity.gridOptions` merge behavior;
-- nested `defaultColDef`, filter/editor/renderer param, rowSelection and Cell Selection merge behavior;
-- filter/editor/renderer allowlists plus formatter/parser/validator frontend registries;
+- explicit semantic `entity.gridOptions` merge behavior;
+- filter/editor/renderer allowlists and formatter/parser/validator registries;
 - `labelKey → headerName` compilation;
-- `rowId.path → getRowId` plus shared-draft row accessor;
-- `validationRules → cellEditorParams.getValidationErrors` for provided editors;
-- fields → final native `ColDef[]`;
-- resolved native `GridOptions`;
-- generic `ConfigurableSsrmEntityGrid<TData>` with no domain/profile/localStorage branching;
-- Review base feature with separate `loan` and `finance` entity definitions;
-- different `LoanReviewRow` and `FinanceReviewRow` data shapes through the same generic SSRM root;
-- frontend-only entity-specific local `GridRowsLoader` adapters for this proof;
-- `useGridDraftEditing` BASE + LOCAL composition;
-- focused unit tests plus real-grid Playwright coverage.
+- `rowId.path → getRowId` plus stable draft identity;
+- declarative validation rules → native editor validation;
+- native grid/column configuration where semantics match;
+- generic `ConfigurableSsrmEntityGrid` with no Loan/Finance/Transaction/profile/localStorage branching;
+- active entity runtime lookup through `entity.dataAdapterKey`;
+- keyed entity remount so GridApi/datasource/selection/mutation/draft state do not leak across entities;
+- SSRM retry/error lifecycle;
+- mature SSRM selection controller composition: manual, Current Page, All Filtered, native All Records, logical selected counts;
+- BASE + LOCAL draft tracking;
+- common primary selected action boundary;
+- focused tests plus real-grid Playwright coverage.
+
+Loan and Finance have rich independent configs using server sort/filter, editors, parsers, formatters, validation and renderers. Transaction reuses the existing rich Transaction configurable entity instead of copying it.
+
+The obsolete Transaction-only configurable grid consumer and original monolithic Review proof file are removed. `TransactionsSsrmNativeEditingGrid` remains intentionally retained.
 
 Current canonical references:
 
-- `docs/configurable-feature-handoff.md`;
-- `docs/configurable-feature-config-design-progress.md`;
-- `docs/configurable-feature/configuration-reference.md`;
-- `docs/configurable-feature/type-hierarchy.md`;
-- `docs/configurable-feature/concepts.md`;
 - `docs/implementation/configurable-ssrm.md`;
 - `docs/implementation/testing/configurable-ssrm-manual-testing.md`;
-- `frontend/src/shared/grid/configurable/configuration.types.ts`;
-- `frontend/src/shared/grid/configurable/configuration.defaults.ts`;
-- `frontend/src/shared/grid/configurable/configuration.compiler.ts`;
+- `docs/configurable-feature-handoff.md`;
+- `docs/configurable-feature-config-design-progress.md`;
+- `frontend/src/features/review/ReviewConfigurableSsrmFeature.tsx`;
+- `frontend/src/features/review/configurable/reviewFeature.definition.ts`;
+- `frontend/src/features/review/configurable/reviewRuntime.registry.ts`;
 - `frontend/src/shared/grid/configurable/ConfigurableSsrmEntityGrid.tsx`.
 
 Current rules:
 
-- first proof remains SSRM-only;
-- do not refactor `/client`, `/infinite` or `/ssrm` merely to make the experiment work;
-- the configurable grid is not Transaction/Loan/Finance-specific;
-- entity record keys carry business identity;
-- native AG Grid names/types are preferred when semantics match;
+- configurable runtime remains SSRM-only for this experiment;
+- do not refactor `/client`, `/infinite`, `/ssrm`, or `/ssrm-native-editing` merely to make Review work;
+- entity keys carry business/config identity;
 - executable behavior remains frontend-owned;
-- runtime infrastructure such as datasource/GridApi/lifecycle remains frontend-owned;
+- backend request/response vocabulary remains entity-owned;
+- datasource/GridApi/lifecycle remains in the concrete configurable SSRM root;
 - backend metadata does not dynamically select Client/Infinite/SSRM;
-- server query semantics remain adapter/backend-owned rather than inferred by the compiler;
-- evaluate migration/reuse only after the isolated path proves the boundary;
-- migration is not automatic.
+- native AG Grid first, custom only for genuine semantic gaps.
 
 ### E2. Frontend-only current-user access projection
 **Status:** VERIFY / IMPLEMENTED FOUNDATION
@@ -312,43 +326,52 @@ Current rules:
 Implemented:
 
 ```text
-base FeatureDefinition
+base Review FeatureDefinition
         +
-simulated current-user access
+simulated current-user access allowlist
         ↓
-resolveFeatureAccess
+resolveReviewFeatureAccess
         ↓
-resolved feature/entity/field set
+resolved feature/entity/field/action set
 ```
 
-Current semantics:
+Semantics:
 
 - missing feature/entity/field means unavailable and is removed;
 - `read` forces resolved field editability off;
 - `edit` preserves base editability and cannot promote a base read-only field;
-- invalid entity/field identity references fail controlledly;
+- missing action means unavailable;
+- permitted action must exist in the base entity definition;
+- invalid entity/field/action references fail controlledly;
+- access projection is not a partial grid config override;
 - profile identity and active entity remain separate.
 
-Current FE-only development selectors:
+Development selectors:
 
 ```text
 aggrid.devAccessProfile
-→ loanOnly | financeOnly | loanAndFinance | loanReadOnly
+→ loanOnly
+→ financeOnly
+→ transactionOnly
+→ loanAndFinance
+→ allEntities
+→ loanReadOnly
+→ loanRestricted
 
 aggrid.devActiveEntity
-→ loan | finance
+→ loan | finance | transaction
 ```
 
-Change localStorage and reload `/configurable-ssrm` to verify access without provisioning real users.
+Default profile is `allEntities`.
 
-These values simulate an already-resolved user/session result and are not a security boundary. Do not put role/profile-name checks inside shared grid/compiler/access code.
+These values simulate an already-resolved user/session result and are not a security boundary. Do not put role/profile-name checks inside shared grid/compiler/runtime code.
 
 ### E3. Runtime JSON normalization boundary
 **Status:** IMPLEMENTED WHEN NEEDED / VERIFY
 
-`configuration.normalizer.ts` remains the runtime `unknown` trust boundary for actual backend/storage JSON and for the earlier backend-like Transaction proof.
+`configuration.normalizer.ts` remains the runtime `unknown` trust boundary for actual backend/storage JSON and for the earlier backend-like Transaction configurable definition.
 
-Current trusted Review base configuration is authored in frontend source using TypeScript `satisfies FeatureDefinition` and is **not** forced through runtime normalization merely to imitate a future backend.
+Trusted local Loan/Finance configuration is frontend-authored TypeScript and does not need artificial runtime normalization.
 
 Rule:
 
@@ -361,42 +384,91 @@ real backend/storage JSON (`unknown`)
 → access/compiler
 ```
 
-Do not remove runtime validation when an actual untrusted transport exists; do not overbuild it around local constants before that boundary exists.
+Do not remove runtime validation when a real untrusted transport exists; do not overbuild it around local constants before that boundary exists.
 
-### E4. Configurable server query/search contract expansion
-**Status:** DESIGN / TODO when a real configurable entity backend needs it
+### E4. Configurable server query/search contracts
+**Status:** VERIFY / IMPLEMENTED FOUNDATION
 
-Current Loan/Finance Review rows are frontend-only local loaders and intentionally expose no server sort/filter semantics.
+Loan and Finance are now real Django-backed configurable entities, not frontend arrays.
 
-When a real entity backend exists, add an explicit feature-owned request mapper/field allowlist. Do not send arbitrary AG Grid `colId`/`field` identifiers to the backend and do not make the compiler infer server semantics.
+They deliberately use independent backend contracts:
 
-The existing Transaction request mapper remains the reference for real server-backed translation.
+```text
+Loan
+POST /api/review/loans/query/
+→ offset / limit / sort / filters
+
+Finance
+POST /api/review/finance/search/
+→ window / orderBy / criteria
+→ records / counts response vocabulary
+
+Transaction
+POST /api/transactions/query/
+→ existing Transaction query contract
+```
+
+Each entity owns its request mapper/field allowlist. The generic grid receives only a normalized `GridRowsLoader` result.
+
+Do not collapse these into one polymorphic Review endpoint merely because one frontend grid renders them.
 
 ### E5. Configurable read/write/save mapping
-**Status:** TODO
+**Status:** TODO / NEXT CORE CAPABILITY
 
-Design persistence around the proven native editing + `cellValueChanged` + `useGridDraftEditing` ownership. Keep single-row and bulk persistence semantics explicit. Do not make Select All manufacture edits for clean/unloaded rows.
+Current native cell editing proves validation + BASE/LOCAL tracking only. The common Review `Submit` action is a business action, not edit persistence.
 
-### E6. Business actions + access/security/masking
-**Status:** DESIGN / TODO beyond current field projection
+Next persistence design must cover at least:
 
-Current access work proves feature/entity/field availability and read/edit projection only.
+- single-row Save;
+- Save Selected Dirty;
+- row/selected Discard;
+- entity-owned request mapping and backend endpoint differences;
+- backend field validation/error mapping;
+- success acknowledgement without clearing newer local edits;
+- authoritative refresh/reconciliation after persistence;
+- exact behavior for clean/unloaded selected rows.
 
-Still design/implement when required:
+Do not make Select All manufacture edits for rows that are not dirty.
 
-- feature/entity business actions and action authorization;
-- sensitive/maskable fields;
-- current masked state and authoritative unmask requests;
-- row-specific and field-specific runtime capabilities;
-- dependency handling when an authorized projection removes required fields/capabilities;
-- backend enforcement independent from UI projection.
+TanStack Query may own mutation lifecycle at the application boundary when natural; do not force it into SSRM datasource fetching.
 
-Keep security/business eligibility backend/feature-owned. Introduce registries/config descriptors only when there is a real configuration-driven action/access system to select among.
+### E6. Business actions, action access, masking and row capabilities
+**Status:** PARTIAL / DESIGN TODO
+
+Implemented now:
+
+- JSON-safe action identity metadata;
+- default-deny action access projection;
+- one common primary Review action slot (`submit`);
+- TanStack mutation ownership in Review;
+- entity-owned action adapters with different API payloads/responses;
+- success clears selection + refreshes the active SSRM store;
+- failure preserves selection/store;
+- Loan and Finance backend action contracts;
+- Transaction Review adapter over existing Transaction selected-update behavior.
+
+Still TODO when required:
+
+- entity-specific secondary action rendering/execution;
+- masking/unmask/sensitive-value retrieval;
+- richer row-specific/field-specific runtime capabilities beyond current Transaction row-interaction policy;
+- dependency handling when access removes fields required by another capability;
+- real backend authorization independent of UI projection.
+
+Masking concepts remain separate:
+
+```text
+maskable
+currently masked
+can request unmask
+```
+
+Do not send a clear sensitive value to the browser and merely hide it with CSS. Do not add placeholder masking metadata to current entities before the backend-authoritative unmask contract exists.
 
 ### E7. Grid State/access reconciliation
 **Status:** TODO
 
-Native Grid State remains preferred for supported view preferences, but configurable column/access changes require deliberate reconciliation semantics before persistence is enabled for this route. Previously saved state must never restore a field/entity that current access removed.
+Native Grid State remains preferred for supported view preferences, but configurable entity/access changes require deliberate reconciliation before persistence is enabled on this route. Previously saved state must never restore a field/entity removed by current access.
 
 ### E8. Runtime config/access provider + schema/versioning
 **Status:** TODO when backend exchange requires it
@@ -411,18 +483,22 @@ runtime JSON (`unknown`)
 → compiler/runtime
 ```
 
-Do not invent versioning or backend provider APIs speculatively before there is a transport contract.
+Do not invent versioning or provider APIs before there is a real transport contract.
 
 ## F. Reuse proof
 
-### F1. Second business shape versus second real backend entity
-**Status:** PARTIAL PROOF / TODO for real backend integration
+### F1. Multiple real backend entity contracts
+**Status:** VERIFY / IMPLEMENTED FOUNDATION PROOF
 
-The current Review route already proves two different frontend row/data shapes (`LoanReviewRow` and `FinanceReviewRow`) through one generic configurable SSRM root. This is useful evidence that the runtime is not Transaction-shaped.
+Review now proves three business entity/runtime shapes through the same configurable SSRM root:
 
-It does **not** yet prove a second production backend/domain contract: Loan/Finance currently use FE-only local loaders. When a real second backend business entity is available, use it to prove explicit request mapping, persistence and backend authorization without changing the generic grid boundary.
+- Loan — its own Django query/action contract and `id` row identity;
+- Finance — deliberately different Django query/action vocabulary and `recordKey` identity;
+- Transaction — existing Transaction backend/query/action behavior reused through thin Review adapters.
 
-Do not invent fake backend APIs merely to manufacture reuse.
+The current Django sources are deterministic in-process data rather than a production database, but they are real independent HTTP contracts exercised by the frontend and backend tests. The reuse proof no longer depends on frontend-only arrays.
+
+The generic grid remains unchanged by those backend differences. That is the boundary to preserve when future production entities replace the deterministic sources.
 
 # Completed history
 
@@ -473,9 +549,7 @@ References:
 
 ## 2026-08 — Selected Change Status lifecycle
 
-The Change Status mutation carries only the business request. After backend success, each concrete grid root calls its own selection controller's existing `clearSelection()` and refreshes authoritative data. Failed requests retain selection.
-
-There is no current configurable `clear | preserve` runtime policy.
+The Change Status mutation carries only the business request. After backend success, each mature concrete Transaction grid root calls its own selection controller's existing `clearSelection()` and refreshes authoritative data. Failed requests retain selection.
 
 Reference: `docs/implementation/selected-action-selection-lifecycle.md`.
 
@@ -489,15 +563,17 @@ CI runs frontend lint/typecheck/tests/build plus backend Django checks/tests wit
 - giant generic `useGrid()` hiding native AG Grid;
 - one fake shared selection controller for all row models;
 - one `clearSelection(rowModelType)` switch;
-- configurable `clear | preserve` policy for a hardcoded action whose behavior is known;
 - one generic mutation that chooses unrelated business endpoints from an action key;
+- one polymorphic Review endpoint merely because entities share a grid;
 - server datasource mechanics in Client-Side;
 - duplicate backend interpretations of logical selection;
 - custom abstractions duplicating native AG Grid without a real semantic gap;
 - backend metadata dynamically choosing Client/Infinite/SSRM;
-- refactoring proven grids merely to support the isolated configurable-grid experiment;
+- refactoring proven grids merely to support the configurable Review experiment;
+- deleting `TransactionsSsrmNativeEditingGrid` merely because configurable Review exists;
 - Docker for this same-repository Databricks App without a real requirement;
 - speculative advanced SSRM/grouping/pivot/aggregation behavior;
+- speculative concurrency/versioning on configurable Review;
 - excessive `GRIDCAP-*` markers on trivial code.
 
 > **Standing rule: native AG Grid first; use the best capability of the actual row model; share only genuine semantics/mechanics; keep business rules feature/backend-owned.**

@@ -28,6 +28,9 @@ def spa_index(_request):
 urlpatterns = [
     path("api/health/", health_check, name="health"),
     path("api/transactions/", include("apps.transactions.api.urls")),
+    # Review is one frontend feature, but its entities intentionally retain independent API contracts.
+    # Do not collapse Loan/Finance into one polymorphic endpoint merely because one grid can render both.
+    path("api/review/", include("apps.review.api.urls")),
     # Client-side routes must return index.html after the API routes have had a chance to match.
     re_path(r"^(?!api/).*$", spa_index, name="spa-index"),
 ]

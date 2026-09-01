@@ -83,12 +83,12 @@
 <body>
   <main>
     <h1>Grid regression coverage</h1>
-    <p class="subtitle">Quick visual inventory of automated protection across Frontend, Backend, Client, Infinite and SSRM.</p>
+    <p class="subtitle">Quick visual inventory of automated protection across Frontend, Backend, Client, Infinite, SSRM and the configurable Review route.</p>
 
     <div class="summary" aria-label="Coverage summary">
-      <div class="summary-card"><strong>86</strong><span>Playwright browser scenarios including interaction-mode refresh regression coverage</span></div>
+      <div class="summary-card"><strong>107</strong><span>Playwright browser scenarios on the current configurable-Review test inventory</span></div>
       <div class="summary-card"><strong>3</strong><span>independently exercised grid row models</span></div>
-      <div class="summary-card"><strong>4</strong><span>coverage groups below</span></div>
+      <div class="summary-card"><strong>5</strong><span>coverage groups below</span></div>
     </div>
 
     <div class="toolbar">
@@ -178,6 +178,23 @@
       </table></div>
     </section>
 
+    <section class="panel section coverage-section">
+      <div class="section-heading">
+        <h2>Configurable Review SSRM</h2>
+        <p>Loan, Finance and Transaction all use the same configurable SSRM root; entity adapters own backend/query/action differences.</p>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Capability</th><th>Frontend</th><th>Backend</th><th>Client</th><th>Infinite</th><th>SSRM</th></tr></thead>
+        <tbody>
+          <tr><td>Loan / Finance / Transaction through one Review runtime</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td></tr>
+          <tr><td>Different Loan vs Finance backend wire contracts</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td></tr>
+          <tr><td>Default-deny entity/field/action projection</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge na">N/A</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td></tr>
+          <tr><td>Native validation + BASE/LOCAL configurable drafts</td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge na">N/A</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td></tr>
+          <tr><td>Common Submit with Loan/Finance-specific action payloads</td><td><span class="badge pass">Covered</span></td><td><span class="badge pass">Covered</span></td><td><span class="badge na">N/A</span></td><td><span class="badge na">N/A</span></td><td><span class="badge pass">Covered</span></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
     <section class="panel notes">
       <h2>How to read the exceptions</h2>
       <ul>
@@ -185,11 +202,12 @@
         <li><strong>N/A</strong> means the capability is not applicable or is not enabled on that current demo route; it is not automatically a test gap.</li>
         <li>The browser routes are tested as configured today. We do not create fake E2E-only routes just to turn every cell green.</li>
         <li>Import has focused backend validation/atomicity tests, focused frontend workflow tests, one real Preview/Apply/data-refresh scenario per row model, and one real interaction-mode transition scenario per row model.</li>
+        <li>Configurable Review browser coverage verifies all three entity runtimes and Loan/Finance action payload delegation; masking, configurable edit persistence and secondary actions remain deliberately outside current coverage because they are not implemented.</li>
         <li>Backend stale-write/version concurrency remains a separate deferred contract and is not represented as implemented coverage here.</li>
       </ul>
     </section>
 
-    <p class="footer-note">Maintenance rule: update the relevant row when coverage changes, and never label a browser scenario “Covered” until the corresponding test has actually passed CI.</p>
+    <p class="footer-note">Maintenance rule: update the relevant row when coverage changes, and never label a browser scenario “Covered” until the corresponding test has actually passed CI on the exact head.</p>
   </main>
 
   <script>
