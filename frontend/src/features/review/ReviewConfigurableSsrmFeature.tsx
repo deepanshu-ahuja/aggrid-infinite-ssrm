@@ -28,7 +28,7 @@ function chooseActiveEntity(availableEntities: readonly string[]): ReviewEntityK
   if (isReviewEntityKey(configured) && availableEntities.includes(configured)) return configured;
 
   const first = availableEntities[0];
-  return isReviewEntityKey(first) ? first : undefined;
+  return first !== undefined && isReviewEntityKey(first) ? first : undefined;
 }
 
 /**
