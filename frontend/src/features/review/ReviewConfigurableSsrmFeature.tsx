@@ -1,9 +1,7 @@
 // GRIDCAP-ROWMODEL-SSRM | GRIDCAP-COLUMNS | GRIDCAP-ACTION-SELECTED
 import { useMutation } from '@tanstack/react-query';
 import { Alert, Chip, Divider, Stack, Typography } from '@mui/material';
-import type { EntityDefinition } from '@/shared/grid/configurable/configuration.types';
 import { ConfigurableSsrmEntityGrid } from '@/shared/grid/configurable/ConfigurableSsrmEntityGrid';
-import { resolveFeatureAccess } from '@/shared/grid/configurable/configuration.access';
 import {
   DEFAULT_REVIEW_ACCESS_PROFILE,
   REVIEW_ACCESS_PROFILE_STORAGE_KEY,
@@ -12,6 +10,8 @@ import {
   reviewAccessProfiles,
   type ReviewAccessProfileKey,
 } from './configurable/reviewAccess.profiles';
+import { resolveReviewFeatureAccess } from './configurable/reviewAccess.resolver';
+import type { ResolvedReviewEntityDefinition } from './configurable/reviewDefinition.types';
 import {
   isReviewEntityKey,
   reviewFeatureDefinition,
@@ -39,23 +39,30 @@ function chooseActiveEntity(availableEntities: readonly string[]): ReviewEntityK
 }
 
 interface ReviewResolvedEntityProps {
-  entityKey: ReviewEntityKey;
-  entity: EntityDefinition;
+  entity: ResolvedReviewEntityDefinition;
   runtime: ReviewEntityRuntime;
 }
 
 /**
  * One active Review entity instance.
  *
- * The parent keys this component by entity identity. Changing Loan → Finance → Transaction therefore
- * unmounts the previous mutation/grid state and creates a fresh SSRM instance instead of trying to
- * mutate one live GridApi/datasource from one business entity into another.
+ * The parent keys this component by entity identity. Changing Loan / Finance / Transaction therefore
+ * unmounts mutation + GridApi + datasource + selection + draft state and creates a fresh SSRM instance.
  */
 function ReviewResolvedEntity({ entity, runtime }: ReviewResolvedEntityProps) {
-  const primaryAction = runtime.primaryAction;
+  const runtimePrimaryAction = runtime.primaryAction;
+  const configuredPrimaryAction = runtimePrimaryAction
+    ? entity.actions?.find(
+        (action) => action.key === runtimePrimaryAction.key && action.placement === 'primary',
+      )
+    : undefined;
+
+  // The resolved entity has already applied current-user action access. Runtime executable behavior is
+  // therefore exposed only when its action key survived that default-deny access projection.
+  const primaryAction = configuredPrimaryAction ? runtimePrimaryAction : undefined;
   const mutation = useMutation({
     mutationFn: async (context: ReviewPrimaryActionContext) => {
-      if (!primaryAction) throw new Error('This Review entity has no primary action adapter.');
+      if (!primaryAction) throw new Error('This Review entity has no permitted primary action.');
       return primaryAction.execute(context);
     },
   });
@@ -68,9 +75,9 @@ function ReviewResolvedEntity({ entity, runtime }: ReviewResolvedEntityProps) {
       resolveLabel={resolveReviewLabel}
       runtimePolicy={runtime.runtimePolicy}
       primaryAction={
-        primaryAction
+        primaryAction && configuredPrimaryAction
           ? {
-              label: primaryAction.label,
+              label: resolveReviewLabel(configuredPrimaryAction.labelKey),
               isPending: mutation.isPending,
               error:
                 mutation.error instanceof Error
@@ -95,12 +102,12 @@ function ReviewResolvedEntity({ entity, runtime }: ReviewResolvedEntityProps) {
  * runtime selection before backend metadata/authentication exists.
  *
  * Development switching intentionally uses localStorage + reload so QA/developers can exercise several
- * user projections without provisioning real users. The profile name is interpreted only by this
- * provider boundary; the shared resolver/grid never branch on a role/profile.
+ * user projections without provisioning real users. Profile identity is interpreted only at this
+ * provider boundary; shared grid code never branches on role/profile names.
  */
 export function ReviewConfigurableSsrmFeature() {
   const accessProfileKey = readAccessProfile();
-  const resolvedFeature = resolveFeatureAccess(
+  const resolvedFeature = resolveReviewFeatureAccess(
     reviewFeatureDefinition,
     reviewAccessProfiles[accessProfileKey],
   );
@@ -174,7 +181,6 @@ export function ReviewConfigurableSsrmFeature() {
         // Entity changes must destroy the previous GridApi, datasource, selection, mutation and local
         // draft state. A keyed remount is clearer/safer than hot-swapping a live SSRM instance.
         key={activeEntityKey}
-        entityKey={activeEntityKey}
         entity={entity}
         runtime={runtime}
       />
