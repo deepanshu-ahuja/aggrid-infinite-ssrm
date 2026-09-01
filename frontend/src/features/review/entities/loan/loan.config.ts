@@ -1,0 +1,172 @@
+import type { EntityDefinition } from '@/shared/grid/configurable/configuration.types';
+
+/**
+ * Base Loan definition: everything the Review feature can support for Loan before current-user access
+ * narrows it. This is deliberately much richer than the first local-array proof and exercises the
+ * same configurable compiler surface already proven by the Transaction example.
+ */
+export const loanEntityDefinition: EntityDefinition = {
+  labelKey: 'review.entities.loan',
+  dataAdapterKey: 'review-loans',
+  rowId: { path: 'id' },
+  gridOptions: {
+    paginationPageSize: 25,
+    cacheBlockSize: 50,
+    maxBlocksInCache: 4,
+    defaultColDef: {
+      resizable: true,
+    },
+    rowSelection: {
+      mode: 'multiRow',
+      checkboxes: true,
+      headerCheckbox: true,
+      selectAll: 'all',
+    },
+  },
+  fields: [
+    {
+      colId: 'borrower',
+      field: 'borrower',
+      labelKey: 'review.loan.borrower',
+      cellDataType: 'text',
+      minWidth: 190,
+      sortable: true,
+      filter: 'agTextColumnFilter',
+      filterParams: {
+        filterOptions: ['contains', 'equals', 'notEqual', 'startsWith', 'endsWith'],
+      },
+      editable: true,
+      cellEditor: 'agTextCellEditor',
+      cellEditorParams: { maxLength: 120 },
+      valueParserKey: 'trimText',
+      validationRules: [
+        { key: 'required', message: 'Borrower is required.' },
+        {
+          key: 'maxLength',
+          params: { max: 120 },
+          message: 'Borrower must be 120 characters or fewer.',
+        },
+      ],
+    },
+    {
+      colId: 'principal',
+      field: 'principal',
+      labelKey: 'review.loan.principal',
+      cellDataType: 'number',
+      type: 'numericColumn',
+      minWidth: 155,
+      sortable: true,
+      filter: 'agNumberColumnFilter',
+      filterParams: {
+        filterOptions: [
+          'equals',
+          'notEqual',
+          'greaterThan',
+          'greaterThanOrEqual',
+          'lessThan',
+          'lessThanOrEqual',
+        ],
+      },
+      editable: true,
+      cellEditor: 'agNumberCellEditor',
+      cellEditorParams: { min: 0, max: 50_000_000 },
+      valueFormatterKey: 'rowCurrency',
+      validationRules: [
+        {
+          key: 'numberRange',
+          params: { min: 0, max: 50_000_000 },
+          message: 'Principal must be between 0 and 50,000,000.',
+        },
+      ],
+    },
+    {
+      colId: 'currency',
+      field: 'currency',
+      labelKey: 'review.loan.currency',
+      cellDataType: 'text',
+      maxWidth: 120,
+      sortable: true,
+      filter: 'agTextColumnFilter',
+      filterParams: { filterOptions: ['equals', 'notEqual'] },
+      editable: true,
+      cellEditor: 'agTextCellEditor',
+      cellEditorParams: { maxLength: 3 },
+      valueParserKey: 'uppercaseText',
+      validationRules: [
+        { key: 'required', message: 'Currency is required.' },
+        { key: 'currencyCode', message: 'Currency must be a 3-letter code.' },
+      ],
+    },
+    {
+      colId: 'status',
+      field: 'status',
+      labelKey: 'review.loan.status',
+      cellDataType: 'text',
+      minWidth: 140,
+      sortable: true,
+      filter: 'agTextColumnFilter',
+      filterParams: { filterOptions: ['equals', 'notEqual'] },
+      editable: true,
+      cellEditor: 'agSelectCellEditor',
+      cellEditorParams: { values: ['Active', 'Pending', 'Closed'] },
+      cellRenderer: 'reviewStatus',
+      validationRules: [
+        { key: 'required', message: 'Loan status is required.' },
+        { key: 'loanStatus', message: 'Loan status must be Active, Pending, or Closed.' },
+      ],
+    },
+    {
+      colId: 'originationDate',
+      field: 'originationDate',
+      labelKey: 'review.loan.originationDate',
+      cellDataType: 'dateString',
+      minWidth: 175,
+      sortable: true,
+      filter: 'agDateColumnFilter',
+      filterParams: {
+        filterOptions: ['equals', 'notEqual', 'lessThan', 'greaterThan'],
+      },
+      editable: true,
+      cellEditor: 'agTextCellEditor',
+      valueFormatterKey: 'dateText',
+      validationRules: [
+        { key: 'required', message: 'Origination date is required.' },
+        { key: 'isoDate', message: 'Origination date must use YYYY-MM-DD.' },
+      ],
+    },
+    {
+      colId: 'region',
+      field: 'region',
+      labelKey: 'review.loan.region',
+      cellDataType: 'text',
+      minWidth: 130,
+      sortable: true,
+      filter: 'agTextColumnFilter',
+      filterParams: { filterOptions: ['equals', 'notEqual'] },
+      editable: true,
+      cellEditor: 'agSelectCellEditor',
+      cellEditorParams: { values: ['North', 'South', 'East', 'West'] },
+      validationRules: [{ key: 'required', message: 'Region is required.' }],
+    },
+    {
+      colId: 'internalScore',
+      field: 'internalScore',
+      labelKey: 'review.loan.internalScore',
+      cellDataType: 'number',
+      minWidth: 145,
+      sortable: true,
+      filter: 'agNumberColumnFilter',
+      filterParams: {
+        filterOptions: [
+          'equals',
+          'notEqual',
+          'greaterThan',
+          'greaterThanOrEqual',
+          'lessThan',
+          'lessThanOrEqual',
+        ],
+      },
+      editable: false,
+    },
+  ],
+};
