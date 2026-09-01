@@ -2,12 +2,14 @@ import type { ReviewApplicationAccessProjection } from './reviewDefinition.types
 
 export const REVIEW_ACCESS_PROFILE_STORAGE_KEY = 'aggrid.devAccessProfile';
 export const REVIEW_ACTIVE_ENTITY_STORAGE_KEY = 'aggrid.devActiveEntity';
-export const DEFAULT_REVIEW_ACCESS_PROFILE = 'loanAndFinance';
+export const DEFAULT_REVIEW_ACCESS_PROFILE = 'allEntities';
 
 export type ReviewAccessProfileKey =
   | 'loanOnly'
   | 'financeOnly'
+  | 'transactionOnly'
   | 'loanAndFinance'
+  | 'allEntities'
   | 'loanReadOnly'
   | 'loanRestricted';
 
@@ -32,6 +34,16 @@ const fullFinanceFields = {
   reviewStatus: 'edit',
   utilizationPct: 'edit',
   nextReviewDate: 'edit',
+} as const;
+
+const fullTransactionFields = {
+  reference: 'read',
+  interaction: 'read',
+  account: 'edit',
+  amount: 'edit',
+  currency: 'edit',
+  status: 'edit',
+  transactionDate: 'edit',
 } as const;
 
 /**
@@ -70,6 +82,18 @@ export const reviewAccessProfiles: Readonly<
       },
     },
   },
+  transactionOnly: {
+    features: {
+      review: {
+        entities: {
+          transaction: {
+            fields: fullTransactionFields,
+            actions: { submit: true },
+          },
+        },
+      },
+    },
+  },
   loanAndFinance: {
     features: {
       review: {
@@ -83,6 +107,28 @@ export const reviewAccessProfiles: Readonly<
             fields: fullFinanceFields,
             actions: { submit: true, escalate: true },
             sensitiveFields: { counterpartyReference: { canRequestUnmask: true } },
+          },
+        },
+      },
+    },
+  },
+  allEntities: {
+    features: {
+      review: {
+        entities: {
+          loan: {
+            fields: fullLoanFields,
+            actions: { submit: true },
+            sensitiveFields: { borrowerTaxId: { canRequestUnmask: true } },
+          },
+          finance: {
+            fields: fullFinanceFields,
+            actions: { submit: true, escalate: true },
+            sensitiveFields: { counterpartyReference: { canRequestUnmask: true } },
+          },
+          transaction: {
+            fields: fullTransactionFields,
+            actions: { submit: true },
           },
         },
       },
@@ -103,8 +149,6 @@ export const reviewAccessProfiles: Readonly<
               region: 'read',
               internalScore: 'read',
             },
-            // No actions/unmask entitlement: read-only field access does not imply business-action or
-            // sensitive-value permission.
           },
         },
       },
@@ -115,8 +159,6 @@ export const reviewAccessProfiles: Readonly<
       review: {
         entities: {
           loan: {
-            // Internal score, borrower tax id, region and origination date are deliberately absent.
-            // The resolver removes them entirely rather than merely hiding rendered columns.
             fields: {
               borrower: 'read',
               principal: 'edit',
