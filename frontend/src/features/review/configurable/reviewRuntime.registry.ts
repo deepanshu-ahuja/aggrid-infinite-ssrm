@@ -1,9 +1,4 @@
-// GRIDCAP-DATA-LOAD | GRIDCAP-QUERY-SORT | GRIDCAP-QUERY-FILTER | GRIDCAP-ACTION-SELECTED | GRIDCAP-ROW-ELIGIBILITY
-import { listTransactions, updateTransactionsBySelection } from '@/features/transactions/api/transactions.api';
-import {
-  mapTransactionFilterModel,
-  mapTransactionGridRequest,
-} from '@/features/transactions/grid/transactionRequest.mapper';
+// GRIDCAP-DATA-LOAD | GRIDCAP-QUERY-SORT | GRIDCAP-QUERY-FILTER | GRIDCAP-ACTION-SELECTED
 import { listLoans, submitLoans } from '../entities/loan/loan.api';
 import { mapLoanFilterModel, mapLoanGridRequest } from '../entities/loan/loanRequest.mapper';
 import { searchFinance, submitFinanceReview } from '../entities/finance/finance.api';
@@ -75,49 +70,16 @@ const financeRuntime: ReviewEntityRuntime = {
   },
 };
 
-const transactionRuntime: ReviewEntityRuntime = {
-  rowsLoader: async (request, context) => {
-    const result = await listTransactions(mapTransactionGridRequest(request), context.signal);
-    return {
-      rows: result.rows.map((row) => ({ ...row })),
-      totalCount: result.totalCount,
-      filteredCount: result.filteredCount,
-    };
-  },
-  registries: reviewRegistries,
-  runtimePolicy: {
-    // Transaction already receives backend-authoritative row interaction metadata. Preserve those same
-    // generic effects when Transaction is rendered by Review instead of weakening the mature SSRM
-    // behavior merely because the columns are configurable.
-    isRowSelectable: ({ data }) => data?.interactionMode === 'enabled',
-    isCellEditable: ({ data }) => data?.interactionMode !== 'readOnly',
-  },
-  primaryAction: {
-    label: 'Submit',
-    execute: async ({ selection, filterModel }, signal) => {
-      const response = await updateTransactionsBySelection(
-        {
-          selection,
-          filters: selection.mode === 'include' ? [] : mapTransactionFilterModel(filterModel),
-          // Review's generic Submit semantics use the existing Transaction API to place targeted rows
-          // into Pending. The generic Review component knows neither this field nor this endpoint.
-          changes: { status: 'Pending' },
-        },
-        signal,
-      );
-      return { affectedCount: response.updatedCount };
-    },
-  },
-};
-
 /**
- * Executable runtime registry keyed by EntityDefinition.dataAdapterKey.
- * Adding an entity does not add another `if (entity === ...)` branch to the Review component.
+ * Executable Review runtime registry keyed by EntityDefinition.dataAdapterKey.
+ *
+ * Loan and Finance intentionally use different backend contracts. The generic grid sees only the
+ * normalized runtime boundary and never branches on those wire shapes. Existing Transactions remain
+ * outside Review and continue to use their own feature/grid runtime.
  */
 export const reviewEntityRuntimeRegistry: Readonly<Record<string, ReviewEntityRuntime>> = {
   'review-loans': loanRuntime,
   'review-finance': financeRuntime,
-  transactions: transactionRuntime,
 };
 
 export function requireReviewEntityRuntime(dataAdapterKey: string): ReviewEntityRuntime {
