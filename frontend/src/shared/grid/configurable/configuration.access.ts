@@ -1,4 +1,3 @@
-// GRIDCAP-CONFIG-ACCESS
 import type { EntityDefinition, FeatureDefinition } from './configuration.types';
 
 /** Current frontend-only field access vocabulary used by resolved configurable-feature projections. */
