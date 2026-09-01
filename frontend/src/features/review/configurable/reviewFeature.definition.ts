@@ -1,4 +1,5 @@
 import type { FeatureDefinition } from '@/shared/grid/configurable/configuration.types';
+import type { ReviewEntityDefinition } from './reviewDefinition.types';
 import { financeEntityDefinition } from '../entities/finance/finance.config';
 import { loanEntityDefinition } from '../entities/loan/loan.config';
 import { transactionReviewEntityDefinition } from '../entities/transaction/transaction.config';
@@ -19,7 +20,8 @@ export type ReviewEntityKey = 'loan' | 'finance' | 'transaction';
  */
 export const reviewFeatureDefinition: FeatureDefinition<
   typeof REVIEW_FEATURE_KEY,
-  ReviewEntityKey
+  ReviewEntityKey,
+  ReviewEntityDefinition
 > = {
   featureKey: REVIEW_FEATURE_KEY,
   entities: {
