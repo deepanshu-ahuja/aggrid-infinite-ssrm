@@ -13,13 +13,17 @@ export type ReviewAccessProfileKey =
   | 'loanReadOnly'
   | 'loanRestricted';
 
-const fullLoanFields = {
+const loanOperationalFields = {
   borrower: 'edit',
   principal: 'edit',
   currency: 'edit',
   status: 'edit',
   originationDate: 'edit',
   region: 'edit',
+} as const;
+
+const fullLoanFields = {
+  ...loanOperationalFields,
   internalScore: 'read',
 } as const;
 
@@ -59,7 +63,8 @@ export const reviewAccessProfiles: Readonly<
       review: {
         entities: {
           loan: {
-            fields: fullLoanFields,
+            // `internalScore` intentionally stays absent to keep the default-deny projection visible.
+            fields: loanOperationalFields,
             actions: { submit: true },
           },
         },
