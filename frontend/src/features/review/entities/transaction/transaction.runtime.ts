@@ -7,6 +7,7 @@ import {
   mapTransactionFilterModel,
   mapTransactionGridRequest,
 } from '@/features/transactions/grid/transactionRequest.mapper';
+import { buildGridSelectionActionTarget } from '@/shared/grid/selection/gridSelectionActionTarget';
 import { reviewRegistries } from '../../configurable/reviewRegistries';
 import type {
   ReviewEntityRuntime,
@@ -37,10 +38,16 @@ export const transactionReviewRuntime: ReviewEntityRuntime = {
   primaryAction: {
     key: 'submit',
     execute: async ({ selection, filterModel }, signal) => {
+      const filters = mapTransactionFilterModel(filterModel);
+      const target = buildGridSelectionActionTarget(
+        selection,
+        filters.length > 0 ? 'filtered' : 'all',
+        filters,
+      );
+
       const response = await updateTransactionsBySelection(
         {
-          selection,
-          filters: selection.mode === 'include' ? [] : mapTransactionFilterModel(filterModel),
+          ...target,
           // Review calls this common business action "Submit". The Transaction adapter owns the actual
           // Transaction backend semantics and maps Submit to Pending without leaking that into Review UI.
           changes: { status: 'Pending' },
