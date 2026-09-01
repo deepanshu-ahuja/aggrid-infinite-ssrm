@@ -6,10 +6,9 @@ import type { ServerSelectionIntent } from '@/shared/grid/selection/serverSelect
 /**
  * Runtime row shape at the generic Review boundary.
  *
- * Feature-owned adapters stay strongly typed against Loan/Finance/Transaction contracts, then erase
- * the concrete row type only when registering with the dynamic Review runtime. This is the same
- * boundary a future backend-configured entity would cross: the generic grid knows configured field
- * paths, not a compile-time business interface.
+ * Feature-owned adapters stay strongly typed against Loan/Finance contracts, then erase the concrete
+ * row type only when registering with the dynamic Review runtime. The generic grid knows configured
+ * field paths and stable row identity; it does not depend on one compile-time business row interface.
  */
 export type ReviewRuntimeRow = Record<string, unknown>;
 
@@ -28,13 +27,14 @@ export interface ReviewPrimaryActionResult {
 }
 
 /**
- * Entity-owned adapter for the Review feature's common primary action.
+ * Entity-owned executable adapter for one configured Review primary action.
  *
- * The Review component owns one mutation/button lifecycle. This adapter owns everything that can vary
- * by business entity: endpoint, request mapping, response normalization, and backend semantics.
+ * `key` joins this executable behavior to the JSON-safe action definition/access projection. The Review
+ * component renders the adapter only when the resolved current-user entity still contains that action.
+ * Endpoint, payload mapping, response normalization and backend semantics remain entity-owned here.
  */
 export interface ReviewPrimaryActionAdapter {
-  label: string;
+  key: string;
   execute: (
     context: ReviewPrimaryActionContext,
     signal?: AbortSignal,
@@ -50,7 +50,6 @@ export interface ReviewPrimaryActionAdapter {
 export interface ReviewEntityRuntime {
   rowsLoader: GridRowsLoader<ReviewRuntimeRow>;
   registries: ConfigurableGridRegistries<ReviewRuntimeRow>;
-  /** Optional row-level policy from authoritative runtime data, e.g. Transaction interactionMode. */
   runtimePolicy?: ConfigurableGridRuntimePolicy<ReviewRuntimeRow>;
   primaryAction?: ReviewPrimaryActionAdapter;
 }
