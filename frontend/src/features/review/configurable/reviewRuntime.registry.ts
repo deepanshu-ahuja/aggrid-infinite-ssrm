@@ -6,6 +6,7 @@ import {
   mapFinanceGridRequest,
   mapFinanceSubmitTarget,
 } from '../entities/finance/financeRequest.mapper';
+import { transactionReviewRuntime } from '../entities/transaction/transaction.runtime';
 import { reviewRegistries } from './reviewRegistries';
 import type {
   ReviewEntityRuntime,
@@ -16,7 +17,6 @@ const loanRuntime: ReviewEntityRuntime = {
   rowsLoader: async (request, context) => {
     const result = await listLoans(mapLoanGridRequest(request), context.signal);
     return {
-      // Concrete API contracts remain strongly typed until this single dynamic runtime boundary.
       rows: result.rows as ReviewRuntimeRow[],
       totalCount: result.totalCount,
       filteredCount: result.filteredCount,
@@ -24,13 +24,11 @@ const loanRuntime: ReviewEntityRuntime = {
   },
   registries: reviewRegistries,
   primaryAction: {
-    label: 'Submit',
+    key: 'submit',
     execute: async ({ selection, filterModel }, signal) => {
       const response = await submitLoans(
         {
           selection,
-          // Exact include IDs are already the whole target. Exclude mode uses current filters to mean
-          // All Filtered; an empty filter model means All Records.
           filters: selection.mode === 'include' ? [] : mapLoanFilterModel(filterModel),
         },
         signal,
@@ -53,7 +51,7 @@ const financeRuntime: ReviewEntityRuntime = {
   },
   registries: reviewRegistries,
   primaryAction: {
-    label: 'Submit',
+    key: 'submit',
     execute: async ({ selection, filterModel }, signal) => {
       const response = await submitFinanceReview(
         {
@@ -73,13 +71,13 @@ const financeRuntime: ReviewEntityRuntime = {
 /**
  * Executable Review runtime registry keyed by EntityDefinition.dataAdapterKey.
  *
- * Loan and Finance intentionally use different backend contracts. The generic grid sees only the
- * normalized runtime boundary and never branches on those wire shapes. Existing Transactions remain
- * outside Review and continue to use their own feature/grid runtime.
+ * Loan, Finance and Transaction can all have different backend contracts. The generic grid sees only
+ * this normalized runtime boundary; backend request/response differences stay inside entity adapters.
  */
 export const reviewEntityRuntimeRegistry: Readonly<Record<string, ReviewEntityRuntime>> = {
   'review-loans': loanRuntime,
   'review-finance': financeRuntime,
+  transactions: transactionReviewRuntime,
 };
 
 export function requireReviewEntityRuntime(dataAdapterKey: string): ReviewEntityRuntime {
