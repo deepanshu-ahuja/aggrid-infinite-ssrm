@@ -1,6 +1,11 @@
 import { transactionsConfigurableFeature } from '@/features/transactions/configurable/transactionsConfigurableFeature';
 import type { ReviewEntityDefinition } from '../../configurable/reviewDefinition.types';
 
+const baseTransactionEntity = transactionsConfigurableFeature.entities.transaction;
+if (!baseTransactionEntity) {
+  throw new Error('The Transaction configurable feature does not expose its transaction entity.');
+}
+
 /**
  * Review adapter for the existing Transaction configurable entity.
  *
@@ -9,7 +14,7 @@ import type { ReviewEntityDefinition } from '../../configurable/reviewDefinition
  * This keeps Transaction visibly present as a Review entity without creating a second drifting source.
  */
 export const transactionReviewEntityDefinition: ReviewEntityDefinition = {
-  ...transactionsConfigurableFeature.entities.transaction,
+  ...baseTransactionEntity,
   actions: [
     {
       key: 'submit',
