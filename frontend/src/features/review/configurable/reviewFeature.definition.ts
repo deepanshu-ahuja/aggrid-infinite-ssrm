@@ -1,16 +1,19 @@
 import type { FeatureDefinition } from '@/shared/grid/configurable/configuration.types';
-import { transactionsConfigurableFeature } from '@/features/transactions/configurable/transactionsConfigurableFeature';
 import { financeEntityDefinition } from '../entities/finance/finance.config';
 import { loanEntityDefinition } from '../entities/loan/loan.config';
 
 export const REVIEW_FEATURE_KEY = 'review';
-export type ReviewEntityKey = 'loan' | 'finance' | 'transaction';
+export type ReviewEntityKey = 'loan' | 'finance';
 
 /**
  * Everything the Review feature CAN support before current-user access is applied.
  *
- * The three entity definitions deliberately differ in field shape, row identity and data adapter.
- * The shared Review component therefore cannot rely on a Loan/Finance/Transaction-specific contract.
+ * Loan and Finance deliberately differ in row identity, fields and backend adapter/wire contracts.
+ * The Review component therefore stays entity-agnostic and resolves executable runtime behavior from
+ * each entity's `dataAdapterKey` instead of branching on Loan/Finance component implementations.
+ *
+ * Transactions remain their own existing feature/grid. Their mature implementation is a reference for
+ * reusable SSRM mechanics, not a Review entity that needs to be duplicated or routed through Review.
  */
 export const reviewFeatureDefinition: FeatureDefinition<
   typeof REVIEW_FEATURE_KEY,
@@ -20,13 +23,9 @@ export const reviewFeatureDefinition: FeatureDefinition<
   entities: {
     loan: loanEntityDefinition,
     finance: financeEntityDefinition,
-    // Reuse the already-rich Transaction configurable entity instead of maintaining a second drifting
-    // copy. Review resolves its `transactions` dataAdapterKey through the same runtime registry as the
-    // new Loan/Finance adapters.
-    transaction: transactionsConfigurableFeature.entities.transaction,
   },
 };
 
 export function isReviewEntityKey(value: string | null): value is ReviewEntityKey {
-  return value === 'loan' || value === 'finance' || value === 'transaction';
+  return value === 'loan' || value === 'finance';
 }
