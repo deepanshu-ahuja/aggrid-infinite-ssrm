@@ -1,130 +1,258 @@
 # Configurable SSRM manual verification
 
-Use this checklist for the isolated `/configurable-ssrm` Review route. This is a browser checklist, not a statement that the scenarios have already passed.
+Use this checklist for `/configurable-ssrm`. It documents scenarios to run; it is **not** a statement that the scenarios have already passed.
 
 ## Setup
 
 1. Start the normal frontend/backend development flow documented by the repository.
 2. Open `/configurable-ssrm`.
-3. Open browser developer tools and keep Console visible.
+3. Keep browser Console and Network visible.
 4. Open Application/Storage → Local Storage for the current origin.
-5. Know these development-only keys:
+5. Development-only keys:
 
 ```text
 aggrid.devAccessProfile
 aggrid.devActiveEntity
 ```
 
-Profile values currently supported:
+Supported profiles:
 
 ```text
 loanOnly
 financeOnly
+transactionOnly
 loanAndFinance
+allEntities
 loanReadOnly
+loanRestricted
 ```
 
-Entity values currently supported:
+Supported active entities:
 
 ```text
 loan
 finance
+transaction
+```
+
+Default profile when missing/invalid:
+
+```text
+allEntities
 ```
 
 After changing a value, reload the route.
 
-## Default profile
+## Default/all-entity projection
 
-1. Remove both keys from localStorage.
+1. Remove both localStorage keys.
 2. Reload `/configurable-ssrm`.
-3. Confirm the displayed development profile is `loanAndFinance`.
-4. Confirm both `loan` and `finance` are listed as available entities.
-5. Confirm Loan is selected as the fallback first entity when no valid active entity is stored.
+3. Confirm displayed profile is `allEntities`.
+4. Confirm available entities are `loan, finance, transaction`.
+5. Confirm Loan is the fallback first entity when no active entity is stored.
+6. Confirm the grid renders without page errors.
 
-Pass criteria: missing/invalid localStorage does not crash the feature and the documented default profile is used.
+Pass criteria: missing/invalid development selectors do not crash the feature and the default profile resolves all three entities.
 
-## Same profile, different active entity
+## Loan backend/runtime
 
-1. Set `aggrid.devAccessProfile = loanAndFinance`.
-2. Set `aggrid.devActiveEntity = loan` and reload.
-3. Confirm Loan headers: `Borrower`, `Principal`, `Loan status`, `Internal score`.
-4. Confirm Finance-only headers such as `Facility` are absent.
-5. Change only `aggrid.devActiveEntity = finance` and reload.
-6. Confirm Finance headers: `Facility`, `Counterparty`, `Exposure`, `Currency`, `Review status`.
-7. Confirm Loan-only headers such as `Borrower` are absent.
+1. Set profile `allEntities`, active entity `loan`, then reload.
+2. Confirm Loan columns include `Borrower`, `Principal`, `Currency`, `Loan status`, `Origination date`, `Region`, and `Internal score`.
+3. Confirm rows use stable IDs such as `LN-1000`.
+4. In Network, confirm loading uses:
 
-Pass criteria: one simulated current user can access both entities, while active-entity navigation is a separate choice from access-profile identity.
+```text
+POST /api/review/loans/query/
+```
 
-## Entity and field removal
+5. Inspect the request and confirm Loan uses the flat contract:
 
-1. Set `aggrid.devAccessProfile = loanOnly`.
-2. Deliberately leave `aggrid.devActiveEntity = finance`.
-3. Reload.
-4. Confirm the route falls back to active entity `loan` because Finance is not available to this profile.
-5. Confirm only `loan` is listed as available.
-6. Confirm `Internal score` is absent even though it exists in the Loan base definition.
-7. Confirm Finance fields are absent.
+```text
+offset
+limit
+sort
+filters
+```
 
-Pass criteria: inaccessible entities/fields are removed from the resolved configuration rather than merely visually hidden.
+6. Sort an enabled Loan column and confirm the next request contains the expected Loan field/direction.
+7. Apply a supported simple filter and confirm the request contains the mapped Loan filter field/operator/value.
+
+Pass criteria: Loan sort/filter semantics are executed through the Loan adapter/backend, not inferred directly by the generic grid.
+
+## Finance backend/runtime is intentionally different
+
+1. Set profile `allEntities`, active entity `finance`, then reload.
+2. Confirm Finance columns include `Facility`, `Counterparty`, `Exposure`, `Currency`, `Desk`, `Review status`, `Utilization`, and `Next review date`.
+3. Confirm rows use stable IDs such as `FIN-5000` from `recordKey`, not a universal `id` assumption.
+4. In Network, confirm loading uses:
+
+```text
+POST /api/review/finance/search/
+```
+
+5. Inspect the request and confirm Finance uses its different wire contract:
+
+```text
+window
+orderBy
+criteria
+```
+
+6. Confirm the response uses `records` + `counts` rather than Loan's `rows` + totals vocabulary.
+7. Sort/filter and confirm the Finance mapper translates AG Grid state into `attribute/comparison/operand` semantics.
+
+Pass criteria: the same configurable SSRM root renders Finance while the generic grid remains unaware of Finance backend vocabulary.
+
+## Transaction as a Review entity
+
+1. Set profile `allEntities`, active entity `transaction`, then reload.
+2. Confirm the entity heading is `Transactions` and columns include `Reference`, `Access`, `Account`, `Amount`, `Currency`, `Status`, and `Transaction date`.
+3. Confirm loading uses the existing:
+
+```text
+POST /api/transactions/query/
+```
+
+4. Confirm Transaction row IDs remain the existing stable `txn-*` IDs.
+5. Confirm Transaction row interaction restrictions still affect selection/editability as on the existing SSRM references.
+
+Pass criteria: Transaction participates in Review through a thin Review adapter while reusing the existing authoritative Transaction configurable definition/API/mappers.
+
+## Access projection and fallback
+
+1. Set profile `loanOnly` and deliberately store active entity `finance`.
+2. Reload.
+3. Confirm active entity falls back to `loan`.
+4. Confirm only `loan` is listed as available.
+5. Confirm `Internal score` is absent even though it exists in the base Loan definition.
+6. Confirm Finance and Transaction columns are absent.
+
+Pass criteria: inaccessible entities/fields are removed by resolution rather than merely hidden with CSS.
 
 ## Read-only projection
 
-1. Set `aggrid.devAccessProfile = loanReadOnly` and `aggrid.devActiveEntity = loan`.
-2. Reload.
-3. Double-click Borrower, Principal and Loan status cells.
-4. Confirm none enters edit mode.
-5. Exercise paste/Fill Handle against those cells where practical and confirm read-only access is not bypassed.
-6. Confirm edited row/cell counters remain zero.
+1. Set profile `loanReadOnly`, active entity `loan`, then reload.
+2. Double-click Borrower, Principal, Currency, Loan status and other normally editable cells.
+3. Confirm none enters edit mode.
+4. Exercise paste/Fill Handle where practical and confirm read access is not bypassed.
+5. Confirm edited row/cell counts remain zero.
+6. Confirm the common `Submit` action is absent because this profile does not permit it.
 
-Pass criteria: user-level `read` access is applied before AG Grid receives its final `ColDef.editable` behavior.
+Pass criteria: user access is applied before AG Grid receives final editability/action metadata.
 
-## Editable Loan validation and draft tracking
+## Restricted projection
 
-1. Set `aggrid.devAccessProfile = loanOnly` and `aggrid.devActiveEntity = loan`.
-2. Reload.
-3. Double-click `Borrower` in row `LN-1001`.
-4. Clear the value and press Enter.
-5. Confirm AG Grid keeps the invalid editor active because `invalidEditValueMode = block`.
-6. Confirm dirty counts remain zero because invalid input has not committed.
-7. Enter a non-empty Borrower and commit.
-8. Confirm the value changes and dirty counts become one row / one cell.
-9. Repeat with a negative/valid Principal value.
+1. Set profile `loanRestricted`, active entity `loan`, then reload.
+2. Confirm only Borrower, Principal, Currency, and Loan status are present.
+3. Confirm Borrower/Currency are read-only.
+4. Confirm Principal/Loan status remain editable.
+5. Confirm `Submit` remains available after selecting a row.
 
-Pass criteria: access projection and configurable compilation still use AG Grid native validation before committed BASE + LOCAL draft tracking.
+Pass criteria: the access object behaves as a default-deny allowlist and not as a partial copy of Loan grid configuration.
 
-## Finance editability
+## Native validation and BASE + LOCAL drafts
 
-1. Set `aggrid.devAccessProfile = financeOnly` and `aggrid.devActiveEntity = finance`.
-2. Reload.
-3. Confirm `Facility` and `Currency` are read-only.
-4. Confirm `Counterparty`, `Exposure`, and `Review status` are editable.
-5. Confirm the rows use Finance data (`FN-*`) rather than Loan data (`LN-*`).
+1. Set profile `loanOnly`, active entity `loan`, then reload.
+2. Edit Borrower in `LN-1000`.
+3. Clear the value and press Enter.
+4. Confirm AG Grid blocks the invalid commit and leaves the editor active.
+5. Confirm dirty counts remain zero.
+6. Enter a valid non-empty Borrower and commit.
+7. Confirm dirty counts become one row / one cell.
+8. Repeat representative parser/validation checks such as uppercase Currency, number range, select editor, and ISO date validation.
 
-Pass criteria: the same generic SSRM root handles a different row shape/entity configuration without Transaction- or Loan-specific branching.
+Pass criteria: configurable metadata compiles to native editor/parser/formatter/validation behavior before BASE + LOCAL draft tracking observes committed changes.
 
-## Local data-source boundary
+## Common Submit, different entity APIs
 
-1. Inspect Network while switching Loan and Finance.
-2. Confirm this Review experiment does not invent Loan/Finance backend APIs.
-3. Confirm the grid still behaves as SSRM, but current Review rows come from the documented FE-only local `GridRowsLoader` adapters.
-4. Confirm sort/filter UI is not exposed for these local Review fields because those server semantics are not implemented by the local adapter.
+### Loan
 
-Pass criteria: the access experiment does not falsely imply a backend query contract that does not exist.
+1. Use `loanOnly` + `loan`.
+2. Select one eligible row.
+3. Confirm the common button reads `Submit` and selected count updates.
+4. Click Submit.
+5. Confirm Network uses:
 
-## Negative lifecycle checks
+```text
+POST /api/review/loans/submit/
+```
 
-1. Navigate away while the grid is mounted and return.
-2. Switch profile/entity through localStorage and reload repeatedly.
-3. Confirm no destroyed-GridApi warnings or uncaught page errors.
+6. Confirm the payload uses Loan selection/filter vocabulary.
+7. Confirm success clears selection and causes the Loan SSRM store to refresh.
 
-## Security interpretation
+### Finance
 
-The localStorage values are only a development simulation. Do not treat them as authorization/security. A user can edit them freely. Future real authorization must be backend-authoritative and APIs must enforce access independently.
+1. Use `financeOnly` + `finance`.
+2. Select one row and click the same `Submit` button.
+3. Confirm Network uses:
+
+```text
+POST /api/review/finance/commands/submit/
+```
+
+4. Confirm Finance sends its command shape, including `command: SUBMIT_REVIEW` and Finance target vocabulary.
+5. Confirm success clears selection and refreshes Finance SSRM rows.
+
+### Failure lifecycle
+
+1. Using devtools/proxy/test tooling, force the active Submit request to fail.
+2. Confirm an error is shown.
+3. Confirm the existing selection is preserved.
+4. Confirm the grid does not perform a successful-action refresh lifecycle.
+
+Pass criteria: Review owns one mutation UI while entity runtimes own endpoint/payload/response differences and the grid owns selection/refresh lifecycle.
+
+## SSRM selection controls
+
+For Loan and Finance, verify representative cases:
+
+1. Select one row manually.
+2. Use **Select current page**.
+3. Use **Clear selection**.
+4. Apply a filter and use **Select all filtered**.
+5. Use the native header checkbox for All Records.
+6. Confirm selected counts follow the current total/filtered count semantics.
+7. Confirm changing a defining filter clears filter-dependent selection as expected by the shared SSRM controller.
+
+For Transaction, also confirm backend-derived restricted rows remain unavailable for selection where applicable.
+
+## Entity lifecycle / cleanup
+
+1. Navigate away while Review is mounted and return.
+2. Change active entity repeatedly through localStorage + reload.
+3. Change profiles repeatedly, including inaccessible stored entity combinations.
+4. Confirm no destroyed-GridApi warnings, duplicate datasource requests caused by leaked instances, or uncaught page errors.
+
+The implementation also keys the active Review entity subtree by entity identity so a future in-page entity change can remount cleanly rather than hot-swapping a live GridApi/datasource.
 
 ## Current deliberate omissions
 
-Do not expect configurable Save/Discard controls, business actions, masking/unmask, backend user/profile APIs, row-specific authorization payloads, Grid State/access reconciliation, conflict reconciliation, or runtime schema/version negotiation on this route yet.
+Do not expect these on the configurable Review route yet:
+
+- configurable row Save / Save Selected / Discard persistence for cell drafts;
+- masking/unmask/sensitive-value retrieval;
+- entity-specific secondary action rendering;
+- real auth/backend-authoritative access provider;
+- backend-delivered configuration/access metadata;
+- configurable Grid State/access reconciliation;
+- REMOTE conflict/concurrency/versioning;
+- grouping/tree/pivot/aggregation.
+
+`TransactionsSsrmNativeEditingGrid` remains an intentional native-editing reference and must not be treated as obsolete just because Review is configurable.
+
+## Security interpretation
+
+localStorage profile/entity values are development simulation only. They are freely editable and are not authorization. Real backend APIs must enforce actual permissions independently when authentication/access is introduced.
 
 ## Pass record
 
-Record browser/OS, commit SHA, localStorage profile/entity combinations actually exercised, failures/console warnings, and whether Playwright also passed on the exact same SHA. Do not mark the checklist complete based only on unit tests or another SSRM route.
+Record:
+
+- browser/OS;
+- exact commit SHA;
+- profile/entity combinations actually exercised;
+- API requests inspected;
+- failures/console warnings;
+- whether the exact same SHA passed Playwright/CI.
+
+Do not mark this checklist complete based only on automated tests or another SSRM route.
