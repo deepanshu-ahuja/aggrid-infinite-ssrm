@@ -2,34 +2,124 @@
 
 ## Current checkpoint
 
-The public configurable type contract from PR #43 remains the contract. The first real configurable SSRM runtime foundation is now implemented on `configurable-feature-grid`.
+The public configurable type contract from PR #43 remains the base contract. The branch now proves the next intended layer: one configurable feature can contain multiple business entities and can be narrowed by a simulated current-user access projection before the generic SSRM grid receives it.
 
-Implemented in the current foundation batch:
+Implemented now:
 
 - application configurable-SSRM defaults;
 - deterministic `entity.gridOptions` merge semantics;
-- nested `defaultColDef`, filter/editor/renderer param, row-selection and Cell Selection merges;
-- mandatory `unknown` runtime JSON validation/normalization;
-- native filter/editor/renderer name allowlists;
-- formatter/parser/validator frontend registries;
+- native filter/editor/renderer name allowlists and executable registries;
 - `labelKey → headerName`;
 - `rowId.path → getRowId` plus draft row-ID accessor;
-- `validationRules → cellEditorParams.getValidationErrors`;
+- declarative validation rules → native editor validation;
 - fields → final native `ColDef[]`;
 - resolved native `GridOptions`;
-- isolated `/configurable-ssrm` Transaction consumer;
-- existing Transaction server request mapper/datasource reuse;
+- generic `ConfigurableSsrmEntityGrid<TData>` runtime with no Transaction/Loan/Finance/profile knowledge;
+- frontend Review base feature with separate `loan` and `finance` entities and different row data types;
+- frontend-only current-user access projections that can remove entities/fields or downgrade field editing;
+- separate active-entity selection for a profile that can access multiple entities;
+- localStorage development switching for access profile and active entity;
+- frontend-only local rows loaders for Loan/Finance so the access experiment does not invent backend APIs;
 - `useGridDraftEditing` BASE + LOCAL composition;
-- focused unit tests and real-grid Playwright coverage;
-- current implementation/manual documentation.
+- focused access resolver tests and real-grid Playwright coverage;
+- current implementation/manual/handoff documentation.
+
+Earlier `configuration.normalizer.ts` / normalization tests remain available for a real backend/storage `unknown` JSON trust boundary and for the earlier backend-like Transaction proof.
+
+## Critical clarified architecture
+
+The configurable runtime is not Transaction-shaped.
+
+```text
+FeatureDefinition
+└── entities
+    ├── loan    → EntityDefinition + LoanReviewRow runtime
+    ├── finance → EntityDefinition + FinanceReviewRow runtime
+    └── future business entities
+```
+
+The feature/entity base definition answers what the business feature **can** support.
+
+A separate access projection answers what the current user/session **may** receive/do.
+
+```text
+base feature definition
+        +
+resolved current-user access
+        ↓
+resolved feature/entities/fields
+        ↓
+active entity
+        ↓
+generic configurable SSRM root
+```
+
+Do not duplicate full configurations per role/profile. Do not make profile identity also mean active navigation/entity.
+
+## FE-only access simulation
+
+There is no real auth/backend metadata system yet.
+
+Development profile key:
+
+```text
+aggrid.devAccessProfile
+```
+
+Current values:
+
+```text
+loanOnly
+financeOnly
+loanAndFinance
+loanReadOnly
+```
+
+Active entity key:
+
+```text
+aggrid.devActiveEntity = loan | finance
+```
+
+Change localStorage and reload `/configurable-ssrm` to verify different user projections without creating real users.
+
+These values simulate an already-resolved authorization result. Generic grid/access code must never infer permissions from those profile names.
+
+## Normalization decision
+
+Do not overbuild runtime normalization for trusted frontend-authored configuration merely because the same shape may later come from the backend.
+
+Current local path:
+
+```text
+typed frontend configuration (`satisfies FeatureDefinition`)
+        ↓
+access projection
+        ↓
+compiler
+```
+
+Future backend/storage path:
+
+```text
+runtime JSON (`unknown`)
+        ↓
+validate / normalize
+        ↓
+normalized frontend configuration
+        ↓
+access / compiler
+```
+
+Runtime normalization remains necessary when a real untrusted API/storage boundary exists. It is not required to make local constants pretend to be backend payloads.
 
 ## Ownership that remains unchanged
 
-AG Grid owns native editing, Cell Selection, Fill Handle, clipboard, filtering UI, editor validation lifecycle and SSRM lifecycle.
+AG Grid owns native editing, Cell Selection, Fill Handle, clipboard, editor validation lifecycle and SSRM lifecycle.
 
-The compiler does not own backend query translation, business access rules, datasource objects, GridApi refs, React lifecycle, or business actions.
+The compiler does not own backend query translation, datasource objects, GridApi refs, React lifecycle, authorization policy generation, or business actions.
 
-The Transaction consumer keeps `mapTransactionGridRequest`, `listTransactions`, `isTransactionCellEditable`, and `isTransactionRowSelectable` as feature/runtime boundaries.
+Current Review Loan/Finance loaders are frontend-only proof adapters and intentionally do not support server sort/filter semantics. Real server-backed entities must supply explicit feature adapters/request mappers later.
 
 ## Validation status
 
@@ -43,27 +133,36 @@ npm run build
 npm run docs:configurable
 ```
 
-The GitHub CI workflow currently runs only for pull requests to `main` and pushes to `main`, so a plain working-branch commit does not itself produce CI.
+Also run applicable Playwright/manual verification before claiming browser completion.
 
-Generated TypeDoc was stale at the pre-implementation checkpoint. The public type file was not changed by this runtime batch, but stale generated output still needs regeneration on an executable checkout before it can be treated as current.
+Generated TypeDoc may remain stale until `npm run docs:configurable` actually regenerates it on the current head.
 
 ## Next coherent areas
 
-Do not reopen the whole public contract speculatively. Extend only when a real runtime requirement proves a type change is needed.
+First verify/harden the current generic feature/entity/access runtime. Do not immediately add more metadata surface.
 
-The larger next areas remain:
+After that, larger areas remain:
 
 ```text
-server sort/filter/search mapping beyond the current Transaction adapter
+real feature-owned server sort/filter/search mapping when an entity backend needs it
 read/write/save mapping
-access/security/masking
-business actions
+business actions + action access
+masking/unmask + sensitive-data access
+row-specific runtime access/capabilities
 Grid State/access reconciliation
-runtime config schema/versioning
+backend config/access provider integration
+runtime config schema/versioning when transport exists
 ```
 
 Concurrency/conflict/versioning remains a separate later decision; do not automatically restore the old REMOTE reconciliation architecture.
 
 ## Durable current implementation reference
 
-See `docs/configurable-feature/configuration-reference.md`, `docs/configurable-feature/type-hierarchy.md`, `docs/configurable-feature/concepts.md`, `docs/implementation/configurable-ssrm.md`, and `docs/implementation/testing/configurable-ssrm-manual-testing.md`.
+See:
+
+- `docs/configurable-feature-handoff.md`;
+- `docs/configurable-feature/configuration-reference.md`;
+- `docs/configurable-feature/type-hierarchy.md`;
+- `docs/configurable-feature/concepts.md`;
+- `docs/implementation/configurable-ssrm.md`;
+- `docs/implementation/testing/configurable-ssrm-manual-testing.md`.
