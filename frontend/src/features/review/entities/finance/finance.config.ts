@@ -28,11 +28,6 @@ export const financeEntityDefinition: ReviewEntityDefinition = {
       labelKey: 'review.actions.submit',
       placement: 'primary',
     },
-    {
-      key: 'escalate',
-      labelKey: 'review.actions.escalate',
-      placement: 'secondary',
-    },
   ],
   fields: [
     {
@@ -71,18 +66,6 @@ export const financeEntityDefinition: ReviewEntityDefinition = {
           message: 'Counterparty must be 120 characters or fewer.',
         },
       ],
-    },
-    {
-      colId: 'counterpartyReference',
-      field: 'counterpartyReference',
-      labelKey: 'review.finance.counterpartyReference',
-      cellDataType: 'object',
-      minWidth: 215,
-      sortable: false,
-      filter: false,
-      editable: false,
-      cellRenderer: 'reviewSensitiveText',
-      sensitivity: { maskable: true },
     },
     {
       colId: 'exposure',
