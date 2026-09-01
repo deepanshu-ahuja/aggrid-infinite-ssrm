@@ -6,7 +6,7 @@ import type {
   ReviewEntityDefinition,
 } from './reviewDefinition.types';
 
-function resolveReviewEntityCapabilities(
+function resolveReviewEntityActions(
   entityKey: string,
   baseEntity: ReviewEntityDefinition,
   resolvedEntity: ReviewEntityDefinition,
@@ -22,59 +22,18 @@ function resolveReviewEntityCapabilities(
     }
   }
 
-  const actions = (baseEntity.actions ?? []).filter((action) => access.actions?.[action.key] === true);
-  const baseFields = new Map(baseEntity.fields.map((field) => [String(field.colId), field]));
-
-  for (const fieldId of Object.keys(access.sensitiveFields ?? {})) {
-    const baseField = baseFields.get(fieldId);
-    if (!baseField) {
-      throw new Error(
-        `Review sensitive access for entity "${entityKey}" references unknown field "${fieldId}".`,
-      );
-    }
-    if (!baseField.sensitivity?.maskable) {
-      throw new Error(
-        `Review sensitive access for entity "${entityKey}" references non-maskable field "${fieldId}".`,
-      );
-    }
-  }
-
-  const fields = resolvedEntity.fields.map((resolvedField) => {
-    const baseField = baseFields.get(String(resolvedField.colId));
-    if (!baseField?.sensitivity?.maskable) return resolvedField;
-
-    const sensitiveAccess = access.sensitiveFields?.[String(resolvedField.colId)];
-
-    // Sensitivity is provider/access metadata, not an AG Grid ColDef property. Compile the resolved
-    // entitlement into renderer params and remove the Review-only metadata before the generic compiler
-    // sees the field. This keeps the AG Grid contract bounded while preserving default-deny access.
-    const fieldWithoutSensitivity = { ...baseField };
-    delete fieldWithoutSensitivity.sensitivity;
-
-    return {
-      ...fieldWithoutSensitivity,
-      // Preserve any editability/access narrowing already performed by the shared resolver.
-      editable: resolvedField.editable,
-      cellRendererParams: {
-        ...(resolvedField.cellRendererParams ?? {}),
-        canRequestUnmask: sensitiveAccess?.canRequestUnmask === true,
-      },
-    };
-  });
-
   return {
     ...resolvedEntity,
-    fields,
-    actions,
+    actions: (baseEntity.actions ?? []).filter((action) => access.actions?.[action.key] === true),
   };
 }
 
 /**
- * Resolve shared feature/entity/field access first, then Review-specific action/sensitive entitlements.
+ * Resolve shared feature/entity/field access first, then Review-specific business-action access.
  *
- * Keeping this as a provider-layer composition prevents generic AG Grid code from knowing role names,
- * masking authorization or business action identities. A future backend can provide the same resolved
- * access shape without changing the grid runtime.
+ * Keeping this as a feature/provider-layer composition prevents generic AG Grid code from knowing
+ * profile names or business action identities. A future backend can provide the same resolved access
+ * projection without changing the configurable grid runtime.
  */
 export function resolveReviewFeatureAccess<
   TFeatureKey extends string,
@@ -95,7 +54,7 @@ export function resolveReviewFeatureAccess<
     const entityAccess = featureAccess.entities[entityKey];
     if (!baseEntity || !entityAccess) continue;
 
-    entities[entityKey] = resolveReviewEntityCapabilities(
+    entities[entityKey] = resolveReviewEntityActions(
       entityKey,
       baseEntity,
       resolvedEntity,
