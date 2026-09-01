@@ -15,7 +15,6 @@ export type ReviewAccessProfileKey =
 
 const fullLoanFields = {
   borrower: 'edit',
-  borrowerTaxId: 'read',
   principal: 'edit',
   currency: 'edit',
   status: 'edit',
@@ -27,7 +26,6 @@ const fullLoanFields = {
 const fullFinanceFields = {
   facility: 'read',
   counterparty: 'edit',
-  counterpartyReference: 'read',
   exposure: 'edit',
   currency: 'read',
   desk: 'edit',
@@ -49,9 +47,9 @@ const fullTransactionFields = {
 /**
  * FE-only resolved access fixtures selected through localStorage.
  *
- * These are authorization allowlists, NOT partial entity/grid overrides. Missing fields, actions and
- * sensitive entitlements are unavailable by default. That default-deny rule is important: adding a new
- * field/action to a base definition must never silently expose it to every existing user profile.
+ * These are authorization allowlists, NOT partial entity/grid overrides. Missing fields and actions are
+ * unavailable by default. That default-deny rule is important: adding a new field/action to a base
+ * definition must never silently expose it to every existing user profile.
  */
 export const reviewAccessProfiles: Readonly<
   Record<ReviewAccessProfileKey, ReviewApplicationAccessProjection>
@@ -63,7 +61,6 @@ export const reviewAccessProfiles: Readonly<
           loan: {
             fields: fullLoanFields,
             actions: { submit: true },
-            sensitiveFields: { borrowerTaxId: { canRequestUnmask: true } },
           },
         },
       },
@@ -75,8 +72,7 @@ export const reviewAccessProfiles: Readonly<
         entities: {
           finance: {
             fields: fullFinanceFields,
-            actions: { submit: true, escalate: true },
-            sensitiveFields: { counterpartyReference: { canRequestUnmask: true } },
+            actions: { submit: true },
           },
         },
       },
@@ -101,12 +97,10 @@ export const reviewAccessProfiles: Readonly<
           loan: {
             fields: fullLoanFields,
             actions: { submit: true },
-            sensitiveFields: { borrowerTaxId: { canRequestUnmask: true } },
           },
           finance: {
             fields: fullFinanceFields,
-            actions: { submit: true, escalate: true },
-            sensitiveFields: { counterpartyReference: { canRequestUnmask: true } },
+            actions: { submit: true },
           },
         },
       },
@@ -119,12 +113,10 @@ export const reviewAccessProfiles: Readonly<
           loan: {
             fields: fullLoanFields,
             actions: { submit: true },
-            sensitiveFields: { borrowerTaxId: { canRequestUnmask: true } },
           },
           finance: {
             fields: fullFinanceFields,
-            actions: { submit: true, escalate: true },
-            sensitiveFields: { counterpartyReference: { canRequestUnmask: true } },
+            actions: { submit: true },
           },
           transaction: {
             fields: fullTransactionFields,
@@ -141,7 +133,6 @@ export const reviewAccessProfiles: Readonly<
           loan: {
             fields: {
               borrower: 'read',
-              borrowerTaxId: 'read',
               principal: 'read',
               currency: 'read',
               status: 'read',
