@@ -1,10 +1,10 @@
-import type { EntityDefinition } from '@/shared/grid/configurable/configuration.types';
+import type { ReviewEntityDefinition } from '../../configurable/reviewDefinition.types';
 
 /**
  * Base Finance definition. It intentionally differs from Loan in row identity, fields, status
  * vocabulary and backend adapter while exercising the same configurable SSRM compiler/runtime.
  */
-export const financeEntityDefinition: EntityDefinition = {
+export const financeEntityDefinition: ReviewEntityDefinition = {
   labelKey: 'review.entities.finance',
   dataAdapterKey: 'review-finance',
   rowId: { path: 'recordKey' },
@@ -22,6 +22,18 @@ export const financeEntityDefinition: EntityDefinition = {
       selectAll: 'all',
     },
   },
+  actions: [
+    {
+      key: 'submit',
+      labelKey: 'review.actions.submit',
+      placement: 'primary',
+    },
+    {
+      key: 'escalate',
+      labelKey: 'review.actions.escalate',
+      placement: 'secondary',
+    },
+  ],
   fields: [
     {
       colId: 'facility',
@@ -59,6 +71,18 @@ export const financeEntityDefinition: EntityDefinition = {
           message: 'Counterparty must be 120 characters or fewer.',
         },
       ],
+    },
+    {
+      colId: 'counterpartyReference',
+      field: 'counterpartyReference',
+      labelKey: 'review.finance.counterpartyReference',
+      cellDataType: 'object',
+      minWidth: 215,
+      sortable: false,
+      filter: false,
+      editable: false,
+      cellRenderer: 'reviewSensitiveText',
+      sensitivity: { maskable: true },
     },
     {
       colId: 'exposure',
