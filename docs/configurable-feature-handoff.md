@@ -1,386 +1,217 @@
-# Handoff: Configurable Feature + AG Grid Architecture
+# Configurable Feature Handoff
 
-> **Status:** current architecture/design handoff for configurable-feature work on `configurable-feature-grid`.
->
-> Repository/source/docs are authoritative. In a new chat: inspect GitHub state, read root `AGENTS.md`, read this handoff, then read `docs/configurable-feature-config-design-progress.md` for the exact resume point.
+Repository: `deepanshu-ahuja/aggrid-infinite-ssrm`
 
-## 1. Scope
+Working branch: `configurable-feature-grid`
 
-The repository has proven Transaction Client, Infinite and SSRM grids plus the native-first SSRM editing reference route merged from PR #42.
+Always inspect GitHub again before continuing. Do not assume the branch SHA in this document is still HEAD.
 
-The configurable work remains a separate SSRM-first architecture experiment. Backend metadata does not choose Client/Infinite/SSRM, and existing concrete grids should not be refactored merely to make configurable composition work.
+## Durable reading order
 
-```text
-Review feature
-├── "transaction" entity
-├── "loan" entity
-└── "finance" entity
-```
+1. root `AGENTS.md`;
+2. `docs/implementation/README.md`;
+3. `docs/grid-backlog.md`;
+4. this file;
+5. `docs/configurable-feature-config-design-progress.md`;
+6. `docs/configurable-feature/configuration-reference.md`;
+7. `docs/configurable-feature/type-hierarchy.md`;
+8. `docs/configurable-feature/concepts.md`;
+9. `docs/implementation/configurable-ssrm.md`;
+10. `docs/implementation/testing/configurable-ssrm-manual-testing.md`;
+11. `frontend/src/shared/grid/configurable/configuration.types.ts`;
+12. `frontend/src/shared/grid/configurable/configuration.access.ts`;
+13. `frontend/src/shared/grid/configurable/ConfigurableSsrmEntityGrid.tsx`;
+14. `frontend/src/features/review/configurable/reviewConfigurableFeature.ts`;
+15. `frontend/src/features/review/ReviewConfigurableSsrmFeature.tsx`.
 
-Entity identity is the key in `FeatureDefinition.entities`; `EntityDefinition<TLabelKey, TFieldDefinition>` stays business-agnostic.
+When editing is involved, also inspect the merged native-first SSRM editing reference (PR #42) and the current `gridDraftEditing.ts` / `useGridDraftEditing.ts`.
 
-## 2. Mandatory normalization boundary
+## Current architecture checkpoint
 
-```text
-frontend-supported configuration design
-        ↓
-may be persisted/managed using backend/database shape
-        ↓
-backend runtime JSON
-        ↓
-validate + normalize/adapt ALWAYS
-        ↓
-normalized frontend configuration
-        ↓
-compiler + registries + runtime policy
-        ↓
-AG Grid GridOptions / ColDef / callbacks / components
-        ↓
-concrete configurable SSRM runtime
-```
+PR #43 established the native-first public configurable type contract. PR #44 originally added defaults/normalization/compiler and a Transaction proof consumer. The current branch advances that experiment to the intended feature/entity/access boundary.
 
-Normalization remains even when backend/storage keys exactly match normalized frontend names. TypeScript AG Grid types protect source code; backend runtime JSON remains untrusted.
-
-## 3. Native-first naming and type derivation
+Current route flow:
 
 ```text
-same AG Grid concept + same persisted semantics
-→ use AG Grid property name
-
-precise exported AG Grid type exists
-→ use it directly
-
-reviewed native surface
-→ Pick<AGGridType, ReviewedKeys>
-
-native member mixes data + callback/function
-→ Extract/Omit/narrow only the unsafe branch
-
-single indexed access is clearest
-→ Type['key'] is fine
-```
-
-Do not manually mirror dozens of AG Grid property types when a reviewed `Pick` expresses the relationship. Do not use a broad top-level `Omit` that could accidentally expose new AG Grid runtime/callback properties after a library upgrade.
-
-## 4. Current normalized structure
-
-Source:
-
-`frontend/src/shared/grid/configurable/configuration.types.ts`
-
-```text
-FeatureDefinition
-└── entities: Record<entityKey, EntityDefinition>
-    ├── labelKey
-    ├── dataAdapterKey
-    ├── rowId: RowIdDefinition
-    ├── gridOptions?: ConfigurableSsrmGridOptions
-    │   ├── Pick<GridOptions, reviewed native keys>
-    │   ├── defaultColDef?: ConfigurableDefaultColDef
-    │   ├── rowSelection?: ConfigurableSsrmRowSelectionOptions
-    │   └── cellSelection?: boolean | ConfigurableCellSelectionOptions
-    └── fields: FieldDefinition[]
-        ├── Pick-derived native ColDef options
-        ├── colId
-        ├── field
-        ├── labelKey
-        ├── cellDataType: BaseCellDataType
-        ├── native filter / typed filterParams
-        ├── native cellEditor / cellRenderer names + static params
-        ├── validationRules?
-        ├── valueFormatterKey? / valueFormatterConfig?
-        └── valueParserKey? / valueParserConfig?
-```
-
-There is deliberately no custom `editing → editor/parser`, `renderer → key`, or `filtering → filterOptions` hierarchy.
-
-## 5. Native filters instead of an application filter wrapper
-
-The configurable field now follows the actual SSRM columns:
-
-```ts
-filter: 'agTextColumnFilter',
-filterParams: {
-  buttons: ['reset', 'apply'],
-  maxNumConditions: 1,
-  closeOnApply: true,
-  filterOptions: ['contains', 'equals'],
-}
-```
-
-Filter operator names derive from AG Grid `ISimpleFilterModelType`.
-
-Safe type-specific params derive from AG Grid:
-
-```text
-ITextFilterParams
-INumberFilterParams
-IBigIntFilterParams
-IDateFilterParams
-```
-
-The server-query contract still matters. JSON-safe does **not** automatically mean suitable for SSRM configuration. Native options that change server filtering semantics without being represented by the current filter model/backend remain excluded.
-
-Current server operator vocabulary:
-
-```text
-Text       → contains / equals / notEqual / startsWith / endsWith
-Number     → equals / notEqual / greaterThan / greaterThanOrEqual / lessThan / lessThanOrEqual
-BigInt     → same operator vocabulary as Number
-Date/time  → equals / notEqual / lessThan / greaterThan
-Boolean    → equals / notEqual
-```
-
-Current common filter config keeps `maxNumConditions = 1` because the backend request shape represents one condition per field.
-
-## 6. Native editor/renderer/filter component names
-
-AG Grid supports provided/registered components by string name, so normalized JSON can carry:
-
-```text
-filter: "agTextColumnFilter"
-cellEditor: "agNumberCellEditor"
-cellEditor: "transactionAccountEditor"
-cellRenderer: "statusChip"
-```
-
-Frontend runtime owns actual implementations and validates configured names.
-
-Static `cellEditorParams` / `cellRendererParams` remain JSON-safe. Runtime may merge callbacks into final params where AG Grid requires executable lifecycle hooks.
-
-## 7. Executable formatter/parser registries
-
-AG Grid formatter/parser string values are executable expressions, not component-registration names. Arbitrary expressions are not accepted from backend JSON.
-
-```text
-valueFormatterKey
-→ frontend registry
-→ real AG Grid valueFormatter
-
-valueParserKey
-→ frontend registry
-→ real AG Grid valueParser
-```
-
-`RegisteredValueFormatter` / `RegisteredValueParser` derive the actual AG Grid function branches so registry implementations use native callback signatures.
-
-## 8. Validation declarations use the proven shared rule shape
-
-`FieldDefinition.validationRules` reuses the existing shared `GridValidationRule` contract:
-
-```text
-key
-params
-message
-```
-
-The configurable alias only narrows `params` to JSON-safe `ConfigurationJsonObject`.
-
-Runtime adaptation follows PR #42:
-
-```text
-validationRules
-→ frontend validator registry
-→ validation messages
-
-provided editor
-→ runtime cellEditorParams.getValidationErrors
-
-custom React/MUI editor
-→ useGridCellEditor
-→ getValidationErrors / getValidationElement
-
-gridOptions.invalidEditValueMode = "block"
-→ invalid value does not commit into BASE+LOCAL draft state
-```
-
-The callbacks themselves are runtime code, not configuration.
-
-## 9. Grid options/defaultColDef
-
-Entity native grid overrides live under `entity.gridOptions` because those are real `GridOptions` concepts.
-
-```text
-application configurable-SSRM defaults
+frontend base Review FeatureDefinition
+        │
+        ├── loan EntityDefinition + LoanReviewRow runtime
+        └── finance EntityDefinition + FinanceReviewRow runtime
         +
-entity.gridOptions
+frontend-only simulated current-user access profile
         ↓
-resolved GridOptions
-
-resolved gridOptions.defaultColDef
-        +
-compiled field properties
+resolveFeatureAccess
         ↓
-final ColDef
+resolved feature / entity set / field set / read-vs-edit access
+        ↓
+separate active entity choice
+        ↓
+ConfigurableSsrmEntityGrid<TData>
+        ↓
+application configurable-SSRM defaults + compiler + registries
+        ↓
+native GridOptions + ColDef[] + getRowId
+        ↓
+AG Grid SSRM lifecycle + entity-specific rows loader
+        ↓
+native validation/editing
+        ↓
+useGridDraftEditing BASE + LOCAL
 ```
 
-The reviewed grid surface includes pagination/cache/loading, editing/navigation, Cell Selection, clipboard, column movement, layout/presentation, tooltips and focus/accessibility.
+The configurable runtime stays isolated from `/client`, `/infinite`, `/ssrm`, and `/ssrm-native-editing`.
 
-`defaultColDef`, `rowSelection`, and `cellSelection` are bounded native-derived nested types.
+## Critical business-agnostic rule
 
-`readOnlyEdit` is deliberately excluded because it changes the selected edit lifecycle from normal mutation/`cellValueChanged` observation to `cellEditRequest` ownership.
+The configurable grid is **not a Transaction grid**.
 
-## 10. Native Cell Selection / row selection
+`FeatureDefinition` owns a feature key and a set of entity definitions. Entity keys carry business identity such as `loan`, `finance`, `builder`, etc. The shared types/compiler/grid must not hard-code Transaction, Loan, Finance, or any other domain.
 
-Cell Selection is derived from `GridOptions['cellSelection']`:
+`ConfigurableSsrmEntityGrid<TData>` receives an already-resolved entity plus its runtime adapters. It has no role/profile/localStorage/domain-name branching.
+
+The current Review route deliberately proves two different row types and different field sets. Do not create `LoanGrid`, `FinanceGrid`, etc. as separate grid frameworks.
+
+## Base definition versus current-user access
+
+Keep these concepts separate:
 
 ```text
-native cellSelection
-→ Pick safe declarative top-level members
-→ derive native range/fill handle union
-→ Omit only executable fill.setFillValue
+BASE FEATURE / ENTITY DEFINITION
+= everything the business view can support
+
+CURRENT-USER ACCESS PROJECTION
+= what this user/session may actually receive/do
+
+RUNTIME ROW/FIELD CAPABILITIES
+= per-row restrictions when required later
 ```
 
-Row selection derives native `singleRow` / `multiRow` branches. `checkboxes` is narrowed to its static boolean branch and `isRowSelectable` stays runtime business policy.
+The current frontend-only access resolver supports feature/entity/field removal plus `read`/`edit` field projection. `read` can downgrade a base editable field. `edit` cannot promote a field whose base definition is read-only.
 
-For current flat configurable SSRM:
+Do not duplicate an entire feature/entity configuration per role/profile. Resolve a small access projection against the shared base definition.
+
+## Development-only localStorage profiles
+
+Real auth/backend access metadata does not exist yet. For local verification, the Review feature simulates already-resolved user access.
+
+Profile selector:
 
 ```text
-selectAll = all
-headerCheckbox
-ctrlASelectsRows
+aggrid.devAccessProfile
 ```
 
-`groupSelects` is not exposed merely to store the default `'self'`; grouping belongs with a real server-side grouping capability.
-
-AG Grid's `filtered` / `currentPage` native select-all modes are not valid SSRM semantics, so the repository's All Filtered / Current Page operations remain application-owned.
-
-## 11. PR #42 native-first SSRM editing reference
-
-PR #42 (`Spike: native-first SSRM editing`) is merged into `configurable-feature-grid` as:
+Current values:
 
 ```text
-279fbfea85da85741b42dfa6e3cb034b36a92c51
+loanOnly
+financeOnly
+loanAndFinance
+loanReadOnly
 ```
 
-Reference route: `/ssrm-native-editing`.
-
-Use the spike to understand ownership. Do not copy the whole Transaction grid into configurable code.
-
-### AG Grid owns
+Default:
 
 ```text
-normal cell editing
-Cell Selection
-Ctrl/Cmd+D
-Ctrl/Cmd+Enter
-Fill Handle
-clipboard/paste
-editable filtering
-editor commit/validation lifecycle
+loanAndFinance
 ```
 
-### Shared runtime owns
+Active entity selector:
 
 ```text
-BASE + LOCAL only for genuinely dirty fields
-first BASE capture
-revert-to-BASE cleanup
-selected ∩ dirty targeting
-safe save acknowledgement/rebase
-LOCAL restore after SSRM RowNode/store recreation
-Discard draft cleanup + authoritative refresh
+aggrid.devActiveEntity = loan | finance
 ```
 
-### Feature/business layer owns
+The profile and active entity are deliberately separate. A user/profile with access to both Loan and Finance may open either entity without changing identity/access.
+
+Change the key(s) in browser localStorage and reload `/configurable-ssrm`.
+
+These values are development tooling only. They are not a security boundary and must not become production authorization logic.
+
+## Trusted local configuration versus backend JSON
+
+Do **not** force trusted frontend-authored configuration through runtime `unknown` normalization merely to simulate a backend that does not exist yet.
+
+Current local path:
 
 ```text
-row/cell editable policy
-validation rule selection/messages
-persistence mapping/endpoints
-row/selected Save and Discard presentation
-backend authority
+frontend-authored typed config
+        ↓
+TypeScript (`satisfies FeatureDefinition`)
+        ↓
+access resolution
+        ↓
+compiler
 ```
 
-Do not reintroduce Apply Last Edit, old current-page Flow 1/Flow 2, or custom range-edit filtering.
-
-## 12. Runtime draft state is not config
-
-Shared candidates:
+Future backend/storage path:
 
 ```text
-frontend/src/shared/grid/editing/gridDraftEditing.ts
-frontend/src/shared/grid/editing/useGridDraftEditing.ts
+backend/storage JSON (`unknown`)
+        ↓
+runtime validation / normalization
+        ↓
+normalized frontend config
+        ↓
+access/compiler/runtime
 ```
 
-State stays intentionally lightweight:
+`configuration.normalizer.ts` remains the real trust boundary when runtime JSON eventually crosses an API/storage boundary. The earlier Transaction proof may continue using it, but new local configuration does not need to pretend it is untrusted transport data.
 
-```text
-rowId
-└── dirty field
-    ├── baseValue
-    └── value
-```
+## Native-first rules still apply
 
-Do not copy full API responses/SSRM blocks into React state and do not add a React Query original-row cache for this purpose.
+Use AG Grid-native configuration wherever the persisted meaning is native. Keep native names such as `filter`, `filterParams`, `cellEditor`, `cellRenderer`, `rowSelection`, and `cellSelection`.
 
-The spike deliberately omits the previous REMOTE/conflict layer. Concurrency/version/conflict UX remains a separate later product decision.
+Do not accept executable functions/expressions from backend JSON. Use frontend registry keys only where executable behavior genuinely needs selection.
 
-## 13. Runtime-owned / deliberately unsupported examples
+Runtime infrastructure remains runtime-owned: `modules`, `rowModelType`, datasource objects, component implementations, `GridApi` refs, `getRowId` callbacks, events and row/business callbacks.
 
-```text
-modules
-rowModelType
-serverSideDatasource
-columnDefs
-context
-getRowId callback
-GridApi refs
-events/callbacks
-getRowClass / rowClassRules business callbacks
-isRowSelectable
-validation callbacks
-```
+## Data ownership in the current Review proof
 
-Grouping/tree/pivot/aggregation remain outside the initial flat configurable SSRM contract until server request/response semantics exist end to end.
+Loan and Finance currently use small frontend-only in-memory `GridRowsLoader` adapters. This is deliberate because the current work is proving feature/entity/access composition, not inventing fake backend Loan/Finance APIs.
 
-These are justified exclusions. "Transactions does not currently use it" is not sufficient by itself.
+The local loaders do not implement server sort/filter semantics, so Review fields do not expose sort/filter. When a real entity backend appears, add an explicit feature adapter/request mapper rather than inferring arbitrary backend query fields from column metadata.
 
-## 14. Stable identity / adapter authority
+The old Transaction configurable consumer remains reference/history for real Transaction request mapping but is no longer the `/configurable-ssrm` route owner.
 
-```text
-field.colId
-→ ColDef.colId
-→ stable Grid State/API/logical column identity
+## Editing ownership
 
-field.field
-→ ColDef.field
-→ current row/API value path
-```
+AG Grid owns normal editing and supported native alternate edit entry points.
 
-`dataAdapterKey` resolves frontend loading/saving/request-response normalization. SSRM block loading remains datasource-owned rather than TanStack Query-owned.
+Access projection narrows field editability before compilation. The generic root then composes the final native `ColDef.editable` behavior and `useGridDraftEditing` BASE + LOCAL tracking.
 
-Backend remains authoritative for security/access, persistence validation, server-query semantics and writes.
+Do not copy complete API rows/SSRM blocks into React state. Do not introduce a React Query original-row cache. REMOTE conflict/concurrency/versioning remains a separate later decision.
 
-## 15. Next work
+## Current deliberate limits
 
-The type-only native-alignment pass is now far enough along to start runtime foundations.
+The configurable Review route intentionally does not yet implement:
 
-Next batch:
+- real authentication/authorization;
+- backend feature/access metadata;
+- configurable persistence/read-write/save mapping;
+- business actions/action authorization;
+- masking/unmask;
+- row-specific access/capability payloads;
+- Grid State/access reconciliation;
+- runtime config schema/version negotiation;
+- grouping/tree/pivot/aggregation;
+- REMOTE conflict/concurrency/versioning.
 
-```text
-application configurable-SSRM defaults
-→ exact entity.gridOptions merge semantics
-→ nested defaultColDef/filterParams/rowSelection/cellSelection merging
-→ runtime JSON validation + normalization
-→ named component validation
-→ formatter/parser registries
-→ field compiler
-→ compose PR #42 draft editing + native validation
-```
+## Verification requirement
 
-Then proceed to save/read mapping, access/security/masking, actions, Grid State reconciliation and schema/versioning.
-
-Read `docs/configurable-feature-config-design-progress.md` for the exact current checkpoint.
-
-## 16. Documentation / verification
-
-Public config changes require source JSDoc, curated docs and regenerated TypeDoc Markdown:
+Do not claim the current branch is green unless the exact head actually executes:
 
 ```bash
+npm run typecheck
+npm run lint
+npm run test:run
+npm run build
 npm run docs:configurable
 ```
 
-Current branch: `configurable-feature-grid`.
+Also run applicable Playwright/manual verification before claiming browser completion.
 
-Do not create another branch or merge another PR without explicit instruction.
+Generated TypeDoc may still be stale until `npm run docs:configurable` actually runs successfully on the current head.
+
+## Workflow
+
+Stay on `configurable-feature-grid` unless the user explicitly asks for another branch. Do not merge a PR unless explicitly requested. Do not refactor the proven Transaction row-model routes merely to make the configurable experiment look more shared.

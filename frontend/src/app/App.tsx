@@ -1,5 +1,6 @@
 import { Box, Button, Container, Stack, Typography } from '@mui/material';
 import { NavLink, Navigate, Route, Routes } from 'react-router';
+import { ReviewConfigurableSsrmFeature } from '@/features/review/ReviewConfigurableSsrmFeature';
 import { TransactionsClientGrid } from '@/features/transactions/grid/TransactionsClientGrid';
 import { TransactionsInfiniteGrid } from '@/features/transactions/grid/TransactionsInfiniteGrid';
 import { TransactionsSsrmGrid } from '@/features/transactions/grid/TransactionsSsrmGrid';
@@ -13,10 +14,10 @@ export function App() {
         <Stack spacing={3}>
           <Box>
             <Typography component="h1" variant="h4" fontWeight={700}>
-              Transactions
+              AG Grid foundation
             </Typography>
             <Typography color="text.secondary">
-              Open each row model on its own URL so its behavior can be tested independently.
+              Open each row model or isolated experiment on its own URL so behavior can be tested independently.
             </Typography>
           </Box>
 
@@ -25,6 +26,7 @@ export function App() {
             <Button component={NavLink} to="/infinite" variant="outlined">Infinite Row Model</Button>
             <Button component={NavLink} to="/ssrm" variant="outlined">Server-Side Row Model</Button>
             <Button component={NavLink} to="/ssrm-native-editing" variant="outlined">SSRM Native Editing Spike</Button>
+            <Button component={NavLink} to="/configurable-ssrm" variant="outlined">Configurable Review SSRM</Button>
           </Stack>
 
           <Routes>
@@ -33,6 +35,7 @@ export function App() {
             <Route path="/infinite" element={<TransactionsInfiniteGrid />} />
             <Route path="/ssrm" element={<TransactionsSsrmGrid />} />
             <Route path="/ssrm-native-editing" element={<TransactionsSsrmNativeEditingGrid />} />
+            <Route path="/configurable-ssrm" element={<ReviewConfigurableSsrmFeature />} />
             <Route path="*" element={<Navigate to="/client" replace />} />
           </Routes>
         </Stack>
