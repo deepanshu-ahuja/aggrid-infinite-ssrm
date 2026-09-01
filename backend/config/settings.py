@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "rest_framework",
     "apps.transactions",
+    "apps.review",
 ]
 
 MIDDLEWARE = [
