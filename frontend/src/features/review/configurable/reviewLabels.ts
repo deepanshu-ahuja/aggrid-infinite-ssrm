@@ -3,6 +3,7 @@ import { resolveTransactionConfigurableLabel } from '@/features/transactions/con
 const REVIEW_LABELS: Readonly<Record<string, string>> = {
   'review.entities.loan': 'Loans',
   'review.entities.finance': 'Finance',
+  'review.actions.submit': 'Submit',
   'review.loan.borrower': 'Borrower',
   'review.loan.principal': 'Principal',
   'review.loan.currency': 'Currency',
